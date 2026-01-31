@@ -1,0 +1,21 @@
+# Virtual env
+venv/
+.env
+
+# Python cache
+__pycache__/
+*.pyc
+
+# Flask
+instance/
+
+# IDE
+.vscode/
+.idea/
+
+# OS junk
+.DS_Store
+
+# Logs & DB
+*.log
+*.db

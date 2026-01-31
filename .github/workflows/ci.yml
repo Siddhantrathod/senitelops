@@ -1,0 +1,52 @@
+name: SentinelOps CI - P1
+
+on:
+  push:
+    branches: [ "main" ]
+  pull_request:
+    branches: [ "main" ]
+
+jobs:
+  build-test-scan:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: |
+          pip install -r requirements.txt
+          pip install bandit
+
+      - name: Run unit tests
+        run: |
+          echo "No tests yet"
+
+      - name: Run Bandit SAST
+        run: |
+          bandit -r . -f json -o bandit-report.json || true
+
+      - name: Build Docker image
+        run: |
+          docker build -t sentinelops-demo:latest .
+
+      - name: Install Trivy
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y wget
+          wget https://github.com/aquasecurity/trivy/releases/latest/download/trivy_0.52.0_Linux-64bit.deb
+          sudo dpkg -i trivy_0.52.0_Linux-64bit.deb
+
+      - name: Scan Docker image with Trivy
+        run: |
+          trivy image --format json --output trivy-report.json sentinelops-demo:latest || true
+
+      - name: Run Security Decision Engine
+        run: |
+          python security_decision_engine.py
