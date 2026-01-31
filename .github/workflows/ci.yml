@@ -40,8 +40,8 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y wget
-          wget https://github.com/aquasecurity/trivy/releases/latest/download/trivy_0.52.0_Linux-64bit.deb
-          sudo dpkg -i trivy_0.52.0_Linux-64bit.deb
+          wget https://github.com/aquasecurity/trivy/releases/latest/download/trivy_Linux-64bit.deb
+          sudo dpkg -i trivy_Linux-64bit.deb
 
       - name: Scan Docker image with Trivy
         run: |
