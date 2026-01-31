@@ -1,0 +1,84 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>SentinelOps Security Dashboard</title>
+  <style>
+    body { font-family: Arial; background: #0f172a; color: white; padding: 20px; }
+    h1 { text-align: center; }
+    table { border-collapse: collapse; width: 100%; margin-top: 20px; }
+    th, td { border: 1px solid #334155; padding: 8px; }
+    th { background: #1e293b; }
+    .critical { color: red; }
+    .high { color: orange; }
+  </style>
+</head>
+
+<body>
+<h1>SentinelOps – Security Dashboard</h1>
+
+<h2>🔍 Trivy Image Vulnerabilities</h2>
+<table id="trivyTable">
+  <tr>
+    <th>CVE</th>
+    <th>Package</th>
+    <th>Installed</th>
+    <th>Fixed</th>
+    <th>Severity</th>
+  </tr>
+</table>
+
+<h2>🧪 Bandit Code Issues</h2>
+<table id="banditTable">
+  <tr>
+    <th>File</th>
+    <th>Line</th>
+    <th>Issue</th>
+    <th>Severity</th>
+  </tr>
+</table>
+
+<script>
+async function loadTrivy() {
+  const res = await fetch("/api/trivy");
+  const data = await res.json();
+
+  const table = document.getElementById("trivyTable");
+
+  data.Results.forEach(r => {
+    if (!r.Vulnerabilities) return;
+    r.Vulnerabilities.forEach(v => {
+      let row = table.insertRow();
+      row.insertCell().innerText = v.VulnerabilityID;
+      row.insertCell().innerText = v.PkgName;
+      row.insertCell().innerText = v.InstalledVersion;
+      row.insertCell().innerText = v.FixedVersion || "N/A";
+      let sev = row.insertCell();
+      sev.innerText = v.Severity;
+      sev.className = v.Severity.toLowerCase();
+    });
+  });
+}
+
+async function loadBandit() {
+  const res = await fetch("/api/bandit");
+  const data = await res.json();
+
+  const table = document.getElementById("banditTable");
+
+  data.results.forEach(v => {
+    let row = table.insertRow();
+    row.insertCell().innerText = v.filename;
+    row.insertCell().innerText = v.line_number;
+    row.insertCell().innerText = v.issue_text;
+    let sev = row.insertCell();
+    sev.innerText = v.issue_severity;
+    sev.className = v.issue_severity.toLowerCase();
+  });
+}
+
+loadTrivy();
+loadBandit();
+</script>
+
+</body>
+</html>
