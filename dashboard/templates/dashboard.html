@@ -3,77 +3,238 @@
 <head>
   <title>SentinelOps Security Dashboard</title>
   <style>
-    body { font-family: Arial; background: #0f172a; color: white; padding: 20px; }
-    h1 { text-align: center; }
-    table { border-collapse: collapse; width: 100%; margin-top: 20px; }
-    th, td { border: 1px solid #334155; padding: 8px; }
-    th { background: #1e293b; }
-    .critical { color: red; }
-    .high { color: orange; }
+    body {
+      font-family: "Segoe UI", Arial, sans-serif;
+      background: #020617;
+      color: #e5e7eb;
+      padding: 20px;
+    }
+
+    h1 {
+      text-align: center;
+      margin-bottom: 10px;
+    }
+
+    .subtitle {
+      text-align: center;
+      color: #94a3b8;
+      margin-bottom: 20px;
+    }
+
+    .top-bar {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 15px;
+    }
+
+    select {
+      padding: 6px 12px;
+      border-radius: 6px;
+      border: none;
+      background: #1e293b;
+      color: white;
+    }
+
+    .stats {
+      display: flex;
+      gap: 15px;
+    }
+
+    .stat-box {
+      background: #0f172a;
+      padding: 10px 15px;
+      border-radius: 10px;
+      text-align: center;
+      min-width: 120px;
+    }
+
+    .container {
+      display: flex;
+      gap: 20px;
+    }
+
+    .panel {
+      width: 50%;
+      background: #0f172a;
+      padding: 15px;
+      border-radius: 12px;
+      box-shadow: 0 0 10px rgba(0,0,0,0.4);
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 13px;
+    }
+
+    th, td {
+      padding: 8px;
+      border-bottom: 1px solid #1e293b;
+    }
+
+    th {
+      color: #cbd5f5;
+      text-align: left;
+    }
+
+    .critical { color: #ef4444; font-weight: bold; }
+    .high { color: #f97316; font-weight: bold; }
+    .medium { color: #eab308; }
+    .low { color: #22c55e; }
+
+    .tag {
+      padding: 2px 8px;
+      border-radius: 10px;
+      font-size: 12px;
+      background: #1e293b;
+      display: inline-block;
+    }
   </style>
 </head>
 
 <body>
-<h1>SentinelOps – Security Dashboard</h1>
 
-<h2>🔍 Trivy Image Vulnerabilities</h2>
-<table id="trivyTable">
-  <tr>
-    <th>CVE</th>
-    <th>Package</th>
-    <th>Installed</th>
-    <th>Fixed</th>
-    <th>Severity</th>
-  </tr>
-</table>
+<h1>🛡 SentinelOps Security Dashboard</h1>
+<div class="subtitle">Real-time DevSecOps Vulnerability Monitoring</div>
 
-<h2>🧪 Bandit Code Issues</h2>
-<table id="banditTable">
-  <tr>
-    <th>File</th>
-    <th>Line</th>
-    <th>Issue</th>
-    <th>Severity</th>
-  </tr>
-</table>
+<div class="top-bar">
+  <div class="stats" id="stats"></div>
+
+  <div>
+    Filter:
+    <select id="severityFilter" onchange="applyFilter()">
+      <option value="ALL">ALL</option>
+      <option value="CRITICAL">CRITICAL</option>
+      <option value="HIGH">HIGH</option>
+      <option value="MEDIUM">MEDIUM</option>
+      <option value="LOW">LOW</option>
+    </select>
+  </div>
+</div>
+
+<div class="container">
+
+  <div class="panel">
+    <h3>🔍 Trivy – Container Vulnerabilities</h3>
+    <table id="trivyTable">
+      <tr>
+        <th>CVE</th>
+        <th>Package</th>
+        <th>Version</th>
+        <th>Fix</th>
+        <th>Severity</th>
+      </tr>
+    </table>
+  </div>
+
+  <div class="panel">
+    <h3>🧪 Bandit – Code Security Issues</h3>
+    <table id="banditTable">
+      <tr>
+        <th>File</th>
+        <th>Line</th>
+        <th>Issue</th>
+        <th>Severity</th>
+      </tr>
+    </table>
+  </div>
+
+</div>
 
 <script>
+let trivyData = [];
+let banditData = [];
+
 async function loadTrivy() {
   const res = await fetch("/api/trivy");
   const data = await res.json();
-
-  const table = document.getElementById("trivyTable");
+  trivyData = [];
 
   data.Results.forEach(r => {
     if (!r.Vulnerabilities) return;
-    r.Vulnerabilities.forEach(v => {
-      let row = table.insertRow();
-      row.insertCell().innerText = v.VulnerabilityID;
-      row.insertCell().innerText = v.PkgName;
-      row.insertCell().innerText = v.InstalledVersion;
-      row.insertCell().innerText = v.FixedVersion || "N/A";
-      let sev = row.insertCell();
-      sev.innerText = v.Severity;
-      sev.className = v.Severity.toLowerCase();
-    });
+    r.Vulnerabilities.forEach(v => trivyData.push(v));
   });
+
+  renderTrivy(trivyData);
+  updateStats();
 }
 
 async function loadBandit() {
   const res = await fetch("/api/bandit");
   const data = await res.json();
+  banditData = data.results;
+  renderBandit(banditData);
+  updateStats();
+}
 
+function renderTrivy(data) {
+  const table = document.getElementById("trivyTable");
+  table.innerHTML = `
+    <tr>
+      <th>CVE</th>
+      <th>Package</th>
+      <th>Version</th>
+      <th>Fix</th>
+      <th>Severity</th>
+    </tr>`;
+
+  data.forEach(v => {
+    let row = table.insertRow();
+    row.insertCell().innerText = v.VulnerabilityID;
+    row.insertCell().innerText = v.PkgName;
+    row.insertCell().innerText = v.InstalledVersion;
+    row.insertCell().innerText = v.FixedVersion || "N/A";
+    let sev = row.insertCell();
+    sev.innerHTML = `<span class="tag ${v.Severity.toLowerCase()}">${v.Severity}</span>`;
+  });
+}
+
+function renderBandit(data) {
   const table = document.getElementById("banditTable");
+  table.innerHTML = `
+    <tr>
+      <th>File</th>
+      <th>Line</th>
+      <th>Issue</th>
+      <th>Severity</th>
+    </tr>`;
 
-  data.results.forEach(v => {
+  data.forEach(v => {
     let row = table.insertRow();
     row.insertCell().innerText = v.filename;
     row.insertCell().innerText = v.line_number;
     row.insertCell().innerText = v.issue_text;
     let sev = row.insertCell();
-    sev.innerText = v.issue_severity;
-    sev.className = v.issue_severity.toLowerCase();
+    sev.innerHTML = `<span class="tag ${v.issue_severity.toLowerCase()}">${v.issue_severity}</span>`;
   });
+}
+
+function applyFilter() {
+  const filter = document.getElementById("severityFilter").value;
+
+  if (filter === "ALL") {
+    renderTrivy(trivyData);
+    renderBandit(banditData);
+  } else {
+    renderTrivy(trivyData.filter(v => v.Severity === filter));
+    renderBandit(banditData.filter(v => v.issue_severity === filter));
+  }
+}
+
+function updateStats() {
+  let all = [...trivyData.map(v=>v.Severity), ...banditData.map(v=>v.issue_severity)];
+  let counts = {CRITICAL:0,HIGH:0,MEDIUM:0,LOW:0};
+
+  all.forEach(s => counts[s]++);
+
+  const stats = document.getElementById("stats");
+  stats.innerHTML = `
+    <div class="stat-box critical">Critical<br>${counts.CRITICAL}</div>
+    <div class="stat-box high">High<br>${counts.HIGH}</div>
+    <div class="stat-box medium">Medium<br>${counts.MEDIUM}</div>
+    <div class="stat-box low">Low<br>${counts.LOW}</div>
+  `;
 }
 
 loadTrivy();

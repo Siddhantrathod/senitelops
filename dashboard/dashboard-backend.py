@@ -5,7 +5,7 @@ import os
 app = Flask(__name__)
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-REPORT_DIR = os.path.dirname(BASE_DIR)
+REPORT_DIR = os.path.join(os.path.dirname(BASE_DIR), "reports")
 
 @app.route("/")
 def home():
@@ -13,13 +13,15 @@ def home():
 
 @app.route("/api/bandit")
 def bandit():
-    with open(os.path.join(REPORT_DIR, "bandit-report.json")) as f:
+    path = os.path.join(REPORT_DIR, "bandit-report.json")
+    with open(path) as f:
         return jsonify(json.load(f))
 
 @app.route("/api/trivy")
 def trivy():
-    with open(os.path.join(REPORT_DIR, "trivy-report.json")) as f:
+    path = os.path.join(REPORT_DIR, "trivy-report.json")
+    with open(path) as f:
         return jsonify(json.load(f))
 
 if __name__ == "__main__":
-    app.run(debug=True)
+    app.run(debug=False)

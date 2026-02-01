@@ -51,26 +51,28 @@ def get_user(user_id):
 # Endpoint 4: Create a new user
 @app.route('/api/users', methods=['POST'])
 def create_user():
-    data = request.get_json()
-    
+    data = request.get_json(silent=True)
+
     if not data or not data.get("name") or not data.get("email"):
         return jsonify({
             "status": "error",
             "message": "Name and email are required"
         }), 400
-    
+
     new_user = {
         "id": max(u["id"] for u in users) + 1 if users else 1,
         "name": data["name"],
         "email": data["email"]
     }
     users.append(new_user)
-    
+
     return jsonify({
         "status": "success",
         "message": "User created",
         "data": new_user
     }), 201
 
+
 if __name__ == '__main__':
-    app.run(debug=True, host='0.0.0.0', port=5000)
+    # SECURE CONFIGURATION
+    app.run(debug=False, host='127.0.0.1', port=5000)
