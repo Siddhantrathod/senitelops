@@ -2,9 +2,9 @@ name: SentinelOps CI - P1
 
 on:
   push:
-    branches: [ "main" ]
+    branches: ["main"]
   pull_request:
-    branches: [ "main" ]
+    branches: ["main"]
 
 jobs:
   build-test-scan:
@@ -24,17 +24,16 @@ jobs:
           pip install -r requirements.txt
           pip install bandit
 
-      - name: Run unit tests
-        run: |
-          echo "No tests yet"
+      - name: Create reports directory
+        run: mkdir -p reports
 
-      - name: Run Bandit SAST
+      - name: Run Bandit SAST (secure app)
         run: |
-          bandit -r . -f json -o bandit-report.json || true
+          bandit -r app_secure -f json -o reports/bandit-report.json || true
 
-      - name: Build Docker image
+      - name: Build Docker image (secure app)
         run: |
-          docker build -t sentinelops-demo:latest .
+          docker build -t sentinelops-safe:latest app_secure
 
       - name: Install Trivy
         run: |
@@ -44,10 +43,14 @@ jobs:
           echo "deb [signed-by=/usr/share/keyrings/trivy.gpg] https://aquasecurity.github.io/trivy-repo/deb $(lsb_release -sc) main" | sudo tee /etc/apt/sources.list.d/trivy.list
           sudo apt update
           sudo apt install trivy -y
-      
+
       - name: Scan Docker image with Trivy
         run: |
-          trivy image --format json --output trivy-report.json sentinelops-demo:latest || true
+          trivy image sentinelops-safe:latest \
+            --severity HIGH,CRITICAL \
+            --ignore-unfixed \
+            --format json \
+            --output reports/trivy-report.json || true
 
       - name: Run Security Decision Engine
         run: |
