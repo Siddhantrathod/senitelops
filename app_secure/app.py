@@ -8,7 +8,6 @@ users = [
     {"id": 2, "name": "Bob", "email": "bob@example.com"},
 ]
 
-# Endpoint 1: Home/Welcome
 @app.route('/', methods=['GET'])
 def home():
     return jsonify({
@@ -22,7 +21,6 @@ def home():
         ]
     }), 200
 
-# Endpoint 2: Get all users
 @app.route('/api/users', methods=['GET'])
 def get_users():
     return jsonify({
@@ -34,7 +32,6 @@ def get_users():
 def health():
     return jsonify({"status": "ok"}), 200
 
-# Endpoint 3: Get user by ID
 @app.route('/api/users/<int:user_id>', methods=['GET'])
 def get_user(user_id):
     user = next((u for u in users if u["id"] == user_id), None)
@@ -48,7 +45,6 @@ def get_user(user_id):
         "message": "User not found"
     }), 404
 
-# Endpoint 4: Create a new user
 @app.route('/api/users', methods=['POST'])
 def create_user():
     data = request.get_json(silent=True)

@@ -4,10 +4,8 @@ import os
 
 app = Flask(__name__)
 
-# ❌ Hardcoded secret (bad practice)
 SECRET_KEY = "mysecret123"
 
-# Sample data
 users = [
     {"id": 1, "name": "Alice", "email": "alice@example.com"},
     {"id": 2, "name": "Bob", "email": "bob@example.com"},
@@ -33,17 +31,17 @@ def get_user(user_id):
 def create_user():
     data = request.get_json()
 
-    # ❌ No validation
+    # No validation
     users.append(data)
     return jsonify({"status": "created", "data": data})
 
-# ❌ Command injection endpoint (for demo)
+# Command injection endpoint (for demo)
 @app.route("/run")
 def run_cmd():
     cmd = request.args.get("cmd")
     return subprocess.getoutput(cmd)
 
-# ❌ Dangerous eval usage
+# Dangerous eval usage
 @app.route("/calc")
 def calc():
     expr = request.args.get("expr")
