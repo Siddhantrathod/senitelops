@@ -18,6 +18,7 @@ import SeverityPieChart from '../components/charts/SeverityPieChart'
 import VulnerabilityBarChart from '../components/charts/VulnerabilityBarChart'
 import { PageLoader } from '../components/LoadingSpinner'
 import Alert from '../components/Alert'
+import { useAuth } from '../context/AuthContext'
 
 export default function BanditReport() {
   const [data, setData] = useState(null)
@@ -29,10 +30,13 @@ export default function BanditReport() {
     confidence: 'all',
     search: '',
   })
+  const { isAuthenticated } = useAuth()
 
   useEffect(() => {
-    loadData()
-  }, [])
+    if (isAuthenticated) {
+      loadData()
+    }
+  }, [isAuthenticated])
 
   const loadData = async () => {
     try {

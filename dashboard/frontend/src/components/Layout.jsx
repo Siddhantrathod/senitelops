@@ -11,11 +11,16 @@ import {
   Bell,
   Search,
   ChevronRight,
+  LogOut,
+  User,
+  GitBranch,
 } from 'lucide-react'
 import { cn } from '../utils/helpers'
+import { useAuth } from '../context/AuthContext'
 
 const navigation = [
   { name: 'Dashboard', href: '/', icon: LayoutDashboard },
+  { name: 'Pipeline', href: '/pipeline', icon: GitBranch },
   { name: 'Bandit Analysis', href: '/bandit', icon: Bug },
   { name: 'Trivy Scan', href: '/trivy', icon: Container },
   { name: 'Settings', href: '/settings', icon: Settings },
@@ -23,11 +28,14 @@ const navigation = [
 
 export default function Layout() {
   const [sidebarOpen, setSidebarOpen] = useState(false)
+  const [showUserMenu, setShowUserMenu] = useState(false)
   const location = useLocation()
+  const { user, logout, isAdmin } = useAuth()
 
   const getBreadcrumb = () => {
     const path = location.pathname
     if (path === '/') return 'Dashboard'
+    if (path === '/pipeline') return 'Pipeline'
     if (path === '/bandit') return 'Bandit Analysis'
     if (path === '/trivy') return 'Trivy Scan'
     if (path === '/settings') return 'Settings'
@@ -144,14 +152,62 @@ export default function Layout() {
               </button>
 
               {/* Profile */}
-              <div className="flex items-center gap-3 pl-4 border-l border-dark-700/50">
-                <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-primary-500 to-purple-600 flex items-center justify-center">
-                  <span className="text-sm font-semibold text-white">SO</span>
-                </div>
-                <div className="hidden sm:block">
-                  <p className="text-sm font-medium text-white">Security Admin</p>
-                  <p className="text-xs text-dark-500">admin@sentinelops.io</p>
-                </div>
+              <div className="relative flex items-center gap-3 pl-4 border-l border-dark-700/50">
+                <button 
+                  onClick={() => setShowUserMenu(!showUserMenu)}
+                  className="flex items-center gap-3 hover:opacity-80 transition-opacity"
+                >
+                  <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-primary-500 to-purple-600 flex items-center justify-center">
+                    <span className="text-sm font-semibold text-white">
+                      {user?.username?.charAt(0).toUpperCase() || 'U'}
+                    </span>
+                  </div>
+                  <div className="hidden sm:block text-left">
+                    <p className="text-sm font-medium text-white">{user?.username || 'User'}</p>
+                    <p className="text-xs text-dark-500">{user?.email || ''}</p>
+                  </div>
+                </button>
+
+                {/* User Dropdown Menu */}
+                {showUserMenu && (
+                  <>
+                    <div 
+                      className="fixed inset-0 z-40" 
+                      onClick={() => setShowUserMenu(false)}
+                    />
+                    <div className="absolute right-0 top-full mt-2 w-56 bg-dark-800 border border-dark-700/50 rounded-xl shadow-xl z-50 overflow-hidden">
+                      <div className="p-4 border-b border-dark-700/50">
+                        <p className="text-white font-medium">{user?.username}</p>
+                        <p className="text-dark-400 text-sm">{user?.email}</p>
+                        {isAdmin() && (
+                          <span className="inline-block mt-2 px-2 py-1 text-xs bg-primary-500/20 text-primary-400 rounded-lg">
+                            Admin
+                          </span>
+                        )}
+                      </div>
+                      <div className="p-2">
+                        <NavLink
+                          to="/settings"
+                          onClick={() => setShowUserMenu(false)}
+                          className="flex items-center gap-3 px-3 py-2 text-dark-300 hover:text-white hover:bg-dark-700 rounded-lg transition-colors"
+                        >
+                          <User className="w-4 h-4" />
+                          Profile Settings
+                        </NavLink>
+                        <button
+                          onClick={() => {
+                            setShowUserMenu(false)
+                            logout()
+                          }}
+                          className="flex items-center gap-3 w-full px-3 py-2 text-red-400 hover:bg-red-500/10 rounded-lg transition-colors"
+                        >
+                          <LogOut className="w-4 h-4" />
+                          Sign Out
+                        </button>
+                      </div>
+                    </div>
+                  </>
+                )}
               </div>
             </div>
           </div>

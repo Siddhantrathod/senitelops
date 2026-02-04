@@ -1,0 +1,10 @@
+[
+  {
+    "id": 1,
+    "username": "admin",
+    "email": "admin@sentinelops.io",
+    "password": "$2b$12$3s8rcFyJhCNNRFpskrHdEOne.2c3gwNBp6upzdokdAlmthPwD73b.",
+    "role": "admin",
+    "createdAt": "2026-02-03T23:57:00.493499"
+  }
+]

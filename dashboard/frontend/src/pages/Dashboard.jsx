@@ -11,8 +11,12 @@ import {
   ChevronRight,
   CheckCircle,
   XCircle,
+  GitBranch,
+  Rocket,
+  Play,
+  Loader2,
 } from 'lucide-react'
-import { fetchSecuritySummary } from '../services/api'
+import { fetchSecuritySummary, fetchLatestPipeline, triggerPipeline } from '../services/api'
 import { formatDate, calculateRiskScore, getSecurityGrade } from '../utils/helpers'
 import StatCard from '../components/StatCard'
 import SeverityPieChart from '../components/charts/SeverityPieChart'
@@ -21,26 +25,70 @@ import TrendChart from '../components/charts/TrendChart'
 import SecurityRadarChart from '../components/charts/SecurityRadarChart'
 import { PageLoader } from '../components/LoadingSpinner'
 import Alert from '../components/Alert'
+import { useAuth } from '../context/AuthContext'
 
 export default function Dashboard() {
   const [data, setData] = useState(null)
+  const [pipeline, setPipeline] = useState(null)
   const [loading, setLoading] = useState(true)
+  const [triggering, setTriggering] = useState(false)
   const [error, setError] = useState(null)
+  const { isAuthenticated } = useAuth()
 
   useEffect(() => {
-    loadData()
-  }, [])
+    if (isAuthenticated) {
+      loadData()
+    }
+  }, [isAuthenticated])
+
+  // Auto-refresh pipeline status if running
+  useEffect(() => {
+    if (pipeline && ['running', 'queued'].includes(pipeline.status)) {
+      const interval = setInterval(async () => {
+        try {
+          const latestPipeline = await fetchLatestPipeline()
+          if (latestPipeline) {
+            setPipeline(latestPipeline)
+            // If pipeline completed, reload all data
+            if (['success', 'failed'].includes(latestPipeline.status)) {
+              loadData()
+            }
+          }
+        } catch (err) {
+          console.error('Error refreshing pipeline:', err)
+        }
+      }, 3000)
+      return () => clearInterval(interval)
+    }
+  }, [pipeline])
 
   const loadData = async () => {
     try {
       setLoading(true)
-      const result = await fetchSecuritySummary()
+      const [result, latestPipeline] = await Promise.all([
+        fetchSecuritySummary(),
+        fetchLatestPipeline().catch(() => null)
+      ])
       setData(result)
+      setPipeline(latestPipeline)
     } catch (err) {
       setError('Failed to load security data. Please ensure the backend is running.')
       console.error(err)
     } finally {
       setLoading(false)
+    }
+  }
+
+  const handleTriggerScan = async () => {
+    setTriggering(true)
+    try {
+      await triggerPipeline()
+      const latestPipeline = await fetchLatestPipeline()
+      setPipeline(latestPipeline)
+    } catch (err) {
+      console.error('Error triggering scan:', err)
+    } finally {
+      setTriggering(false)
     }
   }
 
@@ -131,17 +179,80 @@ export default function Dashboard() {
           </p>
         </div>
         <div className="flex items-center gap-3">
+          {pipeline && (
+            <Link 
+              to="/pipeline" 
+              className={`flex items-center gap-2 px-4 py-2 rounded-xl border ${
+                pipeline.status === 'running' || pipeline.status === 'queued'
+                  ? 'bg-blue-900/50 border-blue-500/50 text-blue-400'
+                  : pipeline.status === 'success'
+                  ? 'bg-green-900/50 border-green-500/50 text-green-400'
+                  : 'bg-red-900/50 border-red-500/50 text-red-400'
+              }`}
+            >
+              {pipeline.status === 'running' || pipeline.status === 'queued' ? (
+                <Loader2 className="w-4 h-4 animate-spin" />
+              ) : pipeline.status === 'success' ? (
+                <CheckCircle className="w-4 h-4" />
+              ) : (
+                <XCircle className="w-4 h-4" />
+              )}
+              <span className="text-sm font-medium capitalize">{pipeline.status}</span>
+              {pipeline.security_score !== null && (
+                <span className="text-xs">({pipeline.security_score}/100)</span>
+              )}
+            </Link>
+          )}
           <div className="flex items-center gap-2 px-4 py-2 bg-dark-800 rounded-xl border border-dark-700/50">
             <Clock className="w-4 h-4 text-dark-500" />
             <span className="text-sm text-dark-400">
               Last scan: {formatDate(data?.bandit?.generated_at)}
             </span>
           </div>
-          <button className="btn-primary">
-            Run Scan
+          <button 
+            onClick={handleTriggerScan}
+            disabled={triggering}
+            className="btn-primary flex items-center gap-2"
+          >
+            {triggering ? (
+              <Loader2 className="w-4 h-4 animate-spin" />
+            ) : (
+              <Play className="w-4 h-4" />
+            )}
+            {triggering ? 'Starting...' : 'Run Scan'}
           </button>
         </div>
       </div>
+
+      {/* Pipeline Status Banner */}
+      {pipeline && pipeline.status === 'success' && pipeline.is_deployable !== null && (
+        <div className={`rounded-xl p-4 border ${
+          pipeline.is_deployable 
+            ? 'bg-green-900/30 border-green-500/50' 
+            : 'bg-red-900/30 border-red-500/50'
+        }`}>
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              {pipeline.is_deployable ? (
+                <Rocket className="w-6 h-6 text-green-400" />
+              ) : (
+                <AlertTriangle className="w-6 h-6 text-red-400" />
+              )}
+              <div>
+                <p className={`font-semibold ${pipeline.is_deployable ? 'text-green-400' : 'text-red-400'}`}>
+                  {pipeline.is_deployable ? '✅ Ready for Deployment' : '❌ Deployment Blocked'}
+                </p>
+                <p className="text-sm text-dark-400">
+                  Pipeline #{pipeline.id} • Branch: {pipeline.branch} • Commit: {pipeline.commit_sha}
+                </p>
+              </div>
+            </div>
+            <Link to="/pipeline" className="btn-secondary text-sm">
+              View Pipeline
+            </Link>
+          </div>
+        </div>
+      )}
 
       {/* Critical Alert */}
       {criticalCount > 0 && (

@@ -1,0 +1,10 @@
+{
+  "minScore": 85,
+  "blockCritical": true,
+  "blockHigh": false,
+  "maxCriticalVulns": 0,
+  "maxHighVulns": 5,
+  "autoBlock": true,
+  "updatedAt": "2026-02-04T00:22:21.103663",
+  "updatedBy": "admin"
+}

@@ -1,0 +1,21 @@
+{
+  "security_score": 94,
+  "deployment_allowed": true,
+  "critical_count": 0,
+  "high_count": 3,
+  "scan_findings": [
+    "3 HIGH vulnerabilities in image"
+  ],
+  "policy_violations": [],
+  "failure_reasons": [
+    "3 HIGH vulnerabilities in image"
+  ],
+  "policy": {
+    "min_score": 90,
+    "block_critical": true,
+    "block_high": false,
+    "max_critical_vulns": 0,
+    "max_high_vulns": 5,
+    "auto_block": true
+  }
+}

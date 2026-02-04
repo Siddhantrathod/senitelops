@@ -1,0 +1,243 @@
+name: SentinelOps Security Pipeline
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main ]
+  workflow_dispatch:  # Allow manual trigger
+
+env:
+  IMAGE_NAME: sentinelops-app
+  DASHBOARD_URL: ${{ secrets.DASHBOARD_URL }}  # e.g., https://your-dashboard.com
+
+jobs:
+  security-scan:
+    name: Security Analysis
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install Bandit
+        run: pip install bandit
+
+      - name: Run Bandit Security Scan
+        id: bandit
+        continue-on-error: true
+        run: |
+          bandit -r . -f json -o bandit-report.json --exclude .git,node_modules,venv,__pycache__,.github || true
+          echo "Bandit scan completed"
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build Docker image
+        id: build
+        run: |
+          if [ -f "Dockerfile" ]; then
+            docker build -t ${{ env.IMAGE_NAME }}:${{ github.sha }} .
+            echo "image_built=true" >> $GITHUB_OUTPUT
+          elif [ -f "app_secure/Dockerfile" ]; then
+            docker build -t ${{ env.IMAGE_NAME }}:${{ github.sha }} ./app_secure
+            echo "image_built=true" >> $GITHUB_OUTPUT
+          else
+            echo "No Dockerfile found, skipping build"
+            echo "image_built=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Install Trivy
+        run: |
+          sudo apt-get install wget apt-transport-https gnupg lsb-release -y
+          wget -qO - https://aquasecurity.github.io/trivy-repo/deb/public.key | gpg --dearmor | sudo tee /usr/share/keyrings/trivy.gpg > /dev/null
+          echo "deb [signed-by=/usr/share/keyrings/trivy.gpg] https://aquasecurity.github.io/trivy-repo/deb $(lsb_release -sc) main" | sudo tee -a /etc/apt/sources.list.d/trivy.list
+          sudo apt-get update
+          sudo apt-get install trivy -y
+
+      - name: Run Trivy vulnerability scan
+        id: trivy
+        continue-on-error: true
+        run: |
+          if [ "${{ steps.build.outputs.image_built }}" == "true" ]; then
+            trivy image --format json --output trivy-report.json ${{ env.IMAGE_NAME }}:${{ github.sha }}
+          else
+            trivy fs --format json --output trivy-report.json .
+          fi
+          echo "Trivy scan completed"
+
+      - name: Analyze Security Results
+        id: analyze
+        run: |
+          python3 << 'EOF'
+          import json
+          import os
+
+          def analyze_reports():
+              summary = {
+                  'critical': 0, 'high': 0, 'medium': 0, 'low': 0,
+                  'total': 0, 'security_score': 100
+              }
+              
+              # Analyze Bandit
+              try:
+                  with open('bandit-report.json', 'r') as f:
+                      bandit = json.load(f)
+                      for issue in bandit.get('results', []):
+                          severity = issue.get('issue_severity', '').upper()
+                          if severity == 'HIGH':
+                              summary['high'] += 1
+                          elif severity == 'MEDIUM':
+                              summary['medium'] += 1
+                          elif severity == 'LOW':
+                              summary['low'] += 1
+              except Exception as e:
+                  print(f"Bandit analysis error: {e}")
+              
+              # Analyze Trivy
+              try:
+                  with open('trivy-report.json', 'r') as f:
+                      trivy = json.load(f)
+                      for result in trivy.get('Results', []):
+                          for vuln in result.get('Vulnerabilities', []):
+                              severity = vuln.get('Severity', '').upper()
+                              if severity == 'CRITICAL':
+                                  summary['critical'] += 1
+                              elif severity == 'HIGH':
+                                  summary['high'] += 1
+                              elif severity == 'MEDIUM':
+                                  summary['medium'] += 1
+                              elif severity == 'LOW':
+                                  summary['low'] += 1
+              except Exception as e:
+                  print(f"Trivy analysis error: {e}")
+              
+              summary['total'] = sum([summary['critical'], summary['high'], 
+                                       summary['medium'], summary['low']])
+              
+              # Calculate score
+              score = 100
+              score -= summary['critical'] * 15
+              score -= summary['high'] * 8
+              score -= summary['medium'] * 3
+              score -= summary['low'] * 1
+              summary['security_score'] = max(0, min(100, score))
+              
+              # Determine if deployable
+              deployable = (
+                  summary['security_score'] >= 70 and
+                  summary['critical'] == 0 and
+                  summary['high'] <= 5
+              )
+              
+              # Output for GitHub Actions
+              with open(os.environ['GITHUB_OUTPUT'], 'a') as f:
+                  f.write(f"score={summary['security_score']}\n")
+                  f.write(f"critical={summary['critical']}\n")
+                  f.write(f"high={summary['high']}\n")
+                  f.write(f"medium={summary['medium']}\n")
+                  f.write(f"low={summary['low']}\n")
+                  f.write(f"total={summary['total']}\n")
+                  f.write(f"deployable={'true' if deployable else 'false'}\n")
+              
+              # Generate decision report
+              decision = {
+                  'pipeline_id': os.environ.get('GITHUB_RUN_ID', 'unknown'),
+                  'commit': os.environ.get('GITHUB_SHA', 'unknown')[:7],
+                  'branch': os.environ.get('GITHUB_REF_NAME', 'unknown'),
+                  'security_score': summary['security_score'],
+                  'is_deployable': deployable,
+                  'vulnerability_summary': summary,
+                  'decision': 'APPROVED' if deployable else 'BLOCKED'
+              }
+              
+              with open('security_decision.json', 'w') as f:
+                  json.dump(decision, f, indent=2)
+              
+              print(f"\n{'='*50}")
+              print(f"Security Score: {summary['security_score']}/100")
+              print(f"Critical: {summary['critical']}, High: {summary['high']}")
+              print(f"Medium: {summary['medium']}, Low: {summary['low']}")
+              print(f"Decision: {'✅ APPROVED' if deployable else '❌ BLOCKED'}")
+              print(f"{'='*50}\n")
+              
+              return deployable
+
+          analyze_reports()
+          EOF
+
+      - name: Upload Security Reports
+        uses: actions/upload-artifact@v4
+        with:
+          name: security-reports
+          path: |
+            bandit-report.json
+            trivy-report.json
+            security_decision.json
+          retention-days: 30
+
+      - name: Notify Dashboard (Optional)
+        if: env.DASHBOARD_URL != ''
+        continue-on-error: true
+        run: |
+          curl -X POST "${{ env.DASHBOARD_URL }}/webhook/github" \
+            -H "Content-Type: application/json" \
+            -H "X-GitHub-Event: push" \
+            -d '{
+              "ref": "refs/heads/${{ github.ref_name }}",
+              "head_commit": {
+                "id": "${{ github.sha }}",
+                "message": "${{ github.event.head_commit.message }}",
+                "author": {"name": "${{ github.actor }}"}
+              },
+              "repository": {
+                "clone_url": "${{ github.server_url }}/${{ github.repository }}.git"
+              }
+            }'
+
+      - name: Security Gate
+        run: |
+          if [ "${{ steps.analyze.outputs.deployable }}" == "false" ]; then
+            echo "❌ Security gate failed!"
+            echo "Score: ${{ steps.analyze.outputs.score }}/100"
+            echo "Critical vulnerabilities: ${{ steps.analyze.outputs.critical }}"
+            echo "High vulnerabilities: ${{ steps.analyze.outputs.high }}"
+            exit 1
+          else
+            echo "✅ Security gate passed!"
+            echo "Score: ${{ steps.analyze.outputs.score }}/100"
+          fi
+
+      - name: Create Security Summary
+        run: |
+          echo "## 🛡️ Security Scan Results" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Metric | Value |" >> $GITHUB_STEP_SUMMARY
+          echo "|--------|-------|" >> $GITHUB_STEP_SUMMARY
+          echo "| Security Score | **${{ steps.analyze.outputs.score }}/100** |" >> $GITHUB_STEP_SUMMARY
+          echo "| Critical | ${{ steps.analyze.outputs.critical }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| High | ${{ steps.analyze.outputs.high }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Medium | ${{ steps.analyze.outputs.medium }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Low | ${{ steps.analyze.outputs.low }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Total | ${{ steps.analyze.outputs.total }} |" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          if [ "${{ steps.analyze.outputs.deployable }}" == "true" ]; then
+            echo "### ✅ Deployment: **APPROVED**" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "### ❌ Deployment: **BLOCKED**" >> $GITHUB_STEP_SUMMARY
+          fi
+
+  # Optional: Deploy only if security passes
+  # deploy:
+  #   name: Deploy
+  #   needs: security-scan
+  #   runs-on: ubuntu-latest
+  #   if: success() && github.ref == 'refs/heads/main'
+  #   steps:
+  #     - name: Deploy to production
+  #       run: echo "Deploying..."
