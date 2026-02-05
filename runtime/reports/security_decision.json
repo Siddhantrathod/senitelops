@@ -1,0 +1,25 @@
+{
+  "pipeline_id": "6ed344e3",
+  "timestamp": "2026-02-04T07:30:50.743032",
+  "repository": "senitelops",
+  "branch": "main",
+  "commit": "manual",
+  "security_score": 0,
+  "is_deployable": false,
+  "vulnerability_summary": {
+    "critical": 3,
+    "high": 53,
+    "medium": 346,
+    "low": 463,
+    "total": 865,
+    "bandit_issues": 17,
+    "trivy_vulns": 860,
+    "security_score": 0
+  },
+  "decision": "BLOCKED",
+  "reasons": [
+    "Security score (0) below threshold (70)",
+    "Critical vulnerabilities found: 3",
+    "Too many high vulnerabilities: 53"
+  ]
+}

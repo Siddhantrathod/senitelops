@@ -19,3 +19,10 @@ instance/
 # Logs & DB
 *.log
 *.db
+# Runtime artifacts
+runtime/reports/*
+runtime/history/*
+
+# Keep folders tracked
+!runtime/reports/.keep
+!runtime/history/.keep

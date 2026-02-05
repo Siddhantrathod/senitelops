@@ -1,10 +1,10 @@
 {
-  "github_repo_url": "https://github.com/Siddhantrathod/senitelops",
+  "github_repo_url": "",
   "github_branch": "main",
   "auto_scan_enabled": true,
   "scan_on_push": true,
   "target_image": "sentinelops-app",
   "target_directory": "",
-  "updated_at": "2026-02-04T07:27:11.014776",
+  "updated_at": "2026-02-04T09:57:07.747777",
   "updated_by": "admin"
 }

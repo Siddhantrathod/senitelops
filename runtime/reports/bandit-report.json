@@ -1,0 +1,465 @@
+{
+  "errors": [],
+  "generated_at": "2026-02-04T02:00:47Z",
+  "metrics": {
+    "/tmp/sentinelops_o2_u66bm/app_secure/app.py": {
+      "CONFIDENCE.HIGH": 0,
+      "CONFIDENCE.LOW": 0,
+      "CONFIDENCE.MEDIUM": 0,
+      "CONFIDENCE.UNDEFINED": 0,
+      "SEVERITY.HIGH": 0,
+      "SEVERITY.LOW": 0,
+      "SEVERITY.MEDIUM": 0,
+      "SEVERITY.UNDEFINED": 0,
+      "loc": 60,
+      "nosec": 0,
+      "skipped_tests": 0
+    },
+    "/tmp/sentinelops_o2_u66bm/app_vulnerable/app.py": {
+      "CONFIDENCE.HIGH": 3,
+      "CONFIDENCE.LOW": 0,
+      "CONFIDENCE.MEDIUM": 3,
+      "CONFIDENCE.UNDEFINED": 0,
+      "SEVERITY.HIGH": 2,
+      "SEVERITY.LOW": 2,
+      "SEVERITY.MEDIUM": 2,
+      "SEVERITY.UNDEFINED": 0,
+      "loc": 37,
+      "nosec": 0,
+      "skipped_tests": 0
+    },
+    "/tmp/sentinelops_o2_u66bm/dashboard/dashboard-backend.py": {
+      "CONFIDENCE.HIGH": 0,
+      "CONFIDENCE.LOW": 0,
+      "CONFIDENCE.MEDIUM": 2,
+      "CONFIDENCE.UNDEFINED": 0,
+      "SEVERITY.HIGH": 0,
+      "SEVERITY.LOW": 1,
+      "SEVERITY.MEDIUM": 1,
+      "SEVERITY.UNDEFINED": 0,
+      "loc": 530,
+      "nosec": 0,
+      "skipped_tests": 0
+    },
+    "/tmp/sentinelops_o2_u66bm/pipeline/__init__.py": {
+      "CONFIDENCE.HIGH": 0,
+      "CONFIDENCE.LOW": 0,
+      "CONFIDENCE.MEDIUM": 0,
+      "CONFIDENCE.UNDEFINED": 0,
+      "SEVERITY.HIGH": 0,
+      "SEVERITY.LOW": 0,
+      "SEVERITY.MEDIUM": 0,
+      "SEVERITY.UNDEFINED": 0,
+      "loc": 1,
+      "nosec": 0,
+      "skipped_tests": 0
+    },
+    "/tmp/sentinelops_o2_u66bm/pipeline/pipeline_executor.py": {
+      "CONFIDENCE.HIGH": 9,
+      "CONFIDENCE.LOW": 0,
+      "CONFIDENCE.MEDIUM": 0,
+      "CONFIDENCE.UNDEFINED": 0,
+      "SEVERITY.HIGH": 0,
+      "SEVERITY.LOW": 9,
+      "SEVERITY.MEDIUM": 0,
+      "SEVERITY.UNDEFINED": 0,
+      "loc": 387,
+      "nosec": 0,
+      "skipped_tests": 0
+    },
+    "/tmp/sentinelops_o2_u66bm/security_decision_engine.py": {
+      "CONFIDENCE.HIGH": 0,
+      "CONFIDENCE.LOW": 0,
+      "CONFIDENCE.MEDIUM": 0,
+      "CONFIDENCE.UNDEFINED": 0,
+      "SEVERITY.HIGH": 0,
+      "SEVERITY.LOW": 0,
+      "SEVERITY.MEDIUM": 0,
+      "SEVERITY.UNDEFINED": 0,
+      "loc": 149,
+      "nosec": 0,
+      "skipped_tests": 0
+    },
+    "_totals": {
+      "CONFIDENCE.HIGH": 12,
+      "CONFIDENCE.LOW": 0,
+      "CONFIDENCE.MEDIUM": 5,
+      "CONFIDENCE.UNDEFINED": 0,
+      "SEVERITY.HIGH": 2,
+      "SEVERITY.LOW": 12,
+      "SEVERITY.MEDIUM": 3,
+      "SEVERITY.UNDEFINED": 0,
+      "loc": 1164,
+      "nosec": 0,
+      "skipped_tests": 0
+    }
+  },
+  "results": [
+    {
+      "code": "1 from flask import Flask, jsonify, request\n2 import subprocess\n3 import os\n",
+      "col_offset": 0,
+      "end_col_offset": 17,
+      "filename": "/tmp/sentinelops_o2_u66bm/app_vulnerable/app.py",
+      "issue_confidence": "HIGH",
+      "issue_cwe": {
+        "id": 78,
+        "link": "https://cwe.mitre.org/data/definitions/78.html"
+      },
+      "issue_severity": "LOW",
+      "issue_text": "Consider possible security implications associated with the subprocess module.",
+      "line_number": 2,
+      "line_range": [
+        2
+      ],
+      "more_info": "https://bandit.readthedocs.io/en/1.9.3/blacklists/blacklist_imports.html#b404-import-subprocess",
+      "test_id": "B404",
+      "test_name": "blacklist"
+    },
+    {
+      "code": "6 \n7 SECRET_KEY = \"mysecret123\"\n8 \n",
+      "col_offset": 13,
+      "end_col_offset": 26,
+      "filename": "/tmp/sentinelops_o2_u66bm/app_vulnerable/app.py",
+      "issue_confidence": "MEDIUM",
+      "issue_cwe": {
+        "id": 259,
+        "link": "https://cwe.mitre.org/data/definitions/259.html"
+      },
+      "issue_severity": "LOW",
+      "issue_text": "Possible hardcoded password: 'mysecret123'",
+      "line_number": 7,
+      "line_range": [
+        7
+      ],
+      "more_info": "https://bandit.readthedocs.io/en/1.9.3/plugins/b105_hardcoded_password_string.html",
+      "test_id": "B105",
+      "test_name": "hardcoded_password_string"
+    },
+    {
+      "code": "41     cmd = request.args.get(\"cmd\")\n42     return subprocess.getoutput(cmd)\n43 \n",
+      "col_offset": 11,
+      "end_col_offset": 36,
+      "filename": "/tmp/sentinelops_o2_u66bm/app_vulnerable/app.py",
+      "issue_confidence": "HIGH",
+      "issue_cwe": {
+        "id": 78,
+        "link": "https://cwe.mitre.org/data/definitions/78.html"
+      },
+      "issue_severity": "HIGH",
+      "issue_text": "Starting a process with a shell, possible injection detected, security issue.",
+      "line_number": 42,
+      "line_range": [
+        42
+      ],
+      "more_info": "https://bandit.readthedocs.io/en/1.9.3/plugins/b605_start_process_with_a_shell.html",
+      "test_id": "B605",
+      "test_name": "start_process_with_a_shell"
+    },
+    {
+      "code": "47     expr = request.args.get(\"expr\")\n48     return str(eval(expr))\n49 \n",
+      "col_offset": 15,
+      "end_col_offset": 25,
+      "filename": "/tmp/sentinelops_o2_u66bm/app_vulnerable/app.py",
+      "issue_confidence": "HIGH",
+      "issue_cwe": {
+        "id": 78,
+        "link": "https://cwe.mitre.org/data/definitions/78.html"
+      },
+      "issue_severity": "MEDIUM",
+      "issue_text": "Use of possibly insecure function - consider using safer ast.literal_eval.",
+      "line_number": 48,
+      "line_range": [
+        48
+      ],
+      "more_info": "https://bandit.readthedocs.io/en/1.9.3/blacklists/blacklist_calls.html#b307-eval",
+      "test_id": "B307",
+      "test_name": "blacklist"
+    },
+    {
+      "code": "51     # \u274c Insecure configuration\n52     app.run(debug=True, host=\"0.0.0.0\", port=5000)\n",
+      "col_offset": 4,
+      "end_col_offset": 50,
+      "filename": "/tmp/sentinelops_o2_u66bm/app_vulnerable/app.py",
+      "issue_confidence": "MEDIUM",
+      "issue_cwe": {
+        "id": 94,
+        "link": "https://cwe.mitre.org/data/definitions/94.html"
+      },
+      "issue_severity": "HIGH",
+      "issue_text": "A Flask app appears to be run with debug=True, which exposes the Werkzeug debugger and allows the execution of arbitrary code.",
+      "line_number": 52,
+      "line_range": [
+        52
+      ],
+      "more_info": "https://bandit.readthedocs.io/en/1.9.3/plugins/b201_flask_debug_true.html",
+      "test_id": "B201",
+      "test_name": "flask_debug_true"
+    },
+    {
+      "code": "51     # \u274c Insecure configuration\n52     app.run(debug=True, host=\"0.0.0.0\", port=5000)\n",
+      "col_offset": 29,
+      "end_col_offset": 38,
+      "filename": "/tmp/sentinelops_o2_u66bm/app_vulnerable/app.py",
+      "issue_confidence": "MEDIUM",
+      "issue_cwe": {
+        "id": 605,
+        "link": "https://cwe.mitre.org/data/definitions/605.html"
+      },
+      "issue_severity": "MEDIUM",
+      "issue_text": "Possible binding to all interfaces.",
+      "line_number": 52,
+      "line_range": [
+        52
+      ],
+      "more_info": "https://bandit.readthedocs.io/en/1.9.3/plugins/b104_hardcoded_bind_all_interfaces.html",
+      "test_id": "B104",
+      "test_name": "hardcoded_bind_all_interfaces"
+    },
+    {
+      "code": "584     signature = request.headers.get('X-Hub-Signature-256')\n585     if GITHUB_WEBHOOK_SECRET != 'your-webhook-secret':  # Only verify if secret is configured\n586         if not verify_github_signature(request.data, signature):\n",
+      "col_offset": 32,
+      "end_col_offset": 53,
+      "filename": "/tmp/sentinelops_o2_u66bm/dashboard/dashboard-backend.py",
+      "issue_confidence": "MEDIUM",
+      "issue_cwe": {
+        "id": 259,
+        "link": "https://cwe.mitre.org/data/definitions/259.html"
+      },
+      "issue_severity": "LOW",
+      "issue_text": "Possible hardcoded password: 'your-webhook-secret'",
+      "line_number": 585,
+      "line_range": [
+        585
+      ],
+      "more_info": "https://bandit.readthedocs.io/en/1.9.3/plugins/b105_hardcoded_password_string.html",
+      "test_id": "B105",
+      "test_name": "hardcoded_password_string"
+    },
+    {
+      "code": "678 if __name__ == \"__main__\":\n679     app.run(debug=False, host=\"0.0.0.0\", port=5000)\n",
+      "col_offset": 30,
+      "end_col_offset": 39,
+      "filename": "/tmp/sentinelops_o2_u66bm/dashboard/dashboard-backend.py",
+      "issue_confidence": "MEDIUM",
+      "issue_cwe": {
+        "id": 605,
+        "link": "https://cwe.mitre.org/data/definitions/605.html"
+      },
+      "issue_severity": "MEDIUM",
+      "issue_text": "Possible binding to all interfaces.",
+      "line_number": 679,
+      "line_range": [
+        679
+      ],
+      "more_info": "https://bandit.readthedocs.io/en/1.9.3/plugins/b104_hardcoded_bind_all_interfaces.html",
+      "test_id": "B104",
+      "test_name": "hardcoded_bind_all_interfaces"
+    },
+    {
+      "code": "8 import json\n9 import subprocess\n10 import shutil\n",
+      "col_offset": 0,
+      "end_col_offset": 17,
+      "filename": "/tmp/sentinelops_o2_u66bm/pipeline/pipeline_executor.py",
+      "issue_confidence": "HIGH",
+      "issue_cwe": {
+        "id": 78,
+        "link": "https://cwe.mitre.org/data/definitions/78.html"
+      },
+      "issue_severity": "LOW",
+      "issue_text": "Consider possible security implications associated with the subprocess module.",
+      "line_number": 9,
+      "line_range": [
+        9
+      ],
+      "more_info": "https://bandit.readthedocs.io/en/1.9.3/blacklists/blacklist_imports.html#b404-import-subprocess",
+      "test_id": "B404",
+      "test_name": "blacklist"
+    },
+    {
+      "code": "190                 try:\n191                     result = subprocess.run(\n192                         [\"git\", \"clone\", \"--depth\", \"1\", \"--branch\", pipeline.branch, repo_url, work_dir],\n193                         capture_output=True, text=True, timeout=120\n194                     )\n195                     if result.returncode != 0:\n",
+      "col_offset": 29,
+      "end_col_offset": 21,
+      "filename": "/tmp/sentinelops_o2_u66bm/pipeline/pipeline_executor.py",
+      "issue_confidence": "HIGH",
+      "issue_cwe": {
+        "id": 78,
+        "link": "https://cwe.mitre.org/data/definitions/78.html"
+      },
+      "issue_severity": "LOW",
+      "issue_text": "Starting a process with a partial executable path",
+      "line_number": 191,
+      "line_range": [
+        191,
+        192,
+        193,
+        194
+      ],
+      "more_info": "https://bandit.readthedocs.io/en/1.9.3/plugins/b607_start_process_with_partial_path.html",
+      "test_id": "B607",
+      "test_name": "start_process_with_partial_path"
+    },
+    {
+      "code": "190                 try:\n191                     result = subprocess.run(\n192                         [\"git\", \"clone\", \"--depth\", \"1\", \"--branch\", pipeline.branch, repo_url, work_dir],\n193                         capture_output=True, text=True, timeout=120\n194                     )\n195                     if result.returncode != 0:\n",
+      "col_offset": 29,
+      "end_col_offset": 21,
+      "filename": "/tmp/sentinelops_o2_u66bm/pipeline/pipeline_executor.py",
+      "issue_confidence": "HIGH",
+      "issue_cwe": {
+        "id": 78,
+        "link": "https://cwe.mitre.org/data/definitions/78.html"
+      },
+      "issue_severity": "LOW",
+      "issue_text": "subprocess call - check for execution of untrusted input.",
+      "line_number": 191,
+      "line_range": [
+        191,
+        192,
+        193,
+        194
+      ],
+      "more_info": "https://bandit.readthedocs.io/en/1.9.3/plugins/b603_subprocess_without_shell_equals_true.html",
+      "test_id": "B603",
+      "test_name": "subprocess_without_shell_equals_true"
+    },
+    {
+      "code": "211                     build_image = image_name or f\"sentinelops-scan-{pipeline.id}\"\n212                     result = subprocess.run(\n213                         [\"docker\", \"build\", \"-t\", build_image, work_dir],\n214                         capture_output=True, text=True, timeout=300\n215                     )\n216                     if result.returncode != 0:\n",
+      "col_offset": 29,
+      "end_col_offset": 21,
+      "filename": "/tmp/sentinelops_o2_u66bm/pipeline/pipeline_executor.py",
+      "issue_confidence": "HIGH",
+      "issue_cwe": {
+        "id": 78,
+        "link": "https://cwe.mitre.org/data/definitions/78.html"
+      },
+      "issue_severity": "LOW",
+      "issue_text": "Starting a process with a partial executable path",
+      "line_number": 212,
+      "line_range": [
+        212,
+        213,
+        214,
+        215
+      ],
+      "more_info": "https://bandit.readthedocs.io/en/1.9.3/plugins/b607_start_process_with_partial_path.html",
+      "test_id": "B607",
+      "test_name": "start_process_with_partial_path"
+    },
+    {
+      "code": "211                     build_image = image_name or f\"sentinelops-scan-{pipeline.id}\"\n212                     result = subprocess.run(\n213                         [\"docker\", \"build\", \"-t\", build_image, work_dir],\n214                         capture_output=True, text=True, timeout=300\n215                     )\n216                     if result.returncode != 0:\n",
+      "col_offset": 29,
+      "end_col_offset": 21,
+      "filename": "/tmp/sentinelops_o2_u66bm/pipeline/pipeline_executor.py",
+      "issue_confidence": "HIGH",
+      "issue_cwe": {
+        "id": 78,
+        "link": "https://cwe.mitre.org/data/definitions/78.html"
+      },
+      "issue_severity": "LOW",
+      "issue_text": "subprocess call - check for execution of untrusted input.",
+      "line_number": 212,
+      "line_range": [
+        212,
+        213,
+        214,
+        215
+      ],
+      "more_info": "https://bandit.readthedocs.io/en/1.9.3/plugins/b603_subprocess_without_shell_equals_true.html",
+      "test_id": "B603",
+      "test_name": "subprocess_without_shell_equals_true"
+    },
+    {
+      "code": "231             try:\n232                 result = subprocess.run(\n233                     [\"bandit\", \"-r\", work_dir, \"-f\", \"json\", \"-o\", bandit_report_path, \n234                      \"--exclude\", \".git,node_modules,venv,__pycache__\"],\n235                     capture_output=True, text=True, timeout=180\n236                 )\n237                 # Bandit returns 1 if issues found, which is okay\n",
+      "col_offset": 25,
+      "end_col_offset": 17,
+      "filename": "/tmp/sentinelops_o2_u66bm/pipeline/pipeline_executor.py",
+      "issue_confidence": "HIGH",
+      "issue_cwe": {
+        "id": 78,
+        "link": "https://cwe.mitre.org/data/definitions/78.html"
+      },
+      "issue_severity": "LOW",
+      "issue_text": "Starting a process with a partial executable path",
+      "line_number": 232,
+      "line_range": [
+        232,
+        233,
+        234,
+        235,
+        236
+      ],
+      "more_info": "https://bandit.readthedocs.io/en/1.9.3/plugins/b607_start_process_with_partial_path.html",
+      "test_id": "B607",
+      "test_name": "start_process_with_partial_path"
+    },
+    {
+      "code": "231             try:\n232                 result = subprocess.run(\n233                     [\"bandit\", \"-r\", work_dir, \"-f\", \"json\", \"-o\", bandit_report_path, \n234                      \"--exclude\", \".git,node_modules,venv,__pycache__\"],\n235                     capture_output=True, text=True, timeout=180\n236                 )\n237                 # Bandit returns 1 if issues found, which is okay\n",
+      "col_offset": 25,
+      "end_col_offset": 17,
+      "filename": "/tmp/sentinelops_o2_u66bm/pipeline/pipeline_executor.py",
+      "issue_confidence": "HIGH",
+      "issue_cwe": {
+        "id": 78,
+        "link": "https://cwe.mitre.org/data/definitions/78.html"
+      },
+      "issue_severity": "LOW",
+      "issue_text": "subprocess call - check for execution of untrusted input.",
+      "line_number": 232,
+      "line_range": [
+        232,
+        233,
+        234,
+        235,
+        236
+      ],
+      "more_info": "https://bandit.readthedocs.io/en/1.9.3/plugins/b603_subprocess_without_shell_equals_true.html",
+      "test_id": "B603",
+      "test_name": "subprocess_without_shell_equals_true"
+    },
+    {
+      "code": "255             try:\n256                 result = subprocess.run(\n257                     [\"trivy\", \"image\", \"--format\", \"json\", \"--output\", trivy_report_path, scan_target],\n258                     capture_output=True, text=True, timeout=300\n259                 )\n260                 if result.returncode != 0 and \"No such image\" not in result.stderr:\n",
+      "col_offset": 25,
+      "end_col_offset": 17,
+      "filename": "/tmp/sentinelops_o2_u66bm/pipeline/pipeline_executor.py",
+      "issue_confidence": "HIGH",
+      "issue_cwe": {
+        "id": 78,
+        "link": "https://cwe.mitre.org/data/definitions/78.html"
+      },
+      "issue_severity": "LOW",
+      "issue_text": "Starting a process with a partial executable path",
+      "line_number": 256,
+      "line_range": [
+        256,
+        257,
+        258,
+        259
+      ],
+      "more_info": "https://bandit.readthedocs.io/en/1.9.3/plugins/b607_start_process_with_partial_path.html",
+      "test_id": "B607",
+      "test_name": "start_process_with_partial_path"
+    },
+    {
+      "code": "255             try:\n256                 result = subprocess.run(\n257                     [\"trivy\", \"image\", \"--format\", \"json\", \"--output\", trivy_report_path, scan_target],\n258                     capture_output=True, text=True, timeout=300\n259                 )\n260                 if result.returncode != 0 and \"No such image\" not in result.stderr:\n",
+      "col_offset": 25,
+      "end_col_offset": 17,
+      "filename": "/tmp/sentinelops_o2_u66bm/pipeline/pipeline_executor.py",
+      "issue_confidence": "HIGH",
+      "issue_cwe": {
+        "id": 78,
+        "link": "https://cwe.mitre.org/data/definitions/78.html"
+      },
+      "issue_severity": "LOW",
+      "issue_text": "subprocess call - check for execution of untrusted input.",
+      "line_number": 256,
+      "line_range": [
+        256,
+        257,
+        258,
+        259
+      ],
+      "more_info": "https://bandit.readthedocs.io/en/1.9.3/plugins/b603_subprocess_without_shell_equals_true.html",
+      "test_id": "B603",
+      "test_name": "subprocess_without_shell_equals_true"
+    }
+  ]
+}
