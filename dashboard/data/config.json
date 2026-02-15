@@ -1,0 +1,14 @@
+{
+  "github_repo_url": "https://github.com/Siddhantrathod/sentinelops-secure-app",
+  "github_branch": "main",
+  "auto_scan_enabled": true,
+  "scan_on_push": true,
+  "target_image": "",
+  "target_directory": "",
+  "setup_completed": true,
+  "repo_configured": true,
+  "policy_configured": false,
+  "initial_scan_completed": true,
+  "updated_at": "2026-02-10T00:48:15.301439",
+  "updated_by": "admin"
+}

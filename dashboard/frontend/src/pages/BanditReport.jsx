@@ -1,4 +1,5 @@
 import { useState, useEffect, useMemo } from 'react'
+import { useNavigate } from 'react-router-dom'
 import {
   Bug,
   Filter,
@@ -9,7 +10,7 @@ import {
   FileCode,
   Clock,
 } from 'lucide-react'
-import { fetchBanditReport } from '../services/api'
+import { fetchBanditReport, fetchSetupStatus } from '../services/api'
 import { formatDate, cn, getSeverityBadgeClass } from '../utils/helpers'
 import StatCard from '../components/StatCard'
 import VulnerabilityTable from '../components/VulnerabilityTable'
@@ -21,36 +22,20 @@ import Alert from '../components/Alert'
 import { useAuth } from '../context/AuthContext'
 
 export default function BanditReport() {
+  const navigate = useNavigate()
   const [data, setData] = useState(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
+  const [redirecting, setRedirecting] = useState(false)
   const [selectedVuln, setSelectedVuln] = useState(null)
   const [filters, setFilters] = useState({
     severity: 'all',
     confidence: 'all',
     search: '',
   })
-  const { isAuthenticated } = useAuth()
+  const { isAuthenticated, loading: authLoading } = useAuth()
 
-  useEffect(() => {
-    if (isAuthenticated) {
-      loadData()
-    }
-  }, [isAuthenticated])
-
-  const loadData = async () => {
-    try {
-      setLoading(true)
-      setError(null)
-      const result = await fetchBanditReport()
-      setData(result)
-    } catch (err) {
-      setError('Failed to load Bandit report. Please ensure the backend is running.')
-    } finally {
-      setLoading(false)
-    }
-  }
-
+  // Derived data - must be before any conditional returns (Rules of Hooks)
   const metrics = data?.metrics?._totals || {}
   const results = data?.results || []
 
@@ -73,6 +58,48 @@ export default function BanditReport() {
       return true
     })
   }, [results, filters])
+
+  useEffect(() => {
+    if (!authLoading && isAuthenticated) {
+      checkSetupAndLoad()
+    }
+  }, [isAuthenticated, authLoading])
+
+  const checkSetupAndLoad = async () => {
+    try {
+      setLoading(true)
+      setError(null)
+      const status = await fetchSetupStatus()
+
+      if (!status.setup_completed) {
+        setRedirecting(true)
+        window.location.href = '/setup'
+        return
+      }
+
+      const result = await fetchBanditReport()
+      setData(result)
+      setLoading(false)
+    } catch (err) {
+      console.error('BanditReport error:', err)
+      setError('Failed to load Bandit report. Please ensure the backend is running.')
+      setLoading(false)
+    }
+  }
+
+  // Show loader while loading, auth loading, or redirecting
+  if (authLoading || loading || redirecting) return <PageLoader />
+
+  if (error) {
+    return (
+      <Alert variant="error" title="Connection Error">
+        {error}
+        <button onClick={checkSetupAndLoad} className="btn-primary mt-4 text-sm">
+          Retry
+        </button>
+      </Alert>
+    )
+  }
 
   const severityPieData = [
     { name: 'High', value: metrics['SEVERITY.HIGH'] || 0 },
@@ -126,12 +153,12 @@ export default function BanditReport() {
       {/* Page Header */}
       <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
         <div className="flex items-center gap-4">
-          <div className="p-3 rounded-xl bg-purple-500/20">
-            <Bug className="w-8 h-8 text-purple-400" />
+          <div className="p-3 rounded-xl bg-purple-50">
+            <Bug className="w-8 h-8 text-purple-600" />
           </div>
           <div>
-            <h1 className="text-3xl font-bold text-white">Bandit Analysis</h1>
-            <p className="text-dark-400 flex items-center gap-2 mt-1">
+            <h1 className="text-3xl font-bold text-slate-800">Bandit Analysis</h1>
+            <p className="text-slate-500 flex items-center gap-2 mt-1">
               <Clock className="w-4 h-4" />
               Generated: {formatDate(data?.generated_at)}
             </p>
@@ -139,8 +166,8 @@ export default function BanditReport() {
         </div>
         <div className="flex items-center gap-3">
           <button
-            onClick={loadData}
-            className="btn-secondary inline-flex items-center gap-2"
+            onClick={checkSetupAndLoad}
+            className="btn-secondary inline-flex items-center gap-2 bg-white"
           >
             <RefreshCw className="w-4 h-4" />
             Refresh
@@ -207,22 +234,22 @@ export default function BanditReport() {
       </div>
 
       {/* Filters */}
-      <div className="glass-card p-4">
+      <div className="glass-card p-4 bg-white border border-slate-200 shadow-sm">
         <div className="flex flex-col md:flex-row items-start md:items-center gap-4">
-          <div className="flex items-center gap-2 text-dark-400">
+          <div className="flex items-center gap-2 text-slate-500">
             <Filter className="w-5 h-5" />
             <span className="font-medium">Filters:</span>
           </div>
-          
+
           {/* Search */}
-          <div className="flex items-center gap-2 px-4 py-2 bg-dark-900 rounded-lg border border-dark-700/50 flex-1 md:max-w-xs">
-            <Search className="w-4 h-4 text-dark-500" />
+          <div className="flex items-center gap-2 px-4 py-2 bg-slate-50 rounded-lg border border-slate-200 flex-1 md:max-w-xs focus-within:ring-2 focus-within:ring-primary-100 transition-all">
+            <Search className="w-4 h-4 text-slate-400" />
             <input
               type="text"
               placeholder="Search issues..."
               value={filters.search}
               onChange={(e) => setFilters({ ...filters, search: e.target.value })}
-              className="bg-transparent text-white placeholder-dark-500 outline-none w-full text-sm"
+              className="bg-transparent text-slate-900 placeholder-slate-400 outline-none w-full text-sm"
             />
           </div>
 
@@ -230,7 +257,7 @@ export default function BanditReport() {
           <select
             value={filters.severity}
             onChange={(e) => setFilters({ ...filters, severity: e.target.value })}
-            className="px-4 py-2 bg-dark-900 text-white rounded-lg border border-dark-700/50 outline-none text-sm"
+            className="px-4 py-2 bg-slate-50 text-slate-700 rounded-lg border border-slate-200 outline-none text-sm focus:ring-2 focus:ring-primary-100"
           >
             <option value="all">All Severities</option>
             <option value="HIGH">High</option>
@@ -242,7 +269,7 @@ export default function BanditReport() {
           <select
             value={filters.confidence}
             onChange={(e) => setFilters({ ...filters, confidence: e.target.value })}
-            className="px-4 py-2 bg-dark-900 text-white rounded-lg border border-dark-700/50 outline-none text-sm"
+            className="px-4 py-2 bg-slate-50 text-slate-700 rounded-lg border border-slate-200 outline-none text-sm focus:ring-2 focus:ring-primary-100"
           >
             <option value="all">All Confidence</option>
             <option value="HIGH">High</option>
@@ -251,8 +278,8 @@ export default function BanditReport() {
           </select>
 
           {/* Results count */}
-          <div className="ml-auto text-dark-400 text-sm">
-            Showing {filteredResults.length} of {results.length} issues
+          <div className="ml-auto text-slate-500 text-sm">
+            Showing <span className="font-medium text-slate-900">{filteredResults.length}</span> of {results.length} issues
           </div>
         </div>
       </div>

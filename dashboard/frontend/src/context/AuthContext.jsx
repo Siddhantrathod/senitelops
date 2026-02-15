@@ -1,6 +1,7 @@
 import { createContext, useContext, useState, useEffect } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useSearchParams } from 'react-router-dom'
 import api from '../services/api'
+import { signupUser } from '../services/api'
 
 const AuthContext = createContext(null)
 
@@ -43,18 +44,36 @@ export function AuthProvider({ children }) {
     try {
       const response = await api.post('/auth/login', { username, password })
       const { token: newToken, user: userData } = response.data
-      
+
       // Store token first
       localStorage.setItem('token', newToken)
       setToken(newToken)
       setUser(userData)
       setLoading(false)
-      
+
       return { success: true }
     } catch (error) {
       const message = error.response?.data?.error || 'Login failed'
       return { success: false, error: message }
     }
+  }
+
+  const signup = async (userData) => {
+    try {
+      const response = await signupUser(userData)
+      return { success: true, message: response.message }
+    } catch (error) {
+      const message = error.response?.data?.error || 'Signup failed'
+      const errors = error.response?.data?.errors || [message]
+      return { success: false, error: message, errors }
+    }
+  }
+
+  const loginWithToken = async (authToken) => {
+    localStorage.setItem('token', authToken)
+    setToken(authToken)
+    await fetchUser(authToken)
+    return { success: true }
   }
 
   const logout = () => {
@@ -86,6 +105,8 @@ export function AuthProvider({ children }) {
       isAuthenticated: !!token && !!user,
       isAdmin,
       login,
+      signup,
+      loginWithToken,
       logout,
       changePassword,
     }}>

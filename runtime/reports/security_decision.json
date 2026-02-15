@@ -1,25 +1,28 @@
 {
-  "pipeline_id": "6ed344e3",
-  "timestamp": "2026-02-04T07:30:50.743032",
-  "repository": "senitelops",
+  "pipeline_id": "c852937f",
+  "timestamp": "2026-02-10T23:52:11.653042",
+  "repository": "sentinelops-secure-app",
   "branch": "main",
   "commit": "manual",
-  "security_score": 0,
-  "is_deployable": false,
+  "security_score": 50,
+  "is_deployable": true,
   "vulnerability_summary": {
     "critical": 3,
-    "high": 53,
-    "medium": 346,
-    "low": 463,
-    "total": 865,
-    "bandit_issues": 17,
-    "trivy_vulns": 860,
-    "security_score": 0
+    "high": 11,
+    "medium": 42,
+    "low": 52,
+    "total": 108,
+    "bandit_issues": 0,
+    "trivy_vulns": 108,
+    "security_score": 50,
+    "bandit_high": 0,
+    "bandit_medium": 0,
+    "bandit_low": 0,
+    "trivy_critical": 3,
+    "trivy_high": 11,
+    "trivy_medium": 42,
+    "trivy_low": 52
   },
-  "decision": "BLOCKED",
-  "reasons": [
-    "Security score (0) below threshold (70)",
-    "Critical vulnerabilities found: 3",
-    "Too many high vulnerabilities: 53"
-  ]
+  "decision": "APPROVED",
+  "reasons": []
 }

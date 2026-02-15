@@ -1,0 +1,96 @@
+[
+  {
+    "id": "30a78dc1",
+    "type": "success",
+    "title": "Deployment Approved",
+    "message": "Pipeline passed security checks. Score: 50/100",
+    "metadata": {
+      "pipeline_id": "c852937f",
+      "security_score": 50
+    },
+    "time": "2026-02-11T23:29:08.997378",
+    "read": false
+  },
+  {
+    "id": "fac50dc2",
+    "type": "success",
+    "title": "Deployment Approved",
+    "message": "Pipeline passed security checks. Score: 50/100",
+    "metadata": {
+      "pipeline_id": "c852937f",
+      "security_score": 50
+    },
+    "time": "2026-02-11T23:25:46.928632",
+    "read": false
+  },
+  {
+    "id": "eb2b9957",
+    "type": "success",
+    "title": "Deployment Approved",
+    "message": "Pipeline passed security checks. Score: 50/100",
+    "metadata": {
+      "pipeline_id": "c852937f",
+      "security_score": 50
+    },
+    "time": "2026-02-10T23:52:19.938894",
+    "read": false
+  },
+  {
+    "id": "ea906459",
+    "type": "info",
+    "title": "Pipeline Triggered",
+    "message": "Security scan started for branch 'main' by admin",
+    "metadata": {
+      "pipeline_id": "c852937f",
+      "branch": "main"
+    },
+    "time": "2026-02-10T23:52:09.882909",
+    "read": false
+  },
+  {
+    "id": "9ace0afa",
+    "type": "critical",
+    "title": "Deployment Blocked",
+    "message": "Pipeline blocked. Score 50 below threshold; 3 critical vulnerabilities; 11 high severity issues. Score: 50/100",
+    "metadata": {
+      "pipeline_id": "a14575aa",
+      "security_score": 50,
+      "reasons": [
+        "Score 50 below threshold",
+        "3 critical vulnerabilities",
+        "11 high severity issues"
+      ]
+    },
+    "time": "2026-02-10T23:42:10.078646",
+    "read": false
+  },
+  {
+    "id": "0ee89052",
+    "type": "info",
+    "title": "Pipeline Triggered",
+    "message": "Security scan started for branch 'main' by admin",
+    "metadata": {
+      "pipeline_id": "55aa267c",
+      "branch": "main"
+    },
+    "time": "2026-02-10T23:41:22.834496",
+    "read": false
+  },
+  {
+    "id": "85c7b0ac",
+    "type": "critical",
+    "title": "Deployment Blocked",
+    "message": "Pipeline blocked. Score 0 below threshold; 3 critical vulnerabilities; 11 high severity issues. Score: 0/100",
+    "metadata": {
+      "pipeline_id": "453be69d",
+      "security_score": 0,
+      "reasons": [
+        "Score 0 below threshold",
+        "3 critical vulnerabilities",
+        "11 high severity issues"
+      ]
+    },
+    "time": "2026-02-10T23:39:25.142058",
+    "read": false
+  }
+]

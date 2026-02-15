@@ -9,13 +9,23 @@ import VulnerabilityDetails from './pages/VulnerabilityDetails'
 import Settings from './pages/Settings'
 import Pipeline from './pages/Pipeline'
 import Login from './pages/Login'
+import Signup from './pages/Signup'
+import Setup from './pages/Setup'
+import LandingPage from './pages/LandingPage'
 
 function App() {
   return (
     <AuthProvider>
       <Routes>
+        <Route path="/" element={<LandingPage />} />
         <Route path="/login" element={<Login />} />
-        <Route path="/" element={
+        <Route path="/signup" element={<Signup />} />
+        <Route path="/setup" element={
+          <ProtectedRoute>
+            <Setup />
+          </ProtectedRoute>
+        } />
+        <Route path="/dashboard" element={
           <ProtectedRoute>
             <Layout />
           </ProtectedRoute>

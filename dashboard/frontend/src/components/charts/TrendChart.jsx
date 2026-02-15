@@ -12,16 +12,16 @@ import { CHART_COLORS } from '../../utils/helpers'
 const CustomTooltip = ({ active, payload, label }) => {
   if (active && payload && payload.length) {
     return (
-      <div className="glass-card p-3 border border-dark-600">
-        <p className="text-white font-medium mb-2">{label}</p>
+      <div className="glass-card p-3 border border-slate-200 bg-white/95 shadow-xl">
+        <p className="text-slate-900 font-medium mb-2">{label}</p>
         {payload.map((entry, index) => (
           <div key={index} className="flex items-center gap-2">
             <div
               className="w-2 h-2 rounded-full"
               style={{ backgroundColor: entry.color }}
             />
-            <span className="text-dark-300 text-sm">
-              {entry.name}: <span className="text-white font-semibold">{entry.value}</span>
+            <span className="text-slate-500 text-sm">
+              {entry.name}: <span className="text-slate-900 font-semibold">{entry.value}</span>
             </span>
           </div>
         ))}
@@ -35,9 +35,9 @@ export default function TrendChart({ data, title, height = 300, dataKeys = ['vul
   const colors = [CHART_COLORS.primary, CHART_COLORS.secondary, CHART_COLORS.success]
 
   return (
-    <div className="glass-card p-6">
+    <div className="glass-card p-6 bg-white border border-slate-200 shadow-sm">
       {title && (
-        <h3 className="text-lg font-semibold text-white mb-4">{title}</h3>
+        <h3 className="text-lg font-semibold text-slate-800 mb-4">{title}</h3>
       )}
       <ResponsiveContainer width="100%" height={height}>
         <AreaChart data={data} margin={{ top: 20, right: 30, left: 20, bottom: 5 }}>
@@ -49,17 +49,17 @@ export default function TrendChart({ data, title, height = 300, dataKeys = ['vul
               </linearGradient>
             ))}
           </defs>
-          <CartesianGrid strokeDasharray="3 3" stroke="#334155" vertical={false} />
+          <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" vertical={false} />
           <XAxis
             dataKey="date"
             axisLine={false}
             tickLine={false}
-            tick={{ fill: '#94a3b8', fontSize: 12 }}
+            tick={{ fill: '#64748b', fontSize: 12 }}
           />
           <YAxis
             axisLine={false}
             tickLine={false}
-            tick={{ fill: '#94a3b8', fontSize: 12 }}
+            tick={{ fill: '#64748b', fontSize: 12 }}
           />
           <Tooltip content={<CustomTooltip />} />
           {dataKeys.map((key, index) => (

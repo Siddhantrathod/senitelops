@@ -1,0 +1,1315 @@
+{
+  "pipelines": [
+    {
+      "id": "c852937f",
+      "repo_name": "sentinelops-secure-app",
+      "branch": "main",
+      "commit_sha": "manual",
+      "commit_message": "Manual trigger by admin",
+      "author": "admin",
+      "status": "success",
+      "triggered_at": "2026-02-10T23:52:09.879512",
+      "started_at": "2026-02-10T23:52:09.883733",
+      "finished_at": "2026-02-10T23:52:11.653217",
+      "duration_seconds": 1.769484,
+      "stages": {
+        "clone": {
+          "name": "Clone Repository",
+          "status": "success",
+          "logs": "Cloned https://github.com/Siddhantrathod/sentinelops-secure-app successfully",
+          "started_at": "2026-02-10T23:52:09.895917",
+          "finished_at": "2026-02-10T23:52:11.317293",
+          "duration_seconds": 1.421376
+        },
+        "build": {
+          "name": "Build Image",
+          "status": "skipped",
+          "logs": "No Dockerfile found, using base image for scan",
+          "started_at": "2026-02-10T23:52:11.320390"
+        },
+        "bandit_scan": {
+          "name": "Bandit Security Scan",
+          "status": "success",
+          "logs": "Bandit scan completed",
+          "started_at": "2026-02-10T23:52:11.326291",
+          "finished_at": "2026-02-10T23:52:11.479248",
+          "duration_seconds": 0.152957
+        },
+        "trivy_scan": {
+          "name": "Trivy Container Scan",
+          "status": "success",
+          "logs": "Trivy scan completed for python:3.11-slim",
+          "started_at": "2026-02-10T23:52:11.480581",
+          "finished_at": "2026-02-10T23:52:11.632035",
+          "duration_seconds": 0.151454
+        },
+        "policy_check": {
+          "name": "Policy Evaluation",
+          "status": "success",
+          "logs": "Security Score: 50/100",
+          "started_at": "2026-02-10T23:52:11.634534",
+          "finished_at": "2026-02-10T23:52:11.645782",
+          "duration_seconds": 0.011248
+        },
+        "decision": {
+          "name": "Deployment Decision",
+          "status": "success",
+          "logs": "\u2705 APPROVED for deployment",
+          "started_at": "2026-02-10T23:52:11.648301",
+          "finished_at": "2026-02-10T23:52:11.650800",
+          "duration_seconds": 0.002499
+        }
+      },
+      "security_score": 50,
+      "is_deployable": true,
+      "vulnerability_summary": {
+        "critical": 3,
+        "high": 11,
+        "medium": 42,
+        "low": 52,
+        "total": 108,
+        "bandit_issues": 0,
+        "trivy_vulns": 108,
+        "security_score": 50,
+        "bandit_high": 0,
+        "bandit_medium": 0,
+        "bandit_low": 0,
+        "trivy_critical": 3,
+        "trivy_high": 11,
+        "trivy_medium": 42,
+        "trivy_low": 52
+      }
+    },
+    {
+      "id": "eed03e4e",
+      "repo_name": "sentinelops-secure-app",
+      "branch": "main",
+      "commit_sha": "manual",
+      "commit_message": "Manual trigger by admin",
+      "author": "admin",
+      "status": "failed",
+      "triggered_at": "2026-02-10T23:49:23.593294",
+      "started_at": "2026-02-10T23:49:23.595945",
+      "finished_at": "2026-02-10T23:49:24.970991",
+      "duration_seconds": 1.375046,
+      "stages": {
+        "clone": {
+          "name": "Clone Repository",
+          "status": "success",
+          "logs": "Cloned https://github.com/Siddhantrathod/sentinelops-secure-app successfully",
+          "started_at": "2026-02-10T23:49:23.607272",
+          "finished_at": "2026-02-10T23:49:24.957160",
+          "duration_seconds": 1.349888
+        },
+        "build": {
+          "name": "Build Image",
+          "status": "skipped",
+          "logs": "No Dockerfile found, using base image for scan",
+          "started_at": "2026-02-10T23:49:24.959990"
+        },
+        "bandit_scan": {
+          "name": "Bandit Security Scan",
+          "status": "failed",
+          "logs": "",
+          "started_at": "2026-02-10T23:49:24.965246",
+          "error": "Bandit not installed",
+          "finished_at": "2026-02-10T23:49:24.968663",
+          "duration_seconds": 0.003417
+        },
+        "trivy_scan": {
+          "name": "Trivy Container Scan",
+          "status": "pending"
+        },
+        "policy_check": {
+          "name": "Policy Evaluation",
+          "status": "pending"
+        },
+        "decision": {
+          "name": "Deployment Decision",
+          "status": "pending"
+        }
+      },
+      "security_score": null,
+      "is_deployable": null,
+      "vulnerability_summary": null
+    },
+    {
+      "id": "5039aa1f",
+      "repo_name": "sentinelops-secure-app",
+      "branch": "main",
+      "commit_sha": "manual",
+      "commit_message": "Manual trigger by admin",
+      "author": "admin",
+      "status": "success",
+      "triggered_at": "2026-02-10T23:47:14.202707",
+      "started_at": "2026-02-10T23:47:14.205516",
+      "finished_at": "2026-02-10T23:47:16.059957",
+      "duration_seconds": 1.854441,
+      "stages": {
+        "clone": {
+          "name": "Clone Repository",
+          "status": "success",
+          "logs": "Cloned https://github.com/Siddhantrathod/sentinelops-secure-app successfully",
+          "started_at": "2026-02-10T23:47:14.208602",
+          "finished_at": "2026-02-10T23:47:15.718594",
+          "duration_seconds": 1.509992
+        },
+        "build": {
+          "name": "Build Image",
+          "status": "skipped",
+          "logs": "No Dockerfile found, using base image for scan",
+          "started_at": "2026-02-10T23:47:15.720827"
+        },
+        "bandit_scan": {
+          "name": "Bandit Security Scan",
+          "status": "success",
+          "logs": "Bandit scan completed",
+          "started_at": "2026-02-10T23:47:15.724505",
+          "finished_at": "2026-02-10T23:47:15.883267",
+          "duration_seconds": 0.158762
+        },
+        "trivy_scan": {
+          "name": "Trivy Container Scan",
+          "status": "success",
+          "logs": "Trivy scan completed for python:3.11-slim",
+          "started_at": "2026-02-10T23:47:15.886025",
+          "finished_at": "2026-02-10T23:47:16.043785",
+          "duration_seconds": 0.15776
+        },
+        "policy_check": {
+          "name": "Policy Evaluation",
+          "status": "success",
+          "logs": "Security Score: 50/100",
+          "started_at": "2026-02-10T23:47:16.046162",
+          "finished_at": "2026-02-10T23:47:16.054275",
+          "duration_seconds": 0.008113
+        },
+        "decision": {
+          "name": "Deployment Decision",
+          "status": "success",
+          "logs": "\u274c BLOCKED - Security requirements not met",
+          "started_at": "2026-02-10T23:47:16.056198",
+          "finished_at": "2026-02-10T23:47:16.058016",
+          "duration_seconds": 0.001818
+        }
+      },
+      "security_score": 50,
+      "is_deployable": false,
+      "vulnerability_summary": {
+        "critical": 3,
+        "high": 11,
+        "medium": 42,
+        "low": 52,
+        "total": 108,
+        "bandit_issues": 0,
+        "trivy_vulns": 108,
+        "security_score": 50,
+        "bandit_high": 0,
+        "bandit_medium": 0,
+        "bandit_low": 0,
+        "trivy_critical": 3,
+        "trivy_high": 11,
+        "trivy_medium": 42,
+        "trivy_low": 52
+      }
+    },
+    {
+      "id": "32f05bdb",
+      "repo_name": "sentinelops-secure-app",
+      "branch": "main",
+      "commit_sha": "manual",
+      "commit_message": "Manual trigger by admin",
+      "author": "admin",
+      "status": "success",
+      "triggered_at": "2026-02-10T23:43:12.199044",
+      "started_at": "2026-02-10T23:43:12.202545",
+      "finished_at": "2026-02-10T23:43:14.301241",
+      "duration_seconds": 2.098696,
+      "stages": {
+        "clone": {
+          "name": "Clone Repository",
+          "status": "success",
+          "logs": "Cloned https://github.com/Siddhantrathod/sentinelops-secure-app successfully",
+          "started_at": "2026-02-10T23:43:12.207183",
+          "finished_at": "2026-02-10T23:43:13.868825",
+          "duration_seconds": 1.661642
+        },
+        "build": {
+          "name": "Build Image",
+          "status": "skipped",
+          "logs": "No Dockerfile found, using base image for scan",
+          "started_at": "2026-02-10T23:43:13.875201"
+        },
+        "bandit_scan": {
+          "name": "Bandit Security Scan",
+          "status": "success",
+          "logs": "Bandit scan completed",
+          "started_at": "2026-02-10T23:43:13.885003",
+          "finished_at": "2026-02-10T23:43:14.099548",
+          "duration_seconds": 0.214545
+        },
+        "trivy_scan": {
+          "name": "Trivy Container Scan",
+          "status": "success",
+          "logs": "Trivy scan completed for python:3.11-slim",
+          "started_at": "2026-02-10T23:43:14.101497",
+          "finished_at": "2026-02-10T23:43:14.281339",
+          "duration_seconds": 0.179842
+        },
+        "policy_check": {
+          "name": "Policy Evaluation",
+          "status": "success",
+          "logs": "Security Score: 50/100",
+          "started_at": "2026-02-10T23:43:14.284321",
+          "finished_at": "2026-02-10T23:43:14.294398",
+          "duration_seconds": 0.010077
+        },
+        "decision": {
+          "name": "Deployment Decision",
+          "status": "success",
+          "logs": "\u274c BLOCKED - Security requirements not met",
+          "started_at": "2026-02-10T23:43:14.296923",
+          "finished_at": "2026-02-10T23:43:14.299047",
+          "duration_seconds": 0.002124
+        }
+      },
+      "security_score": 50,
+      "is_deployable": false,
+      "vulnerability_summary": {
+        "critical": 3,
+        "high": 11,
+        "medium": 42,
+        "low": 52,
+        "total": 108,
+        "bandit_issues": 0,
+        "trivy_vulns": 108,
+        "security_score": 50,
+        "bandit_high": 0,
+        "bandit_medium": 0,
+        "bandit_low": 0,
+        "trivy_critical": 3,
+        "trivy_high": 11,
+        "trivy_medium": 42,
+        "trivy_low": 52
+      }
+    },
+    {
+      "id": "a14575aa",
+      "repo_name": "sentinelops-secure-app",
+      "branch": "main",
+      "commit_sha": "manual",
+      "commit_message": "Manual trigger by admin",
+      "author": "admin",
+      "status": "success",
+      "triggered_at": "2026-02-10T23:41:53.670606",
+      "started_at": "2026-02-10T23:41:53.674183",
+      "finished_at": "2026-02-10T23:41:55.438330",
+      "duration_seconds": 1.764147,
+      "stages": {
+        "clone": {
+          "name": "Clone Repository",
+          "status": "success",
+          "logs": "Cloned https://github.com/Siddhantrathod/sentinelops-secure-app successfully",
+          "started_at": "2026-02-10T23:41:53.688862",
+          "finished_at": "2026-02-10T23:41:55.002608",
+          "duration_seconds": 1.313746
+        },
+        "build": {
+          "name": "Build Image",
+          "status": "skipped",
+          "logs": "No Dockerfile found, using base image for scan",
+          "started_at": "2026-02-10T23:41:55.007440"
+        },
+        "bandit_scan": {
+          "name": "Bandit Security Scan",
+          "status": "success",
+          "logs": "Bandit scan completed",
+          "started_at": "2026-02-10T23:41:55.012731",
+          "finished_at": "2026-02-10T23:41:55.230594",
+          "duration_seconds": 0.217863
+        },
+        "trivy_scan": {
+          "name": "Trivy Container Scan",
+          "status": "success",
+          "logs": "Trivy scan completed for python:3.11-slim",
+          "started_at": "2026-02-10T23:41:55.232334",
+          "finished_at": "2026-02-10T23:41:55.421555",
+          "duration_seconds": 0.189221
+        },
+        "policy_check": {
+          "name": "Policy Evaluation",
+          "status": "success",
+          "logs": "Security Score: 50/100",
+          "started_at": "2026-02-10T23:41:55.423508",
+          "finished_at": "2026-02-10T23:41:55.432351",
+          "duration_seconds": 0.008843
+        },
+        "decision": {
+          "name": "Deployment Decision",
+          "status": "success",
+          "logs": "\u274c BLOCKED - Security requirements not met",
+          "started_at": "2026-02-10T23:41:55.434414",
+          "finished_at": "2026-02-10T23:41:55.436349",
+          "duration_seconds": 0.001935
+        }
+      },
+      "security_score": 50,
+      "is_deployable": false,
+      "vulnerability_summary": {
+        "critical": 3,
+        "high": 11,
+        "medium": 42,
+        "low": 52,
+        "total": 108,
+        "bandit_issues": 0,
+        "trivy_vulns": 108,
+        "security_score": 50,
+        "bandit_high": 0,
+        "bandit_medium": 0,
+        "bandit_low": 0,
+        "trivy_critical": 3,
+        "trivy_high": 11,
+        "trivy_medium": 42,
+        "trivy_low": 52
+      }
+    },
+    {
+      "id": "55aa267c",
+      "repo_name": "sentinelops-secure-app",
+      "branch": "main",
+      "commit_sha": "manual",
+      "commit_message": "Manual trigger by admin",
+      "author": "admin",
+      "status": "success",
+      "triggered_at": "2026-02-10T23:41:22.831579",
+      "started_at": "2026-02-10T23:41:22.835374",
+      "finished_at": "2026-02-10T23:41:24.970511",
+      "duration_seconds": 2.135137,
+      "stages": {
+        "clone": {
+          "name": "Clone Repository",
+          "status": "success",
+          "logs": "Cloned https://github.com/Siddhantrathod/sentinelops-secure-app successfully",
+          "started_at": "2026-02-10T23:41:22.846881",
+          "finished_at": "2026-02-10T23:41:24.603317",
+          "duration_seconds": 1.756436
+        },
+        "build": {
+          "name": "Build Image",
+          "status": "skipped",
+          "logs": "No Dockerfile found, using base image for scan",
+          "started_at": "2026-02-10T23:41:24.606228"
+        },
+        "bandit_scan": {
+          "name": "Bandit Security Scan",
+          "status": "success",
+          "logs": "Bandit scan completed",
+          "started_at": "2026-02-10T23:41:24.611094",
+          "finished_at": "2026-02-10T23:41:24.790868",
+          "duration_seconds": 0.179774
+        },
+        "trivy_scan": {
+          "name": "Trivy Container Scan",
+          "status": "success",
+          "logs": "Trivy scan completed for python:3.11-slim",
+          "started_at": "2026-02-10T23:41:24.791691",
+          "finished_at": "2026-02-10T23:41:24.953120",
+          "duration_seconds": 0.161429
+        },
+        "policy_check": {
+          "name": "Policy Evaluation",
+          "status": "success",
+          "logs": "Security Score: 50/100",
+          "started_at": "2026-02-10T23:41:24.955221",
+          "finished_at": "2026-02-10T23:41:24.965174",
+          "duration_seconds": 0.009953
+        },
+        "decision": {
+          "name": "Deployment Decision",
+          "status": "success",
+          "logs": "\u274c BLOCKED - Security requirements not met",
+          "started_at": "2026-02-10T23:41:24.967062",
+          "finished_at": "2026-02-10T23:41:24.968655",
+          "duration_seconds": 0.001593
+        }
+      },
+      "security_score": 50,
+      "is_deployable": false,
+      "vulnerability_summary": {
+        "critical": 3,
+        "high": 11,
+        "medium": 42,
+        "low": 52,
+        "total": 108,
+        "bandit_issues": 0,
+        "trivy_vulns": 108,
+        "security_score": 50,
+        "bandit_high": 0,
+        "bandit_medium": 0,
+        "bandit_low": 0,
+        "trivy_critical": 3,
+        "trivy_high": 11,
+        "trivy_medium": 42,
+        "trivy_low": 52
+      }
+    },
+    {
+      "id": "ff6a3fd4",
+      "repo_name": "sentinelops-secure-app",
+      "branch": "main",
+      "commit_sha": "manual",
+      "commit_message": "Manual trigger by admin",
+      "author": "admin",
+      "status": "success",
+      "triggered_at": "2026-02-10T23:39:40.967696",
+      "started_at": "2026-02-10T23:39:40.971101",
+      "finished_at": "2026-02-10T23:40:36.147478",
+      "duration_seconds": 55.176377,
+      "stages": {
+        "clone": {
+          "name": "Clone Repository",
+          "status": "success",
+          "logs": "Cloned https://github.com/Siddhantrathod/sentinelops-secure-app successfully",
+          "started_at": "2026-02-10T23:39:40.975062",
+          "finished_at": "2026-02-10T23:39:42.480410",
+          "duration_seconds": 1.505348
+        },
+        "build": {
+          "name": "Build Image",
+          "status": "skipped",
+          "logs": "No Dockerfile found, using base image for scan",
+          "started_at": "2026-02-10T23:39:42.482781"
+        },
+        "bandit_scan": {
+          "name": "Bandit Security Scan",
+          "status": "success",
+          "logs": "Bandit scan completed",
+          "started_at": "2026-02-10T23:39:42.486052",
+          "finished_at": "2026-02-10T23:39:42.741422",
+          "duration_seconds": 0.25537
+        },
+        "trivy_scan": {
+          "name": "Trivy Container Scan",
+          "status": "success",
+          "logs": "Trivy scan completed for python:3.11-slim",
+          "started_at": "2026-02-10T23:39:42.742854",
+          "finished_at": "2026-02-10T23:40:36.130214",
+          "duration_seconds": 53.38736
+        },
+        "policy_check": {
+          "name": "Policy Evaluation",
+          "status": "success",
+          "logs": "Security Score: 50/100",
+          "started_at": "2026-02-10T23:40:36.132278",
+          "finished_at": "2026-02-10T23:40:36.141537",
+          "duration_seconds": 0.009259
+        },
+        "decision": {
+          "name": "Deployment Decision",
+          "status": "success",
+          "logs": "\u274c BLOCKED - Security requirements not met",
+          "started_at": "2026-02-10T23:40:36.143212",
+          "finished_at": "2026-02-10T23:40:36.145238",
+          "duration_seconds": 0.002026
+        }
+      },
+      "security_score": 50,
+      "is_deployable": false,
+      "vulnerability_summary": {
+        "critical": 3,
+        "high": 11,
+        "medium": 42,
+        "low": 52,
+        "total": 108,
+        "bandit_issues": 0,
+        "trivy_vulns": 108,
+        "security_score": 50,
+        "bandit_high": 0,
+        "bandit_medium": 0,
+        "bandit_low": 0,
+        "trivy_critical": 3,
+        "trivy_high": 11,
+        "trivy_medium": 42,
+        "trivy_low": 52
+      }
+    },
+    {
+      "id": "453be69d",
+      "repo_name": "sentinelops-secure-app",
+      "branch": "main",
+      "commit_sha": "manual",
+      "commit_message": "Manual trigger by admin",
+      "author": "admin",
+      "status": "success",
+      "triggered_at": "2026-02-10T01:10:06.266533",
+      "started_at": "2026-02-10T01:10:06.267671",
+      "finished_at": "2026-02-10T01:10:07.869547",
+      "duration_seconds": 1.601876,
+      "stages": {
+        "clone": {
+          "name": "Clone Repository",
+          "status": "success",
+          "logs": "Cloned https://github.com/Siddhantrathod/sentinelops-secure-app successfully",
+          "started_at": "2026-02-10T01:10:06.269193",
+          "finished_at": "2026-02-10T01:10:07.656413",
+          "duration_seconds": 1.38722
+        },
+        "build": {
+          "name": "Build Image",
+          "status": "skipped",
+          "logs": "No Dockerfile found, using base image for scan",
+          "started_at": "2026-02-10T01:10:07.658768"
+        },
+        "bandit_scan": {
+          "name": "Bandit Security Scan",
+          "status": "success",
+          "logs": "Bandit scan completed",
+          "started_at": "2026-02-10T01:10:07.661938",
+          "finished_at": "2026-02-10T01:10:07.778233",
+          "duration_seconds": 0.116295
+        },
+        "trivy_scan": {
+          "name": "Trivy Container Scan",
+          "status": "success",
+          "logs": "Trivy scan completed for python:3.11-slim",
+          "started_at": "2026-02-10T01:10:07.779171",
+          "finished_at": "2026-02-10T01:10:07.863424",
+          "duration_seconds": 0.084253
+        },
+        "policy_check": {
+          "name": "Policy Evaluation",
+          "status": "success",
+          "logs": "Security Score: 0/100",
+          "started_at": "2026-02-10T01:10:07.864139",
+          "finished_at": "2026-02-10T01:10:07.867653",
+          "duration_seconds": 0.003514
+        },
+        "decision": {
+          "name": "Deployment Decision",
+          "status": "success",
+          "logs": "\u274c BLOCKED - Security requirements not met",
+          "started_at": "2026-02-10T01:10:07.868280",
+          "finished_at": "2026-02-10T01:10:07.868879",
+          "duration_seconds": 0.000599
+        }
+      },
+      "security_score": 0,
+      "is_deployable": false,
+      "vulnerability_summary": {
+        "critical": 3,
+        "high": 11,
+        "medium": 42,
+        "low": 52,
+        "total": 108,
+        "bandit_issues": 0,
+        "trivy_vulns": 108,
+        "security_score": 0
+      }
+    },
+    {
+      "id": "17a42323",
+      "repo_name": "sentinelops-secure-app",
+      "branch": "main",
+      "commit_sha": "manual",
+      "commit_message": "Manual trigger by admin",
+      "author": "admin",
+      "status": "success",
+      "triggered_at": "2026-02-10T01:08:51.483066",
+      "started_at": "2026-02-10T01:08:51.484070",
+      "finished_at": "2026-02-10T01:08:52.967918",
+      "duration_seconds": 1.483848,
+      "stages": {
+        "clone": {
+          "name": "Clone Repository",
+          "status": "success",
+          "logs": "Cloned https://github.com/Siddhantrathod/sentinelops-secure-app successfully",
+          "started_at": "2026-02-10T01:08:51.495013",
+          "finished_at": "2026-02-10T01:08:52.752711",
+          "duration_seconds": 1.257698
+        },
+        "build": {
+          "name": "Build Image",
+          "status": "skipped",
+          "logs": "No Dockerfile found, using base image for scan",
+          "started_at": "2026-02-10T01:08:52.754142"
+        },
+        "bandit_scan": {
+          "name": "Bandit Security Scan",
+          "status": "success",
+          "logs": "Bandit scan completed",
+          "started_at": "2026-02-10T01:08:52.756457",
+          "finished_at": "2026-02-10T01:08:52.871859",
+          "duration_seconds": 0.115402
+        },
+        "trivy_scan": {
+          "name": "Trivy Container Scan",
+          "status": "success",
+          "logs": "Trivy scan completed for python:3.11-slim",
+          "started_at": "2026-02-10T01:08:52.872564",
+          "finished_at": "2026-02-10T01:08:52.962105",
+          "duration_seconds": 0.089541
+        },
+        "policy_check": {
+          "name": "Policy Evaluation",
+          "status": "success",
+          "logs": "Security Score: 0/100",
+          "started_at": "2026-02-10T01:08:52.962771",
+          "finished_at": "2026-02-10T01:08:52.966176",
+          "duration_seconds": 0.003405
+        },
+        "decision": {
+          "name": "Deployment Decision",
+          "status": "success",
+          "logs": "\u274c BLOCKED - Security requirements not met",
+          "started_at": "2026-02-10T01:08:52.966815",
+          "finished_at": "2026-02-10T01:08:52.967360",
+          "duration_seconds": 0.000545
+        }
+      },
+      "security_score": 0,
+      "is_deployable": false,
+      "vulnerability_summary": {
+        "critical": 3,
+        "high": 11,
+        "medium": 42,
+        "low": 52,
+        "total": 108,
+        "bandit_issues": 0,
+        "trivy_vulns": 108,
+        "security_score": 0
+      }
+    },
+    {
+      "id": "863317cd",
+      "repo_name": "sentinelops-secure-app",
+      "branch": "main",
+      "commit_sha": "manual",
+      "commit_message": "Manual trigger by admin",
+      "author": "admin",
+      "status": "success",
+      "triggered_at": "2026-02-10T00:48:36.163898",
+      "started_at": "2026-02-10T00:48:36.164877",
+      "finished_at": "2026-02-10T00:48:45.863583",
+      "duration_seconds": 9.698706,
+      "stages": {
+        "clone": {
+          "name": "Clone Repository",
+          "status": "success",
+          "logs": "Cloned https://github.com/Siddhantrathod/sentinelops-secure-app successfully",
+          "started_at": "2026-02-10T00:48:36.176347",
+          "finished_at": "2026-02-10T00:48:37.283124",
+          "duration_seconds": 1.106777
+        },
+        "build": {
+          "name": "Build Image",
+          "status": "skipped",
+          "logs": "No Dockerfile found, using base image for scan",
+          "started_at": "2026-02-10T00:48:37.285235"
+        },
+        "bandit_scan": {
+          "name": "Bandit Security Scan",
+          "status": "success",
+          "logs": "Bandit scan completed",
+          "started_at": "2026-02-10T00:48:37.288390",
+          "finished_at": "2026-02-10T00:48:37.442407",
+          "duration_seconds": 0.154017
+        },
+        "trivy_scan": {
+          "name": "Trivy Container Scan",
+          "status": "success",
+          "logs": "Trivy scan completed for python:3.11-slim",
+          "started_at": "2026-02-10T00:48:37.443011",
+          "finished_at": "2026-02-10T00:48:45.856332",
+          "duration_seconds": 8.413321
+        },
+        "policy_check": {
+          "name": "Policy Evaluation",
+          "status": "success",
+          "logs": "Security Score: 0/100",
+          "started_at": "2026-02-10T00:48:45.857262",
+          "finished_at": "2026-02-10T00:48:45.861956",
+          "duration_seconds": 0.004694
+        },
+        "decision": {
+          "name": "Deployment Decision",
+          "status": "success",
+          "logs": "\u274c BLOCKED - Security requirements not met",
+          "started_at": "2026-02-10T00:48:45.862572",
+          "finished_at": "2026-02-10T00:48:45.863030",
+          "duration_seconds": 0.000458
+        }
+      },
+      "security_score": 0,
+      "is_deployable": false,
+      "vulnerability_summary": {
+        "critical": 3,
+        "high": 11,
+        "medium": 42,
+        "low": 52,
+        "total": 108,
+        "bandit_issues": 0,
+        "trivy_vulns": 108,
+        "security_score": 0
+      }
+    },
+    {
+      "id": "7f8ba50f",
+      "repo_name": "sentinelops-vulnerable-app",
+      "branch": "main",
+      "commit_sha": "manual",
+      "commit_message": "Manual trigger by admin",
+      "author": "admin",
+      "status": "success",
+      "triggered_at": "2026-02-07T05:53:59.714241",
+      "started_at": "2026-02-07T05:53:59.715156",
+      "finished_at": "2026-02-07T05:55:02.399549",
+      "duration_seconds": 62.684393,
+      "stages": {
+        "clone": {
+          "name": "Clone Repository",
+          "status": "success",
+          "logs": "Cloned https://github.com/Siddhantrathod/sentinelops-vulnerable-app successfully",
+          "started_at": "2026-02-07T05:53:59.726044",
+          "finished_at": "2026-02-07T05:54:03.973087",
+          "duration_seconds": 4.247043
+        },
+        "build": {
+          "name": "Build Image",
+          "status": "skipped",
+          "logs": "No Dockerfile found, using base image for scan",
+          "started_at": "2026-02-07T05:54:03.975746"
+        },
+        "bandit_scan": {
+          "name": "Bandit Security Scan",
+          "status": "success",
+          "logs": "Bandit scan completed",
+          "started_at": "2026-02-07T05:54:03.978347",
+          "finished_at": "2026-02-07T05:54:04.164937",
+          "duration_seconds": 0.18659
+        },
+        "trivy_scan": {
+          "name": "Trivy Container Scan",
+          "status": "success",
+          "logs": "Trivy scan completed for python:3.11-slim",
+          "started_at": "2026-02-07T05:54:04.165461",
+          "finished_at": "2026-02-07T05:55:02.393280",
+          "duration_seconds": 58.227819
+        },
+        "policy_check": {
+          "name": "Policy Evaluation",
+          "status": "success",
+          "logs": "Security Score: 0/100",
+          "started_at": "2026-02-07T05:55:02.394093",
+          "finished_at": "2026-02-07T05:55:02.397996",
+          "duration_seconds": 0.003903
+        },
+        "decision": {
+          "name": "Deployment Decision",
+          "status": "success",
+          "logs": "\u274c BLOCKED - Security requirements not met",
+          "started_at": "2026-02-07T05:55:02.398454",
+          "finished_at": "2026-02-07T05:55:02.398935",
+          "duration_seconds": 0.000481
+        }
+      },
+      "security_score": 0,
+      "is_deployable": false,
+      "vulnerability_summary": {
+        "critical": 3,
+        "high": 13,
+        "medium": 44,
+        "low": 54,
+        "total": 114,
+        "bandit_issues": 6,
+        "trivy_vulns": 108,
+        "security_score": 0
+      }
+    },
+    {
+      "id": "46a38675",
+      "repo_name": "sentinelops-vulnerable-app",
+      "branch": "main",
+      "commit_sha": "manual",
+      "commit_message": "Manual trigger by admin",
+      "author": "admin",
+      "status": "success",
+      "triggered_at": "2026-02-06T12:54:53.205219",
+      "started_at": "2026-02-06T12:54:53.206657",
+      "finished_at": "2026-02-06T12:54:57.339122",
+      "duration_seconds": 4.132465,
+      "stages": {
+        "clone": {
+          "name": "Clone Repository",
+          "status": "success",
+          "logs": "Cloned https://github.com/Siddhantrathod/sentinelops-vulnerable-app successfully",
+          "started_at": "2026-02-06T12:54:53.218351",
+          "finished_at": "2026-02-06T12:54:56.895337",
+          "duration_seconds": 3.676986
+        },
+        "build": {
+          "name": "Build Image",
+          "status": "skipped",
+          "logs": "No Dockerfile found, using base image for scan",
+          "started_at": "2026-02-06T12:54:56.897236"
+        },
+        "bandit_scan": {
+          "name": "Bandit Security Scan",
+          "status": "success",
+          "logs": "Bandit scan completed",
+          "started_at": "2026-02-06T12:54:56.900658",
+          "finished_at": "2026-02-06T12:54:57.122856",
+          "duration_seconds": 0.222198
+        },
+        "trivy_scan": {
+          "name": "Trivy Container Scan",
+          "status": "success",
+          "logs": "Trivy scan completed for python:3.11-slim",
+          "started_at": "2026-02-06T12:54:57.123755",
+          "finished_at": "2026-02-06T12:54:57.322754",
+          "duration_seconds": 0.198999
+        },
+        "policy_check": {
+          "name": "Policy Evaluation",
+          "status": "success",
+          "logs": "Security Score: 0/100",
+          "started_at": "2026-02-06T12:54:57.324497",
+          "finished_at": "2026-02-06T12:54:57.335017",
+          "duration_seconds": 0.01052
+        },
+        "decision": {
+          "name": "Deployment Decision",
+          "status": "success",
+          "logs": "\u274c BLOCKED - Security requirements not met",
+          "started_at": "2026-02-06T12:54:57.336454",
+          "finished_at": "2026-02-06T12:54:57.337708",
+          "duration_seconds": 0.001254
+        }
+      },
+      "security_score": 0,
+      "is_deployable": false,
+      "vulnerability_summary": {
+        "critical": 3,
+        "high": 13,
+        "medium": 44,
+        "low": 54,
+        "total": 114,
+        "bandit_issues": 6,
+        "trivy_vulns": 108,
+        "security_score": 0
+      }
+    },
+    {
+      "id": "57ffad7a",
+      "repo_name": "sentinelops-secure-app",
+      "branch": "main",
+      "commit_sha": "manual",
+      "commit_message": "Manual trigger by admin",
+      "author": "admin",
+      "status": "success",
+      "triggered_at": "2026-02-06T12:43:56.499069",
+      "started_at": "2026-02-06T12:43:56.500665",
+      "finished_at": "2026-02-06T12:43:58.476946",
+      "duration_seconds": 1.976281,
+      "stages": {
+        "clone": {
+          "name": "Clone Repository",
+          "status": "success",
+          "logs": "Cloned https://github.com/Siddhantrathod/sentinelops-secure-app successfully",
+          "started_at": "2026-02-06T12:43:56.512413",
+          "finished_at": "2026-02-06T12:43:58.012832",
+          "duration_seconds": 1.500419
+        },
+        "build": {
+          "name": "Build Image",
+          "status": "skipped",
+          "logs": "No Dockerfile found, using base image for scan",
+          "started_at": "2026-02-06T12:43:58.016172"
+        },
+        "bandit_scan": {
+          "name": "Bandit Security Scan",
+          "status": "success",
+          "logs": "Bandit scan completed",
+          "started_at": "2026-02-06T12:43:58.021298",
+          "finished_at": "2026-02-06T12:43:58.242474",
+          "duration_seconds": 0.221176
+        },
+        "trivy_scan": {
+          "name": "Trivy Container Scan",
+          "status": "success",
+          "logs": "Trivy scan completed for python:3.11-slim",
+          "started_at": "2026-02-06T12:43:58.243621",
+          "finished_at": "2026-02-06T12:43:58.459807",
+          "duration_seconds": 0.216186
+        },
+        "policy_check": {
+          "name": "Policy Evaluation",
+          "status": "success",
+          "logs": "Security Score: 0/100",
+          "started_at": "2026-02-06T12:43:58.461825",
+          "finished_at": "2026-02-06T12:43:58.473313",
+          "duration_seconds": 0.011488
+        },
+        "decision": {
+          "name": "Deployment Decision",
+          "status": "success",
+          "logs": "\u274c BLOCKED - Security requirements not met",
+          "started_at": "2026-02-06T12:43:58.474669",
+          "finished_at": "2026-02-06T12:43:58.475763",
+          "duration_seconds": 0.001094
+        }
+      },
+      "security_score": 0,
+      "is_deployable": false,
+      "vulnerability_summary": {
+        "critical": 3,
+        "high": 11,
+        "medium": 42,
+        "low": 52,
+        "total": 108,
+        "bandit_issues": 0,
+        "trivy_vulns": 108,
+        "security_score": 0
+      }
+    },
+    {
+      "id": "79b56008",
+      "repo_name": "sentinelops-secure-app",
+      "branch": "main",
+      "commit_sha": "manual",
+      "commit_message": "Manual trigger by admin",
+      "author": "admin",
+      "status": "success",
+      "triggered_at": "2026-02-06T12:43:53.221302",
+      "started_at": "2026-02-06T12:43:53.222168",
+      "finished_at": "2026-02-06T12:43:55.595839",
+      "duration_seconds": 2.373671,
+      "stages": {
+        "clone": {
+          "name": "Clone Repository",
+          "status": "success",
+          "logs": "Cloned https://github.com/Siddhantrathod/sentinelops-secure-app successfully",
+          "started_at": "2026-02-06T12:43:53.232985",
+          "finished_at": "2026-02-06T12:43:55.078121",
+          "duration_seconds": 1.845136
+        },
+        "build": {
+          "name": "Build Image",
+          "status": "skipped",
+          "logs": "No Dockerfile found, using base image for scan",
+          "started_at": "2026-02-06T12:43:55.080987"
+        },
+        "bandit_scan": {
+          "name": "Bandit Security Scan",
+          "status": "success",
+          "logs": "Bandit scan completed",
+          "started_at": "2026-02-06T12:43:55.083418",
+          "finished_at": "2026-02-06T12:43:55.315670",
+          "duration_seconds": 0.232252
+        },
+        "trivy_scan": {
+          "name": "Trivy Container Scan",
+          "status": "success",
+          "logs": "Trivy scan completed for python:3.11-slim",
+          "started_at": "2026-02-06T12:43:55.316650",
+          "finished_at": "2026-02-06T12:43:55.570635",
+          "duration_seconds": 0.253985
+        },
+        "policy_check": {
+          "name": "Policy Evaluation",
+          "status": "success",
+          "logs": "Security Score: 0/100",
+          "started_at": "2026-02-06T12:43:55.573333",
+          "finished_at": "2026-02-06T12:43:55.591269",
+          "duration_seconds": 0.017936
+        },
+        "decision": {
+          "name": "Deployment Decision",
+          "status": "success",
+          "logs": "\u274c BLOCKED - Security requirements not met",
+          "started_at": "2026-02-06T12:43:55.593175",
+          "finished_at": "2026-02-06T12:43:55.594254",
+          "duration_seconds": 0.001079
+        }
+      },
+      "security_score": 0,
+      "is_deployable": false,
+      "vulnerability_summary": {
+        "critical": 3,
+        "high": 11,
+        "medium": 42,
+        "low": 52,
+        "total": 108,
+        "bandit_issues": 0,
+        "trivy_vulns": 108,
+        "security_score": 0
+      }
+    },
+    {
+      "id": "c3b3b6f8",
+      "repo_name": "sentinelops-secure-app",
+      "branch": "main",
+      "commit_sha": "manual",
+      "commit_message": "Manual trigger by admin",
+      "author": "admin",
+      "status": "success",
+      "triggered_at": "2026-02-06T12:42:00.948034",
+      "started_at": "2026-02-06T12:42:00.949455",
+      "finished_at": "2026-02-06T12:42:03.214957",
+      "duration_seconds": 2.265502,
+      "stages": {
+        "clone": {
+          "name": "Clone Repository",
+          "status": "success",
+          "logs": "Cloned https://github.com/Siddhantrathod/sentinelops-secure-app successfully",
+          "started_at": "2026-02-06T12:42:00.960706",
+          "finished_at": "2026-02-06T12:42:02.649860",
+          "duration_seconds": 1.689154
+        },
+        "build": {
+          "name": "Build Image",
+          "status": "skipped",
+          "logs": "No Dockerfile found, using base image for scan",
+          "started_at": "2026-02-06T12:42:02.650932"
+        },
+        "bandit_scan": {
+          "name": "Bandit Security Scan",
+          "status": "success",
+          "logs": "Bandit scan completed",
+          "started_at": "2026-02-06T12:42:02.652584",
+          "finished_at": "2026-02-06T12:42:02.911990",
+          "duration_seconds": 0.259406
+        },
+        "trivy_scan": {
+          "name": "Trivy Container Scan",
+          "status": "success",
+          "logs": "Trivy scan completed for python:3.11-slim",
+          "started_at": "2026-02-06T12:42:02.912617",
+          "finished_at": "2026-02-06T12:42:03.204659",
+          "duration_seconds": 0.292042
+        },
+        "policy_check": {
+          "name": "Policy Evaluation",
+          "status": "success",
+          "logs": "Security Score: 0/100",
+          "started_at": "2026-02-06T12:42:03.205661",
+          "finished_at": "2026-02-06T12:42:03.212534",
+          "duration_seconds": 0.006873
+        },
+        "decision": {
+          "name": "Deployment Decision",
+          "status": "success",
+          "logs": "\u274c BLOCKED - Security requirements not met",
+          "started_at": "2026-02-06T12:42:03.213484",
+          "finished_at": "2026-02-06T12:42:03.214123",
+          "duration_seconds": 0.000639
+        }
+      },
+      "security_score": 0,
+      "is_deployable": false,
+      "vulnerability_summary": {
+        "critical": 3,
+        "high": 11,
+        "medium": 42,
+        "low": 52,
+        "total": 108,
+        "bandit_issues": 0,
+        "trivy_vulns": 108,
+        "security_score": 0
+      }
+    },
+    {
+      "id": "27a78516",
+      "repo_name": "sentinelops-secure-app",
+      "branch": "main",
+      "commit_sha": "manual",
+      "commit_message": "Manual trigger by admin",
+      "author": "admin",
+      "status": "failed",
+      "triggered_at": "2026-02-06T12:39:27.729203",
+      "started_at": "2026-02-06T12:39:27.741649",
+      "finished_at": "2026-02-06T12:39:27.784234",
+      "duration_seconds": 0.042585,
+      "stages": {
+        "clone": {
+          "name": "Clone Repository",
+          "status": "failed",
+          "logs": "",
+          "started_at": "2026-02-06T12:39:27.746887",
+          "error": "Cloning into '/tmp/sentinelops_tj965t59'...\nfatal: unable to access 'https://github.com/Siddhantrathod/sentinelops-secure-app/': Could not resolve host: github.com\n",
+          "finished_at": "2026-02-06T12:39:27.783122",
+          "duration_seconds": 0.036235
+        },
+        "build": {
+          "name": "Build Image",
+          "status": "pending"
+        },
+        "bandit_scan": {
+          "name": "Bandit Security Scan",
+          "status": "pending"
+        },
+        "trivy_scan": {
+          "name": "Trivy Container Scan",
+          "status": "pending"
+        },
+        "policy_check": {
+          "name": "Policy Evaluation",
+          "status": "pending"
+        },
+        "decision": {
+          "name": "Deployment Decision",
+          "status": "pending"
+        }
+      },
+      "security_score": null,
+      "is_deployable": null,
+      "vulnerability_summary": null
+    },
+    {
+      "id": "4f41927f",
+      "repo_name": "sentinelops-secure-app",
+      "branch": "main",
+      "commit_sha": "manual",
+      "commit_message": "Manual trigger by admin",
+      "author": "admin",
+      "status": "success",
+      "triggered_at": "2026-02-06T01:53:54.681026",
+      "started_at": "2026-02-06T01:53:54.681509",
+      "finished_at": "2026-02-06T01:53:56.405000",
+      "duration_seconds": 1.723491,
+      "stages": {
+        "clone": {
+          "name": "Clone Repository",
+          "status": "success",
+          "logs": "Cloned https://github.com/Siddhantrathod/sentinelops-secure-app successfully",
+          "started_at": "2026-02-06T01:53:54.691598",
+          "finished_at": "2026-02-06T01:53:56.121078",
+          "duration_seconds": 1.42948
+        },
+        "build": {
+          "name": "Build Image",
+          "status": "skipped",
+          "logs": "No Dockerfile found, using base image for scan",
+          "started_at": "2026-02-06T01:53:56.121906"
+        },
+        "bandit_scan": {
+          "name": "Bandit Security Scan",
+          "status": "success",
+          "logs": "Bandit scan completed",
+          "started_at": "2026-02-06T01:53:56.123138",
+          "finished_at": "2026-02-06T01:53:56.282634",
+          "duration_seconds": 0.159496
+        },
+        "trivy_scan": {
+          "name": "Trivy Container Scan",
+          "status": "success",
+          "logs": "Trivy scan completed for python:3.11-slim",
+          "started_at": "2026-02-06T01:53:56.282968",
+          "finished_at": "2026-02-06T01:53:56.400878",
+          "duration_seconds": 0.11791
+        },
+        "policy_check": {
+          "name": "Policy Evaluation",
+          "status": "success",
+          "logs": "Security Score: 0/100",
+          "started_at": "2026-02-06T01:53:56.401207",
+          "finished_at": "2026-02-06T01:53:56.404078",
+          "duration_seconds": 0.002871
+        },
+        "decision": {
+          "name": "Deployment Decision",
+          "status": "success",
+          "logs": "\u274c BLOCKED - Security requirements not met",
+          "started_at": "2026-02-06T01:53:56.404367",
+          "finished_at": "2026-02-06T01:53:56.404696",
+          "duration_seconds": 0.000329
+        }
+      },
+      "security_score": 0,
+      "is_deployable": false,
+      "vulnerability_summary": {
+        "critical": 3,
+        "high": 11,
+        "medium": 42,
+        "low": 52,
+        "total": 108,
+        "bandit_issues": 0,
+        "trivy_vulns": 108,
+        "security_score": 0
+      }
+    },
+    {
+      "id": "c6978e80",
+      "repo_name": "sentinelops-vulnerable-app",
+      "branch": "main",
+      "commit_sha": "manual",
+      "commit_message": "Manual trigger by admin",
+      "author": "admin",
+      "status": "success",
+      "triggered_at": "2026-02-06T01:50:05.667434",
+      "started_at": "2026-02-06T01:50:05.667921",
+      "finished_at": "2026-02-06T01:50:08.226701",
+      "duration_seconds": 2.55878,
+      "stages": {
+        "clone": {
+          "name": "Clone Repository",
+          "status": "success",
+          "logs": "Cloned https://github.com/Siddhantrathod/sentinelops-vulnerable-app successfully",
+          "started_at": "2026-02-06T01:50:05.669425",
+          "finished_at": "2026-02-06T01:50:07.639512",
+          "duration_seconds": 1.970087
+        },
+        "build": {
+          "name": "Build Image",
+          "status": "skipped",
+          "logs": "No Dockerfile found, using base image for scan",
+          "started_at": "2026-02-06T01:50:07.640152"
+        },
+        "bandit_scan": {
+          "name": "Bandit Security Scan",
+          "status": "success",
+          "logs": "Bandit scan completed",
+          "started_at": "2026-02-06T01:50:07.641273",
+          "finished_at": "2026-02-06T01:50:07.798930",
+          "duration_seconds": 0.157657
+        },
+        "trivy_scan": {
+          "name": "Trivy Container Scan",
+          "status": "success",
+          "logs": "Trivy scan completed for python:3.11-slim",
+          "started_at": "2026-02-06T01:50:07.799166",
+          "finished_at": "2026-02-06T01:50:08.221651",
+          "duration_seconds": 0.422485
+        },
+        "policy_check": {
+          "name": "Policy Evaluation",
+          "status": "success",
+          "logs": "Security Score: 0/100",
+          "started_at": "2026-02-06T01:50:08.222000",
+          "finished_at": "2026-02-06T01:50:08.226034",
+          "duration_seconds": 0.004034
+        },
+        "decision": {
+          "name": "Deployment Decision",
+          "status": "success",
+          "logs": "\u274c BLOCKED - Security requirements not met",
+          "started_at": "2026-02-06T01:50:08.226256",
+          "finished_at": "2026-02-06T01:50:08.226432",
+          "duration_seconds": 0.000176
+        }
+      },
+      "security_score": 0,
+      "is_deployable": false,
+      "vulnerability_summary": {
+        "critical": 3,
+        "high": 13,
+        "medium": 44,
+        "low": 54,
+        "total": 114,
+        "bandit_issues": 6,
+        "trivy_vulns": 108,
+        "security_score": 0
+      }
+    }
+  ],
+  "updated_at": "2026-02-10T23:52:11.653345"
+}

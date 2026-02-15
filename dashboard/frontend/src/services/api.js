@@ -62,10 +62,15 @@ export const fetchTrivyReport = async () => {
 
 export const fetchSecuritySummary = async () => {
   try {
-    const [bandit, trivy] = await Promise.all([
+    // Fetch both reports, but handle failures gracefully
+    const [banditResult, trivyResult] = await Promise.allSettled([
       fetchBanditReport(),
       fetchTrivyReport(),
     ])
+
+    const bandit = banditResult.status === 'fulfilled' ? banditResult.value : null
+    const trivy = trivyResult.status === 'fulfilled' ? trivyResult.value : null
+
     return { bandit, trivy }
   } catch (error) {
     console.error('Error fetching security summary:', error)
@@ -178,6 +183,52 @@ export const updateConfig = async (configData) => {
     console.error('Error updating config:', error)
     throw error
   }
+}
+
+// Setup API endpoints
+export const fetchSetupStatus = async () => {
+  try {
+    const response = await api.get('/setup/status')
+    return response.data
+  } catch (error) {
+    console.error('Error fetching setup status:', error)
+    throw error
+  }
+}
+
+export const completeSetup = async (setupData) => {
+  try {
+    const response = await api.post('/setup/complete', setupData)
+    return response.data
+  } catch (error) {
+    console.error('Error completing setup:', error)
+    throw error
+  }
+}
+
+export const resetSetup = async () => {
+  try {
+    const response = await api.post('/setup/reset')
+    return response.data
+  } catch (error) {
+    console.error('Error resetting setup:', error)
+    throw error
+  }
+}
+
+// Auth API endpoints
+export const signupUser = async (userData) => {
+  try {
+    const response = await api.post('/auth/signup', userData)
+    return response.data
+  } catch (error) {
+    console.error('Error during signup:', error)
+    throw error
+  }
+}
+
+export const getGoogleAuthUrl = () => {
+  return `${API_BASE_URL}/auth/google`
 }
 
 export default api

@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { Link } from 'react-router-dom'
+import { Link, useNavigate } from 'react-router-dom'
 import {
   Shield,
   Bug,
@@ -16,7 +16,7 @@ import {
   Play,
   Loader2,
 } from 'lucide-react'
-import { fetchSecuritySummary, fetchLatestPipeline, triggerPipeline } from '../services/api'
+import { fetchSecuritySummary, fetchLatestPipeline, triggerPipeline, fetchSetupStatus } from '../services/api'
 import { formatDate, calculateRiskScore, getSecurityGrade } from '../utils/helpers'
 import StatCard from '../components/StatCard'
 import SeverityPieChart from '../components/charts/SeverityPieChart'
@@ -28,18 +28,41 @@ import Alert from '../components/Alert'
 import { useAuth } from '../context/AuthContext'
 
 export default function Dashboard() {
+  const navigate = useNavigate()
   const [data, setData] = useState(null)
   const [pipeline, setPipeline] = useState(null)
   const [loading, setLoading] = useState(true)
   const [triggering, setTriggering] = useState(false)
   const [error, setError] = useState(null)
-  const { isAuthenticated } = useAuth()
+  const [redirecting, setRedirecting] = useState(false)
+  const { isAuthenticated, loading: authLoading } = useAuth()
 
   useEffect(() => {
-    if (isAuthenticated) {
-      loadData()
+    if (!authLoading && isAuthenticated) {
+      checkSetupAndLoad()
     }
-  }, [isAuthenticated])
+  }, [isAuthenticated, authLoading])
+
+  const checkSetupAndLoad = async () => {
+    try {
+      setLoading(true)
+      const status = await fetchSetupStatus()
+
+      // Redirect to setup page if not completed
+      if (!status.setup_completed) {
+        setRedirecting(true)
+        window.location.href = '/setup'
+        return
+      }
+
+      await loadData()
+      setLoading(false)
+    } catch (err) {
+      console.error('Error checking setup:', err)
+      setError('Failed to load dashboard. Please try again.')
+      setLoading(false)
+    }
+  }
 
   // Auto-refresh pipeline status if running
   useEffect(() => {
@@ -64,7 +87,6 @@ export default function Dashboard() {
 
   const loadData = async () => {
     try {
-      setLoading(true)
       const [result, latestPipeline] = await Promise.all([
         fetchSecuritySummary(),
         fetchLatestPipeline().catch(() => null)
@@ -74,8 +96,6 @@ export default function Dashboard() {
     } catch (err) {
       setError('Failed to load security data. Please ensure the backend is running.')
       console.error(err)
-    } finally {
-      setLoading(false)
     }
   }
 
@@ -92,13 +112,14 @@ export default function Dashboard() {
     }
   }
 
-  if (loading) return <PageLoader />
+  // Show loader while loading, auth loading, or redirecting
+  if (authLoading || loading || redirecting) return <PageLoader />
 
   if (error) {
     return (
       <Alert variant="error" title="Connection Error">
         {error}
-        <button onClick={loadData} className="btn-primary mt-4 text-sm">
+        <button onClick={checkSetupAndLoad} className="btn-primary mt-4 text-sm">
           Retry
         </button>
       </Alert>
@@ -134,10 +155,12 @@ export default function Dashboard() {
     .filter(([_, value]) => value > 0)
     .map(([name, value]) => ({ name, value }))
 
-  // Security score (inverse - higher is better)
+  // Security score - use pipeline score if available, otherwise calculate from vulnerabilities
   const allVulns = [...banditResults, ...trivyResults]
   const riskScore = calculateRiskScore(allVulns)
-  const securityScore = 100 - riskScore
+  const calculatedScore = 100 - riskScore
+  // Prefer pipeline score for consistency
+  const securityScore = pipeline?.security_score ?? calculatedScore
   const { grade, color } = getSecurityGrade(securityScore)
 
   // Radar chart data
@@ -173,22 +196,21 @@ export default function Dashboard() {
       {/* Page Header */}
       <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
         <div>
-          <h1 className="text-3xl font-bold text-white mb-2">Security Dashboard</h1>
-          <p className="text-dark-400">
+          <h1 className="text-3xl font-bold text-slate-800 mb-2">Security Dashboard</h1>
+          <p className="text-slate-500">
             Overview of your DevSecOps security posture
           </p>
         </div>
         <div className="flex items-center gap-3">
           {pipeline && (
-            <Link 
-              to="/pipeline" 
-              className={`flex items-center gap-2 px-4 py-2 rounded-xl border ${
-                pipeline.status === 'running' || pipeline.status === 'queued'
-                  ? 'bg-blue-900/50 border-blue-500/50 text-blue-400'
-                  : pipeline.status === 'success'
-                  ? 'bg-green-900/50 border-green-500/50 text-green-400'
-                  : 'bg-red-900/50 border-red-500/50 text-red-400'
-              }`}
+            <Link
+              to="/dashboard/pipeline"
+              className={`flex items-center gap-2 px-4 py-2 rounded-xl border ${pipeline.status === 'running' || pipeline.status === 'queued'
+                ? 'bg-blue-50 border-blue-200 text-blue-600'
+                : pipeline.status === 'success'
+                  ? 'bg-green-50 border-green-200 text-green-600'
+                  : 'bg-red-50 border-red-200 text-red-600'
+                }`}
             >
               {pipeline.status === 'running' || pipeline.status === 'queued' ? (
                 <Loader2 className="w-4 h-4 animate-spin" />
@@ -203,13 +225,13 @@ export default function Dashboard() {
               )}
             </Link>
           )}
-          <div className="flex items-center gap-2 px-4 py-2 bg-dark-800 rounded-xl border border-dark-700/50">
-            <Clock className="w-4 h-4 text-dark-500" />
-            <span className="text-sm text-dark-400">
+          <div className="flex items-center gap-2 px-4 py-2 bg-white rounded-xl border border-slate-200 shadow-sm">
+            <Clock className="w-4 h-4 text-slate-400" />
+            <span className="text-sm text-slate-500">
               Last scan: {formatDate(data?.bandit?.generated_at)}
             </span>
           </div>
-          <button 
+          <button
             onClick={handleTriggerScan}
             disabled={triggering}
             className="btn-primary flex items-center gap-2"
@@ -226,28 +248,27 @@ export default function Dashboard() {
 
       {/* Pipeline Status Banner */}
       {pipeline && pipeline.status === 'success' && pipeline.is_deployable !== null && (
-        <div className={`rounded-xl p-4 border ${
-          pipeline.is_deployable 
-            ? 'bg-green-900/30 border-green-500/50' 
-            : 'bg-red-900/30 border-red-500/50'
-        }`}>
+        <div className={`rounded-xl p-4 border ${pipeline.is_deployable
+          ? 'bg-green-50 border-green-200'
+          : 'bg-red-50 border-red-200'
+          }`}>
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-3">
               {pipeline.is_deployable ? (
-                <Rocket className="w-6 h-6 text-green-400" />
+                <Rocket className="w-6 h-6 text-green-500" />
               ) : (
-                <AlertTriangle className="w-6 h-6 text-red-400" />
+                <AlertTriangle className="w-6 h-6 text-red-500" />
               )}
               <div>
-                <p className={`font-semibold ${pipeline.is_deployable ? 'text-green-400' : 'text-red-400'}`}>
+                <p className={`font-semibold ${pipeline.is_deployable ? 'text-green-700' : 'text-red-700'}`}>
                   {pipeline.is_deployable ? '✅ Ready for Deployment' : '❌ Deployment Blocked'}
                 </p>
-                <p className="text-sm text-dark-400">
+                <p className="text-sm text-slate-500">
                   Pipeline #{pipeline.id} • Branch: {pipeline.branch} • Commit: {pipeline.commit_sha}
                 </p>
               </div>
             </div>
-            <Link to="/pipeline" className="btn-secondary text-sm">
+            <Link to="/dashboard/pipeline" className="btn-secondary text-sm bg-white">
               View Pipeline
             </Link>
           </div>
@@ -257,7 +278,7 @@ export default function Dashboard() {
       {/* Critical Alert */}
       {criticalCount > 0 && (
         <Alert variant="warning" title="Attention Required">
-          You have <span className="font-bold">{criticalCount}</span> critical/high severity vulnerabilities 
+          You have <span className="font-bold">{criticalCount}</span> critical/high severity vulnerabilities
           that require immediate attention.
         </Alert>
       )}
@@ -335,23 +356,23 @@ export default function Dashboard() {
       {/* Quick Access Cards */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
         {/* Bandit Summary */}
-        <Link to="/bandit" className="glass-card-hover p-6 group">
+        <Link to="/dashboard/bandit" className="glass-card-hover p-6 group bg-white border border-slate-200">
           <div className="flex items-start justify-between mb-4">
-            <div className="p-3 rounded-xl bg-purple-500/20">
-              <Bug className="w-6 h-6 text-purple-400" />
+            <div className="p-3 rounded-xl bg-purple-50">
+              <Bug className="w-6 h-6 text-purple-600" />
             </div>
-            <ChevronRight className="w-5 h-5 text-dark-500 group-hover:text-primary-400 group-hover:translate-x-1 transition-all" />
+            <ChevronRight className="w-5 h-5 text-slate-400 group-hover:text-primary-600 group-hover:translate-x-1 transition-all" />
           </div>
-          <h3 className="text-xl font-semibold text-white mb-2">Bandit Code Analysis</h3>
-          <p className="text-dark-400 text-sm mb-4">
+          <h3 className="text-xl font-semibold text-slate-800 mb-2">Bandit Code Analysis</h3>
+          <p className="text-slate-500 text-sm mb-4">
             Static analysis of Python code for security vulnerabilities
           </p>
           <div className="flex items-center gap-4">
             <div className="flex items-center gap-2">
-              <span className="text-2xl font-bold text-white">{banditResults.length}</span>
-              <span className="text-dark-500 text-sm">issues found</span>
+              <span className="text-2xl font-bold text-slate-800">{banditResults.length}</span>
+              <span className="text-slate-500 text-sm">issues found</span>
             </div>
-            <div className="h-8 w-px bg-dark-700" />
+            <div className="h-8 w-px bg-slate-200" />
             <div className="flex gap-2">
               <span className="badge badge-high">{banditSeverityCounts.HIGH} High</span>
               <span className="badge badge-medium">{banditSeverityCounts.MEDIUM} Med</span>
@@ -360,23 +381,23 @@ export default function Dashboard() {
         </Link>
 
         {/* Trivy Summary */}
-        <Link to="/trivy" className="glass-card-hover p-6 group">
+        <Link to="/dashboard/trivy" className="glass-card-hover p-6 group bg-white border border-slate-200">
           <div className="flex items-start justify-between mb-4">
-            <div className="p-3 rounded-xl bg-cyan-500/20">
-              <Container className="w-6 h-6 text-cyan-400" />
+            <div className="p-3 rounded-xl bg-cyan-50">
+              <Container className="w-6 h-6 text-cyan-600" />
             </div>
-            <ChevronRight className="w-5 h-5 text-dark-500 group-hover:text-primary-400 group-hover:translate-x-1 transition-all" />
+            <ChevronRight className="w-5 h-5 text-slate-400 group-hover:text-primary-600 group-hover:translate-x-1 transition-all" />
           </div>
-          <h3 className="text-xl font-semibold text-white mb-2">Trivy Container Scan</h3>
-          <p className="text-dark-400 text-sm mb-4">
+          <h3 className="text-xl font-semibold text-slate-800 mb-2">Trivy Container Scan</h3>
+          <p className="text-slate-500 text-sm mb-4">
             Vulnerability scanner for containers and dependencies
           </p>
           <div className="flex items-center gap-4">
             <div className="flex items-center gap-2">
-              <span className="text-2xl font-bold text-white">{trivyResults.length}</span>
-              <span className="text-dark-500 text-sm">vulnerabilities</span>
+              <span className="text-2xl font-bold text-slate-800">{trivyResults.length}</span>
+              <span className="text-slate-500 text-sm">vulnerabilities</span>
             </div>
-            <div className="h-8 w-px bg-dark-700" />
+            <div className="h-8 w-px bg-slate-200" />
             <div className="flex gap-2">
               {trivySeverityCounts.CRITICAL > 0 && (
                 <span className="badge badge-critical">{trivySeverityCounts.CRITICAL} Critical</span>
@@ -390,10 +411,10 @@ export default function Dashboard() {
       </div>
 
       {/* Recent Findings */}
-      <div className="glass-card p-6">
+      <div className="glass-card p-6 bg-white border border-slate-200">
         <div className="flex items-center justify-between mb-6">
-          <h3 className="text-lg font-semibold text-white">Recent Critical Findings</h3>
-          <Link to="/bandit" className="text-primary-400 hover:text-primary-300 text-sm font-medium">
+          <h3 className="text-lg font-semibold text-slate-800">Recent Critical Findings</h3>
+          <Link to="/dashboard/bandit" className="text-primary-600 hover:text-primary-700 text-sm font-medium">
             View All →
           </Link>
         </div>
@@ -404,17 +425,17 @@ export default function Dashboard() {
             .map((vuln, index) => (
               <div
                 key={index}
-                className="flex items-center justify-between p-4 bg-dark-900/50 rounded-xl hover:bg-dark-800/50 transition-colors"
+                className="flex items-center justify-between p-4 bg-slate-50 rounded-xl hover:bg-slate-100 transition-colors border border-slate-100"
               >
                 <div className="flex items-center gap-4">
-                  <div className="p-2 rounded-lg bg-red-500/20">
-                    <AlertTriangle className="w-4 h-4 text-red-400" />
+                  <div className="p-2 rounded-lg bg-red-100 text-red-600">
+                    <AlertTriangle className="w-4 h-4" />
                   </div>
                   <div>
-                    <p className="text-white font-medium">
+                    <p className="text-slate-800 font-medium">
                       {vuln.test_name?.replace(/_/g, ' ')}
                     </p>
-                    <p className="text-dark-500 text-sm">
+                    <p className="text-slate-500 text-sm">
                       {vuln.filename} • Line {vuln.line_number}
                     </p>
                   </div>
@@ -423,7 +444,7 @@ export default function Dashboard() {
               </div>
             ))}
           {banditResults.filter(v => v.issue_severity === 'HIGH').length === 0 && (
-            <div className="text-center py-8 text-dark-500">
+            <div className="text-center py-8 text-slate-500">
               No critical findings. Great job maintaining security!
             </div>
           )}
@@ -436,9 +457,9 @@ export default function Dashboard() {
 // Helper to extract vulnerabilities from Trivy report
 function extractTrivyVulnerabilities(trivyData) {
   if (!trivyData) return []
-  
+
   const vulnerabilities = []
-  
+
   if (trivyData.Results) {
     trivyData.Results.forEach(result => {
       if (result.Vulnerabilities) {
@@ -446,6 +467,6 @@ function extractTrivyVulnerabilities(trivyData) {
       }
     })
   }
-  
+
   return vulnerabilities
 }

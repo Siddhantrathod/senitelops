@@ -5,9 +5,12 @@ import os
 
 # Get the base directory (where this script is located)
 BASE_DIR = Path(__file__).parent.absolute()
-REPORTS_DIR = BASE_DIR / "reports"
+REPORTS_DIR = BASE_DIR / "runtime" / "reports"
 DASHBOARD_DATA_DIR = BASE_DIR / "dashboard" / "data"
 POLICY_FILE = DASHBOARD_DATA_DIR / "policy.json"
+
+# Ensure reports directory exists
+REPORTS_DIR.mkdir(parents=True, exist_ok=True)
 
 # Default policy settings (used if no policy file exists)
 DEFAULT_POLICY = {
@@ -40,39 +43,71 @@ def load_policy():
     return DEFAULT_POLICY
 
 def calculate_score(bandit_report, trivy_report):
-    score = 100
+    """Calculate security score with separated weights for code vs image vulns.
+    
+    Code vulnerabilities (Bandit SAST) get full-weight penalties.
+    Image/dependency vulnerabilities (Trivy) get reduced weight (~50%).
+    """
     reasons = []
 
-    # Bandit: count HIGH severity issues
+    # Bandit: count code issues by severity
+    bandit_high = 0
+    bandit_medium = 0
+    bandit_low = 0
     if bandit_report:
-        high_issues = sum(
-            1 for r in bandit_report.get("results", [])
-            if r.get("issue_severity") == "HIGH"
-        )
-        if high_issues > 0:
-            score -= 20 + (high_issues * 2)
-            reasons.append(f"{high_issues} HIGH issues in SAST")
+        for r in bandit_report.get("results", []):
+            sev = r.get("issue_severity", "").upper()
+            if sev == "HIGH":
+                bandit_high += 1
+            elif sev == "MEDIUM":
+                bandit_medium += 1
+            elif sev == "LOW":
+                bandit_low += 1
+        if bandit_high > 0:
+            reasons.append(f"{bandit_high} HIGH issues in code (SAST)")
+        if bandit_medium > 0:
+            reasons.append(f"{bandit_medium} MEDIUM issues in code (SAST)")
 
-    # Trivy: count HIGH and CRITICAL vulns
-    critical_count = 0
-    high_count = 0
+    # Trivy: count image/dependency vulns by severity
+    trivy_critical = 0
+    trivy_high = 0
+    trivy_medium = 0
+    trivy_low = 0
     if trivy_report:
         for res in trivy_report.get("Results", []):
             for v in (res.get("Vulnerabilities") or []):
                 sev = v.get("Severity")
                 if sev == "CRITICAL":
-                    critical_count += 1
+                    trivy_critical += 1
                 elif sev == "HIGH":
-                    high_count += 1
+                    trivy_high += 1
+                elif sev == "MEDIUM":
+                    trivy_medium += 1
+                elif sev == "LOW":
+                    trivy_low += 1
 
-    if critical_count > 0:
-        score -= 40
-        reasons.append(f"{critical_count} CRITICAL vulnerabilities in image")
-    if high_count > 0:
-        score -= min(20, high_count * 2)
-        reasons.append(f"{high_count} HIGH vulnerabilities in image")
+    if trivy_critical > 0:
+        reasons.append(f"{trivy_critical} CRITICAL vulnerabilities in image")
+    if trivy_high > 0:
+        reasons.append(f"{trivy_high} HIGH vulnerabilities in image")
 
-    score = max(score, 0)
+    # Code vulns: full weight (max code penalty: 25 + 10 + 5 = 40)
+    code_high_impact = min(25, bandit_high * 8)
+    code_medium_impact = min(10, bandit_medium * 3)
+    code_low_impact = min(5, bandit_low * 1)
+
+    # Image vulns: reduced weight ~50% (max image penalty: 25 + 15 + 8 + 2 = 50)
+    image_critical_impact = min(25, trivy_critical * 10)
+    image_high_impact = min(15, trivy_high * 3)
+    image_medium_impact = min(8, trivy_medium * 1)
+    image_low_impact = min(2, int(trivy_low * 0.5))
+
+    total_penalty = (code_high_impact + code_medium_impact + code_low_impact +
+                     image_critical_impact + image_high_impact + image_medium_impact + image_low_impact)
+    score = max(0, 100 - total_penalty)
+
+    critical_count = trivy_critical
+    high_count = bandit_high + trivy_high
     return score, reasons, critical_count, high_count
 
 def main():

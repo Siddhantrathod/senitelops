@@ -12,10 +12,10 @@ import { CHART_COLORS } from '../../utils/helpers'
 const CustomTooltip = ({ active, payload }) => {
   if (active && payload && payload.length) {
     return (
-      <div className="glass-card p-3 border border-dark-600">
-        <p className="text-white font-medium">{payload[0].payload.category}</p>
-        <p className="text-dark-300 text-sm">
-          Score: <span className="text-white font-semibold">{payload[0].value}</span>
+      <div className="glass-card p-3 border border-slate-200 bg-white/95 shadow-xl">
+        <p className="text-slate-900 font-medium">{payload[0].payload.category}</p>
+        <p className="text-slate-500 text-sm">
+          Score: <span className="text-slate-900 font-semibold">{payload[0].value}</span>
         </p>
       </div>
     )
@@ -25,21 +25,21 @@ const CustomTooltip = ({ active, payload }) => {
 
 export default function SecurityRadarChart({ data, title, height = 350 }) {
   return (
-    <div className="glass-card p-6">
+    <div className="glass-card p-6 bg-white border border-slate-200 shadow-sm">
       {title && (
-        <h3 className="text-lg font-semibold text-white mb-4">{title}</h3>
+        <h3 className="text-lg font-semibold text-slate-800 mb-4">{title}</h3>
       )}
       <ResponsiveContainer width="100%" height={height}>
         <RadarChart data={data} margin={{ top: 20, right: 30, bottom: 20, left: 30 }}>
-          <PolarGrid stroke="#334155" />
+          <PolarGrid stroke="#e2e8f0" />
           <PolarAngleAxis
             dataKey="category"
-            tick={{ fill: '#94a3b8', fontSize: 11 }}
+            tick={{ fill: '#64748b', fontSize: 11 }}
           />
           <PolarRadiusAxis
             angle={90}
             domain={[0, 100]}
-            tick={{ fill: '#64748b', fontSize: 10 }}
+            tick={{ fill: '#94a3b8', fontSize: 10 }}
             axisLine={false}
           />
           <Radar
