@@ -89,7 +89,6 @@ export default function TrivyReport() {
       setLoading(false)
     } catch (err) {
       console.error('TrivyReport error:', err)
-      // Check if it's a 404 (no report exists) vs other errors
       if (err.response?.status === 404) {
         setError('no-report')
       } else {
@@ -158,20 +157,20 @@ export default function TrivyReport() {
     return (
       <div className="space-y-6 animate-fade-in">
         <div className="flex items-center gap-4">
-          <div className="p-3 rounded-xl bg-cyan-50">
-            <Container className="w-8 h-8 text-cyan-600" />
+          <div className="p-3 rounded-xl bg-cyan-500/10 border border-cyan-500/20">
+            <Container className="w-8 h-8 text-cyan-400" />
           </div>
           <div>
-            <h1 className="text-3xl font-bold text-slate-800">Trivy Container Scan</h1>
-            <p className="text-slate-500">Container vulnerability scanning</p>
+            <h1 className="text-3xl font-bold text-white">Trivy Container Scan</h1>
+            <p className="text-steel-500">Container vulnerability scanning</p>
           </div>
         </div>
         <Alert variant="warning" title="No Trivy Report Available">
           <p className="mb-4">
             No container scan has been performed yet. Trivy scans are optional and can be enabled when triggering a scan.
           </p>
-          <p className="text-sm text-slate-600">
-            To run a Trivy scan, use the scan trigger API with <code className="bg-white border border-slate-200 px-2 py-1 rounded">"run_trivy": true</code>
+          <p className="text-sm text-steel-400">
+            To run a Trivy scan, use the scan trigger API with <code className="bg-white/[0.06] border border-white/[0.08] px-2 py-1 rounded font-mono text-violet-400">"run_trivy": true</code>
           </p>
         </Alert>
       </div>
@@ -198,12 +197,12 @@ export default function TrivyReport() {
       {/* Page Header */}
       <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
         <div className="flex items-center gap-4">
-          <div className="p-3 rounded-xl bg-cyan-50">
-            <Container className="w-8 h-8 text-cyan-600" />
+          <div className="p-3 rounded-xl bg-cyan-500/10 border border-cyan-500/20">
+            <Container className="w-8 h-8 text-cyan-400" />
           </div>
           <div>
-            <h1 className="text-3xl font-bold text-slate-800">Trivy Container Scan</h1>
-            <p className="text-slate-500 flex items-center gap-2 mt-1">
+            <h1 className="text-3xl font-bold text-white">Trivy Container Scan</h1>
+            <p className="text-steel-500 flex items-center gap-2 mt-1 font-mono text-sm">
               <Clock className="w-4 h-4" />
               Scanned: {formatDate(data?.CreatedAt)}
             </p>
@@ -212,7 +211,7 @@ export default function TrivyReport() {
         <div className="flex items-center gap-3">
           <button
             onClick={checkSetupAndLoad}
-            className="btn-secondary inline-flex items-center gap-2 bg-white"
+            className="btn-secondary inline-flex items-center gap-2"
           >
             <RefreshCw className="w-4 h-4" />
             Refresh
@@ -228,45 +227,45 @@ export default function TrivyReport() {
       </div>
 
       {/* Image Info Card */}
-      <div className="glass-card p-6 bg-white border border-slate-200 shadow-sm">
-        <h3 className="text-lg font-semibold text-slate-800 mb-4">Container Image Information</h3>
+      <div className="glass-card p-6">
+        <h3 className="text-lg font-semibold text-white mb-4">Container Image Information</h3>
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
           <div className="flex items-center gap-3">
-            <div className="p-2 rounded-lg bg-primary-50 text-primary-600">
+            <div className="p-2 rounded-lg bg-violet-500/10 text-violet-400 border border-violet-500/20">
               <Server className="w-5 h-5" />
             </div>
             <div>
-              <p className="text-slate-500 text-xs uppercase">Image Name</p>
-              <p className="text-slate-900 font-medium">{artifactName}</p>
+              <p className="text-steel-500 text-[10px] uppercase tracking-[0.15em] font-mono">Image Name</p>
+              <p className="text-white font-medium">{artifactName}</p>
             </div>
           </div>
           <div className="flex items-center gap-3">
-            <div className="p-2 rounded-lg bg-purple-50 text-purple-600">
+            <div className="p-2 rounded-lg bg-purple-500/10 text-purple-400 border border-purple-500/20">
               <HardDrive className="w-5 h-5" />
             </div>
             <div>
-              <p className="text-slate-500 text-xs uppercase">Size</p>
-              <p className="text-slate-900 font-medium">{imageSize}</p>
+              <p className="text-steel-500 text-[10px] uppercase tracking-[0.15em] font-mono">Size</p>
+              <p className="text-white font-medium font-mono">{imageSize}</p>
             </div>
           </div>
           <div className="flex items-center gap-3">
-            <div className="p-2 rounded-lg bg-green-50 text-green-600">
+            <div className="p-2 rounded-lg bg-lime-500/10 text-lime-400 border border-lime-500/20">
               <Package className="w-5 h-5" />
             </div>
             <div>
-              <p className="text-slate-500 text-xs uppercase">OS</p>
-              <p className="text-slate-900 font-medium">
+              <p className="text-steel-500 text-[10px] uppercase tracking-[0.15em] font-mono">OS</p>
+              <p className="text-white font-medium">
                 {metadata.OS?.Family} {metadata.OS?.Name}
               </p>
             </div>
           </div>
           <div className="flex items-center gap-3">
-            <div className="p-2 rounded-lg bg-cyan-50 text-cyan-600">
+            <div className="p-2 rounded-lg bg-cyan-500/10 text-cyan-400 border border-cyan-500/20">
               <Container className="w-5 h-5" />
             </div>
             <div>
-              <p className="text-slate-500 text-xs uppercase">Type</p>
-              <p className="text-slate-900 font-medium">{data?.ArtifactType?.replace('_', ' ')}</p>
+              <p className="text-steel-500 text-[10px] uppercase tracking-[0.15em] font-mono">Type</p>
+              <p className="text-white font-medium">{data?.ArtifactType?.replace('_', ' ')}</p>
             </div>
           </div>
         </div>
@@ -319,22 +318,22 @@ export default function TrivyReport() {
       </div>
 
       {/* Filters */}
-      <div className="glass-card p-4 bg-white border border-slate-200 shadow-sm">
+      <div className="glass-card p-4">
         <div className="flex flex-col md:flex-row items-start md:items-center gap-4">
-          <div className="flex items-center gap-2 text-slate-500">
+          <div className="flex items-center gap-2 text-steel-400">
             <Filter className="w-5 h-5" />
             <span className="font-medium">Filters:</span>
           </div>
 
           {/* Search */}
-          <div className="flex items-center gap-2 px-4 py-2 bg-slate-50 rounded-lg border border-slate-200 flex-1 md:max-w-xs focus-within:ring-2 focus-within:ring-primary-100 transition-all">
-            <Search className="w-4 h-4 text-slate-400" />
+          <div className="flex items-center gap-2 px-4 py-2 bg-white/[0.04] rounded-lg border border-white/[0.06] flex-1 md:max-w-xs focus-within:ring-2 focus-within:ring-violet-500/30 transition-all">
+            <Search className="w-4 h-4 text-steel-500" />
             <input
               type="text"
               placeholder="Search CVE, package..."
               value={filters.search}
               onChange={(e) => setFilters({ ...filters, search: e.target.value })}
-              className="bg-transparent text-slate-900 placeholder-slate-400 outline-none w-full text-sm"
+              className="bg-transparent text-white placeholder-steel-600 outline-none w-full text-sm"
             />
           </div>
 
@@ -342,7 +341,7 @@ export default function TrivyReport() {
           <select
             value={filters.severity}
             onChange={(e) => setFilters({ ...filters, severity: e.target.value })}
-            className="px-4 py-2 bg-slate-50 text-slate-700 rounded-lg border border-slate-200 outline-none text-sm focus:ring-2 focus:ring-primary-100"
+            className="px-4 py-2 bg-white/[0.04] text-steel-300 rounded-lg border border-white/[0.06] outline-none text-sm focus:ring-2 focus:ring-violet-500/30"
           >
             <option value="all">All Severities</option>
             <option value="CRITICAL">Critical</option>
@@ -355,7 +354,7 @@ export default function TrivyReport() {
           <select
             value={filters.hasfix}
             onChange={(e) => setFilters({ ...filters, hasfix: e.target.value })}
-            className="px-4 py-2 bg-slate-50 text-slate-700 rounded-lg border border-slate-200 outline-none text-sm focus:ring-2 focus:ring-primary-100"
+            className="px-4 py-2 bg-white/[0.04] text-steel-300 rounded-lg border border-white/[0.06] outline-none text-sm focus:ring-2 focus:ring-violet-500/30"
           >
             <option value="all">All Status</option>
             <option value="yes">Fix Available</option>
@@ -363,8 +362,8 @@ export default function TrivyReport() {
           </select>
 
           {/* Results count */}
-          <div className="ml-auto text-slate-500 text-sm">
-            Showing <span className="font-medium text-slate-900">{filteredVulnerabilities.length}</span> of {vulnerabilities.length} vulnerabilities
+          <div className="ml-auto text-steel-500 text-sm font-mono">
+            Showing <span className="font-medium text-white">{filteredVulnerabilities.length}</span> of {vulnerabilities.length} vulnerabilities
           </div>
         </div>
       </div>

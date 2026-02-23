@@ -1,8 +1,9 @@
-import { Routes, Route } from 'react-router-dom'
+import { Routes, Route, Navigate } from 'react-router-dom'
 import { AuthProvider } from './context/AuthContext'
 import ProtectedRoute from './components/ProtectedRoute'
 import Layout from './components/Layout'
 import Dashboard from './pages/Dashboard'
+import SASTReport from './pages/SASTReport'
 import BanditReport from './pages/BanditReport'
 import TrivyReport from './pages/TrivyReport'
 import VulnerabilityDetails from './pages/VulnerabilityDetails'
@@ -31,7 +32,8 @@ function App() {
           </ProtectedRoute>
         }>
           <Route index element={<Dashboard />} />
-          <Route path="bandit" element={<BanditReport />} />
+          <Route path="sast" element={<SASTReport />} />
+          <Route path="bandit" element={<Navigate to="/dashboard/sast" replace />} />
           <Route path="trivy" element={<TrivyReport />} />
           <Route path="pipeline" element={<Pipeline />} />
           <Route path="vulnerability/:id" element={<VulnerabilityDetails />} />

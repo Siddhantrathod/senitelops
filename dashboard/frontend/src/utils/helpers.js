@@ -78,16 +78,16 @@ export function getSecurityGrade(score) {
 }
 
 export const CHART_COLORS = {
-  critical: '#ef4444',
-  high: '#f97316',
-  medium: '#eab308',
-  low: '#22c55e',
-  info: '#3b82f6',
-  primary: '#3b82f6',
-  secondary: '#8b5cf6',
-  success: '#10b981',
-  warning: '#f59e0b',
-  danger: '#ef4444',
+  critical: '#ff3b5c',
+  high: '#ff6b35',
+  medium: '#ffb800',
+  low: '#5ce60a',
+  info: '#a855f7',
+  primary: '#a855f7',
+  secondary: '#a855f7',
+  success: '#00ff88',
+  warning: '#ffb800',
+  danger: '#ff3b5c',
 }
 
 export const SEVERITY_ORDER = ['CRITICAL', 'HIGH', 'MEDIUM', 'LOW']

@@ -333,6 +333,32 @@ export default function Setup() {
                     />
                   </div>
 
+                  {/* Repository Requirements */}
+                  <div className="bg-blue-50 border border-blue-100 rounded-xl p-5">
+                    <h4 className="text-sm font-bold text-blue-800 mb-3 flex items-center gap-2">
+                      <AlertCircle className="w-4 h-4" />
+                      Repository Requirements
+                    </h4>
+                    <ul className="space-y-2 text-sm text-blue-700">
+                      <li className="flex items-start gap-2">
+                        <CheckCircle className="w-4 h-4 text-green-500 mt-0.5 flex-shrink-0" />
+                        <span><strong>Public GitHub repository</strong> — must be accessible without auth</span>
+                      </li>
+                      <li className="flex items-start gap-2">
+                        <CheckCircle className="w-4 h-4 text-green-500 mt-0.5 flex-shrink-0" />
+                        <span><strong>Source code files</strong> — JS, Python, Go, Java, etc. for SAST scanning</span>
+                      </li>
+                      <li className="flex items-start gap-2">
+                        <span className="w-4 h-4 rounded-full border-2 border-blue-300 mt-0.5 flex-shrink-0 flex items-center justify-center text-[8px] text-blue-400 font-bold">?</span>
+                        <span><strong>Dockerfile</strong> (optional) — enables Docker image build &amp; container scan. Without it, Trivy scans dependencies via filesystem</span>
+                      </li>
+                      <li className="flex items-start gap-2">
+                        <span className="w-4 h-4 rounded-full border-2 border-blue-300 mt-0.5 flex-shrink-0 flex items-center justify-center text-[8px] text-blue-400 font-bold">?</span>
+                        <span><strong>package.json / requirements.txt</strong> (optional) — improves dependency vulnerability detection</span>
+                      </li>
+                    </ul>
+                  </div>
+
                   {error && (
                     <div className="flex items-start gap-3 text-red-600 bg-red-50 border border-red-100 rounded-xl p-4">
                       <AlertCircle className="w-5 h-5 flex-shrink-0 mt-0.5" />

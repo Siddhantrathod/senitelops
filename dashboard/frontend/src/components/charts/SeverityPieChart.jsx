@@ -12,13 +12,13 @@ const CustomTooltip = ({ active, payload }) => {
   if (active && payload && payload.length) {
     const data = payload[0]
     return (
-      <div className="glass-card p-3 border border-slate-200 bg-white/95 shadow-xl">
-        <p className="text-slate-900 font-medium">{data.name}</p>
-        <p className="text-slate-500 text-sm">
-          Count: <span className="text-slate-900 font-semibold">{data.value}</span>
+      <div className="glass-card p-3 shadow-2xl">
+        <p className="text-white font-medium">{data.name}</p>
+        <p className="text-steel-400 text-sm font-mono">
+          Count: <span className="text-white font-semibold">{data.value}</span>
         </p>
-        <p className="text-slate-500 text-sm">
-          Percentage: <span className="text-slate-900 font-semibold">{(data.payload.percent * 100).toFixed(1)}%</span>
+        <p className="text-steel-400 text-sm font-mono">
+          Percentage: <span className="text-white font-semibold">{(data.payload.percent * 100).toFixed(1)}%</span>
         </p>
       </div>
     )
@@ -35,7 +35,7 @@ const CustomLegend = ({ payload }) => {
             className="w-3 h-3 rounded-full"
             style={{ backgroundColor: entry.color }}
           />
-          <span className="text-slate-500 text-sm">{entry.value}</span>
+          <span className="text-steel-400 text-sm">{entry.value}</span>
         </div>
       ))}
     </div>
@@ -57,9 +57,9 @@ export default function SeverityPieChart({ data, title, height = 300 }) {
   }
 
   return (
-    <div className="glass-card p-6 bg-white border border-slate-200 shadow-sm">
+    <div className="glass-card p-6">
       {title && (
-        <h3 className="text-lg font-semibold text-slate-800 mb-4">{title}</h3>
+        <h3 className="text-lg font-semibold text-white mb-4">{title}</h3>
       )}
       <ResponsiveContainer width="100%" height={height}>
         <PieChart>

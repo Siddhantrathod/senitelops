@@ -1,28 +1,40 @@
 {
-  "pipeline_id": "c852937f",
-  "timestamp": "2026-02-10T23:52:11.653042",
-  "repository": "sentinelops-secure-app",
+  "pipeline_id": "3e519b42",
+  "timestamp": "2026-02-19T23:18:05.106819",
+  "repository": "sentinelops-vulnerable-app",
   "branch": "main",
   "commit": "manual",
-  "security_score": 50,
-  "is_deployable": true,
+  "security_score": 62,
+  "is_deployable": false,
   "vulnerability_summary": {
-    "critical": 3,
-    "high": 11,
-    "medium": 42,
-    "low": 52,
-    "total": 108,
-    "bandit_issues": 0,
-    "trivy_vulns": 108,
-    "security_score": 50,
-    "bandit_high": 0,
-    "bandit_medium": 0,
-    "bandit_low": 0,
-    "trivy_critical": 3,
-    "trivy_high": 11,
-    "trivy_medium": 42,
-    "trivy_low": 52
+    "critical": 0,
+    "high": 5,
+    "medium": 7,
+    "low": 2,
+    "total": 14,
+    "sast_issues": 6,
+    "bandit_issues": 6,
+    "trivy_vulns": 8,
+    "security_score": 62,
+    "sast_high": 2,
+    "sast_medium": 2,
+    "sast_low": 2,
+    "bandit_high": 2,
+    "bandit_medium": 2,
+    "bandit_low": 2,
+    "trivy_critical": 0,
+    "trivy_high": 3,
+    "trivy_medium": 5,
+    "trivy_low": 0,
+    "languages_detected": [
+      "python"
+    ],
+    "tools_used": [
+      "bandit"
+    ]
   },
-  "decision": "APPROVED",
-  "reasons": []
+  "decision": "BLOCKED",
+  "reasons": [
+    "Security score (62) below threshold (70)"
+  ]
 }

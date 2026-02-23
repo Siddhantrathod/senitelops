@@ -25,6 +25,7 @@ from pipeline.pipeline_executor import (
     validate_repo_url,
     PipelineResult
 )
+from pipeline.sast_scanner import LANGUAGE_INFO, TOOL_DISPLAY
 
 # Google OAuth imports
 try:
@@ -635,6 +636,10 @@ def update_policy():
         policy["maxHighVulns"] = max(0, int(data["maxHighVulns"]))
     if "autoBlock" in data:
         policy["autoBlock"] = bool(data["autoBlock"])
+    if "blockOnSecrets" in data:
+        policy["blockOnSecrets"] = bool(data["blockOnSecrets"])
+    if "blockOnDastHigh" in data:
+        policy["blockOnDastHigh"] = bool(data["blockOnDastHigh"])
     
     policy["configured"] = True  # Mark policy as configured when updated
     policy["updatedAt"] = datetime.now().isoformat()
@@ -650,72 +655,101 @@ def update_policy():
 @app.route("/api/policy/evaluate", methods=["GET"])
 @jwt_required()
 def evaluate_policy():
-    """Evaluate current security status against policy"""
+    """Evaluate current security status against policy (uses unified SAST data)"""
+    sast_data = load_json_file("sast-report.json")
     bandit_data = load_json_file("bandit-report.json")
     trivy_data = load_json_file("trivy-report.json")
     policy = get_policy()
     
-    # Count vulnerabilities by severity
-    critical_count = 0
-    high_count = 0
-    medium_count = 0
-    low_count = 0
-    violations = []
+    # Count SAST vulnerabilities by severity (prefer unified, fall back to bandit)
+    sast_critical = 0
+    sast_high = 0
+    sast_medium = 0
+    sast_low = 0
     
-    # Count Bandit issues
-    if bandit_data and "results" in bandit_data:
+    if sast_data and "metrics" in sast_data:
+        totals = sast_data["metrics"].get("totals", {})
+        sast_critical = totals.get("critical", 0)
+        sast_high = totals.get("high", 0)
+        sast_medium = totals.get("medium", 0)
+        sast_low = totals.get("low", 0)
+    elif bandit_data and "results" in bandit_data:
         for result in bandit_data["results"]:
             severity = result.get("issue_severity", "").upper()
             if severity == "HIGH":
-                high_count += 1
+                sast_high += 1
             elif severity == "MEDIUM":
-                medium_count += 1
+                sast_medium += 1
             elif severity == "LOW":
-                low_count += 1
+                sast_low += 1
     
-    # Count Trivy vulnerabilities
+    # Count Trivy vulnerabilities separately
+    trivy_critical = 0
+    trivy_high = 0
+    trivy_medium = 0
+    trivy_low = 0
+    
     if trivy_data and "Results" in trivy_data:
         for result in trivy_data["Results"]:
             for vuln in result.get("Vulnerabilities", []) or []:
                 severity = vuln.get("Severity", "").upper()
                 if severity == "CRITICAL":
-                    critical_count += 1
+                    trivy_critical += 1
                 elif severity == "HIGH":
-                    high_count += 1
+                    trivy_high += 1
                 elif severity == "MEDIUM":
-                    medium_count += 1
+                    trivy_medium += 1
                 elif severity == "LOW":
-                    low_count += 1
+                    trivy_low += 1
+    
+    # Count Gitleaks secrets
+    gitleaks_data = load_json_file("gitleaks-report.json")
+    secrets_critical = 0
+    secrets_high = 0
+    secrets_medium = 0
+    
+    if gitleaks_data and "results" in gitleaks_data:
+        for secret in gitleaks_data.get("results", []):
+            sev = secret.get("severity", "MEDIUM").upper()
+            if sev == "CRITICAL":
+                secrets_critical += 1
+            elif sev == "HIGH":
+                secrets_high += 1
+            else:
+                secrets_medium += 1
+    
+    # Count DAST alerts
+    dast_data = load_json_file("dast-report.json")
+    dast_high = 0
+    dast_medium = 0
+    dast_low = 0
+    
+    if dast_data and "results" in dast_data:
+        for alert in dast_data.get("results", []):
+            risk = alert.get("risk", "LOW").upper()
+            if risk == "HIGH":
+                dast_high += 1
+            elif risk == "MEDIUM":
+                dast_medium += 1
+            elif risk == "LOW":
+                dast_low += 1
+    
+    total_secrets = secrets_critical + secrets_high + secrets_medium
+    total_dast = dast_high + dast_medium + dast_low
+    
+    # Overall counts (include secrets and DAST)
+    critical_count = sast_critical + trivy_critical + secrets_critical
+    high_count = sast_high + trivy_high + secrets_high + dast_high
+    medium_count = sast_medium + trivy_medium + secrets_medium + dast_medium
+    low_count = sast_low + trivy_low + dast_low
+    violations = []
     
     # Calculate security score with SEPARATED weights for code vs image vulns
-    # Code vulnerabilities (Bandit SAST) — full weight
-    bandit_high = high_count - sum(
-        1 for r in (trivy_data or {}).get("Results", [])
-        for v in (r.get("Vulnerabilities", []) or [])
-        if v.get("Severity", "").upper() == "HIGH"
-    ) if trivy_data else high_count
-    bandit_medium = medium_count - sum(
-        1 for r in (trivy_data or {}).get("Results", [])
-        for v in (r.get("Vulnerabilities", []) or [])
-        if v.get("Severity", "").upper() == "MEDIUM"
-    ) if trivy_data else medium_count
-    bandit_low = low_count - sum(
-        1 for r in (trivy_data or {}).get("Results", [])
-        for v in (r.get("Vulnerabilities", []) or [])
-        if v.get("Severity", "").upper() == "LOW"
-    ) if trivy_data else low_count
-    bandit_high = max(0, bandit_high)
-    bandit_medium = max(0, bandit_medium)
-    bandit_low = max(0, bandit_low)
-    
-    trivy_critical = critical_count  # All criticals come from Trivy
-    trivy_high = high_count - bandit_high
-    trivy_medium = medium_count - bandit_medium
-    trivy_low = low_count - bandit_low
-    
-    code_high_impact = min(25, bandit_high * 8)
-    code_medium_impact = min(10, bandit_medium * 3)
-    code_low_impact = min(5, bandit_low * 1)
+    # Code vulnerabilities (SAST) — full weight
+    code_critical_impact = min(30, sast_critical * 12)
+    code_high_impact = min(25, sast_high * 8)
+    code_medium_impact = min(10, sast_medium * 3)
+    code_low_impact = min(5, sast_low * 1)
     
     # Image/dependency vulnerabilities (Trivy) — reduced weight (~50%)
     image_critical_impact = min(25, trivy_critical * 10)
@@ -723,8 +757,20 @@ def evaluate_policy():
     image_medium_impact = min(8, trivy_medium * 1)
     image_low_impact = min(2, int(trivy_low * 0.5))
     
-    total_penalty = (code_high_impact + code_medium_impact + code_low_impact +
-                     image_critical_impact + image_high_impact + image_medium_impact + image_low_impact)
+    # Secrets (Gitleaks) — critical weight
+    secrets_critical_impact = min(30, secrets_critical * 12)
+    secrets_high_impact = min(20, secrets_high * 8)
+    secrets_medium_impact = min(10, secrets_medium * 4)
+    
+    # DAST findings — moderate weight
+    dast_high_impact = min(20, dast_high * 6)
+    dast_medium_impact = min(10, dast_medium * 2)
+    dast_low_impact = min(3, dast_low * 1)
+    
+    total_penalty = (code_critical_impact + code_high_impact + code_medium_impact + code_low_impact +
+                     image_critical_impact + image_high_impact + image_medium_impact + image_low_impact +
+                     secrets_critical_impact + secrets_high_impact + secrets_medium_impact +
+                     dast_high_impact + dast_medium_impact + dast_low_impact)
     score = 100 - total_penalty
     score = max(0, min(100, score))
     
@@ -743,12 +789,46 @@ def evaluate_policy():
         deployment_allowed = False
         violations.append(f"Security score ({score}) below minimum ({policy['minScore']})")
     
+    if policy.get("blockOnSecrets", True) and total_secrets > 0:
+        deployment_allowed = False
+        violations.append(f"Secrets detected ({total_secrets}) — deployment blocked by policy")
+    
+    if policy.get("blockOnDastHigh", False) and dast_high > 0:
+        deployment_allowed = False
+        violations.append(f"DAST high-risk alerts ({dast_high}) — deployment blocked by policy")
+    
     return jsonify({
         "score": score,
         "criticalCount": critical_count,
         "highCount": high_count,
         "mediumCount": medium_count,
         "lowCount": low_count,
+        "sast": {
+            "critical": sast_critical,
+            "high": sast_high,
+            "medium": sast_medium,
+            "low": sast_low,
+            "languages": (sast_data or {}).get("languages_detected", ["python"] if bandit_data else []),
+            "tools": (sast_data or {}).get("tools_used", ["bandit"] if bandit_data else []),
+        },
+        "trivy": {
+            "critical": trivy_critical,
+            "high": trivy_high,
+            "medium": trivy_medium,
+            "low": trivy_low,
+        },
+        "gitleaks": {
+            "critical": secrets_critical,
+            "high": secrets_high,
+            "medium": secrets_medium,
+            "total": total_secrets,
+        },
+        "dast": {
+            "high": dast_high,
+            "medium": dast_medium,
+            "low": dast_low,
+            "total": total_dast,
+        },
         "deploymentAllowed": deployment_allowed,
         "violations": violations,
         "policy": policy
@@ -761,11 +841,66 @@ def home():
 @app.route("/api/bandit")
 @jwt_required()
 def bandit():
-    """Get Bandit security scan results"""
+    """Get Bandit/SAST security scan results (backward compatible)"""
     data = load_json_file("bandit-report.json")
     if data is None:
         return jsonify({"error": "Bandit report not found"}), 404
     return jsonify(data)
+
+@app.route("/api/sast")
+@jwt_required()
+def sast():
+    """Get unified multi-language SAST scan results"""
+    data = load_json_file("sast-report.json")
+    if data is None:
+        # Fallback: build from bandit report for backward compatibility
+        bandit_data = load_json_file("bandit-report.json")
+        if bandit_data is None:
+            return jsonify({"error": "No SAST report found. Run a scan first."}), 404
+        # Convert bandit report to unified format
+        results = []
+        for r in bandit_data.get("results", []):
+            results.append({
+                "tool": r.get("_tool", "bandit"),
+                "language": r.get("_language", "python"),
+                "rule_id": r.get("test_id", ""),
+                "rule_name": r.get("test_name", ""),
+                "severity": r.get("issue_severity", "LOW"),
+                "confidence": r.get("issue_confidence", "MEDIUM"),
+                "message": r.get("issue_text", ""),
+                "file": r.get("filename", ""),
+                "line": r.get("line_number", 0),
+                "col": r.get("col_offset", 0),
+                "code": r.get("code", ""),
+                "cwe": r.get("issue_cwe", {}),
+                "more_info": r.get("more_info", ""),
+            })
+        totals = bandit_data.get("metrics", {}).get("_totals", {})
+        data = {
+            "schema_version": 1,
+            "scan_type": "sast",
+            "timestamp": bandit_data.get("generated_at", ""),
+            "languages_detected": {"python": {"count": 0, "info": LANGUAGE_INFO.get("python", {})}},
+            "tools_used": {"bandit": {"success": True, "message": "Bandit scan completed", "issues_count": len(results), "languages": ["python"], "available": True, "display": TOOL_DISPLAY.get("bandit", {})}},
+            "results": results,
+            "metrics": {
+                "by_language": {"python": {"total": len(results), "high": totals.get("SEVERITY.HIGH", 0), "medium": totals.get("SEVERITY.MEDIUM", 0), "low": totals.get("SEVERITY.LOW", 0), "critical": 0}},
+                "by_tool": {"bandit": {"total": len(results), "high": totals.get("SEVERITY.HIGH", 0), "medium": totals.get("SEVERITY.MEDIUM", 0), "low": totals.get("SEVERITY.LOW", 0), "critical": 0}},
+                "totals": {"total": len(results), "high": totals.get("SEVERITY.HIGH", 0), "medium": totals.get("SEVERITY.MEDIUM", 0), "low": totals.get("SEVERITY.LOW", 0), "critical": 0},
+                "languages_scanned": ["python"],
+                "languages_with_issues": ["python"] if results else [],
+            }
+        }
+    return jsonify(data)
+
+@app.route("/api/sast/languages")
+@jwt_required()
+def sast_languages():
+    """Get supported SAST languages and their tool mappings"""
+    return jsonify({
+        "languages": LANGUAGE_INFO,
+        "tools": TOOL_DISPLAY,
+    })
 
 @app.route("/api/trivy")
 @jwt_required()
@@ -776,28 +911,72 @@ def trivy():
         return jsonify({"error": "Trivy report not found"}), 404
     return jsonify(data)
 
+@app.route("/api/gitleaks")
+@jwt_required()
+def gitleaks():
+    """Get Gitleaks secret detection results"""
+    data = load_json_file("gitleaks-report.json")
+    if data is None:
+        return jsonify({"error": "Gitleaks report not found. Run a scan first."}), 404
+    return jsonify(data)
+
+@app.route("/api/dast")
+@jwt_required()
+def dast():
+    """Get DAST (ZAP) security scan results"""
+    data = load_json_file("dast-report.json")
+    if data is None:
+        return jsonify({"error": "DAST report not found. Run a scan first."}), 404
+    return jsonify(data)
+
 @app.route("/api/summary")
 @jwt_required()
 def summary():
-    """Get a summary of all security findings"""
+    """Get a summary of all security findings (SAST + Trivy)"""
+    sast_data = load_json_file("sast-report.json")
     bandit_data = load_json_file("bandit-report.json")
     trivy_data = load_json_file("trivy-report.json")
     
-    # Calculate Bandit metrics
-    bandit_metrics = {
+    # Calculate SAST metrics (prefer unified report, fall back to bandit)
+    sast_metrics = {
         "total": 0,
+        "critical": 0,
         "high": 0,
         "medium": 0,
         "low": 0,
+        "languages": [],
+        "tools": [],
     }
-    if bandit_data and "metrics" in bandit_data:
+    if sast_data and "metrics" in sast_data:
+        totals = sast_data["metrics"].get("totals", {})
+        sast_metrics = {
+            "total": totals.get("total_issues", 0),
+            "critical": totals.get("critical", 0),
+            "high": totals.get("high", 0),
+            "medium": totals.get("medium", 0),
+            "low": totals.get("low", 0),
+            "languages": sast_data.get("languages_detected", []),
+            "tools": sast_data.get("tools_used", []),
+        }
+    elif bandit_data and "metrics" in bandit_data:
         totals = bandit_data["metrics"].get("_totals", {})
-        bandit_metrics = {
+        sast_metrics = {
             "total": len(bandit_data.get("results", [])),
+            "critical": 0,
             "high": totals.get("SEVERITY.HIGH", 0),
             "medium": totals.get("SEVERITY.MEDIUM", 0),
             "low": totals.get("SEVERITY.LOW", 0),
+            "languages": ["python"],
+            "tools": ["bandit"],
         }
+    
+    # Backward compat alias
+    bandit_metrics = {
+        "total": sast_metrics["total"],
+        "high": sast_metrics["high"],
+        "medium": sast_metrics["medium"],
+        "low": sast_metrics["low"],
+    }
     
     # Calculate Trivy metrics
     trivy_metrics = {
@@ -815,12 +994,61 @@ def summary():
                 if severity in trivy_metrics:
                     trivy_metrics[severity.lower()] += 1
     
+    # Calculate Gitleaks metrics
+    gitleaks_data = load_json_file("gitleaks-report.json")
+    gitleaks_metrics = {
+        "total": 0,
+        "critical": 0,
+        "high": 0,
+        "medium": 0,
+        "tool": "none",
+        "tool_available": False,
+    }
+    if gitleaks_data:
+        gitleaks_metrics = {
+            "total": gitleaks_data.get("total_secrets", 0),
+            "critical": gitleaks_data.get("metrics", {}).get("critical", 0),
+            "high": gitleaks_data.get("metrics", {}).get("high", 0),
+            "medium": gitleaks_data.get("metrics", {}).get("medium", 0),
+            "tool": gitleaks_data.get("tool", "unknown"),
+            "tool_available": gitleaks_data.get("tool_available", False),
+        }
+    
+    # Calculate DAST metrics
+    dast_data = load_json_file("dast-report.json")
+    dast_metrics = {
+        "total": 0,
+        "high": 0,
+        "medium": 0,
+        "low": 0,
+        "informational": 0,
+        "tool": "none",
+        "tool_available": False,
+        "target_url": "",
+    }
+    if dast_data:
+        dast_metrics = {
+            "total": dast_data.get("total_alerts", 0),
+            "high": dast_data.get("metrics", {}).get("high", 0),
+            "medium": dast_data.get("metrics", {}).get("medium", 0),
+            "low": dast_data.get("metrics", {}).get("low", 0),
+            "informational": dast_data.get("metrics", {}).get("informational", 0),
+            "tool": dast_data.get("tool", "unknown"),
+            "tool_available": dast_data.get("tool_available", False),
+            "target_url": dast_data.get("target_url", ""),
+        }
+    
     return jsonify({
         "generated_at": datetime.now().isoformat(),
+        "sast": sast_metrics,
         "bandit": bandit_metrics,
         "trivy": trivy_metrics,
-        "total_vulnerabilities": bandit_metrics["total"] + trivy_metrics["total"],
-        "critical_count": trivy_metrics["critical"] + bandit_metrics["high"] + trivy_metrics["high"],
+        "gitleaks": gitleaks_metrics,
+        "dast": dast_metrics,
+        "languages_detected": sast_metrics["languages"],
+        "tools_used": sast_metrics["tools"],
+        "total_vulnerabilities": sast_metrics["total"] + trivy_metrics["total"] + gitleaks_metrics["total"] + dast_metrics["total"],
+        "critical_count": sast_metrics["critical"] + trivy_metrics["critical"] + sast_metrics["high"] + trivy_metrics["high"] + gitleaks_metrics["critical"] + gitleaks_metrics["high"],
     })
 
 @app.route("/api/health")
@@ -830,8 +1058,11 @@ def health():
         "status": "healthy",
         "timestamp": datetime.now().isoformat(),
         "reports": {
+            "sast": os.path.exists(os.path.join(REPORT_DIR, "sast-report.json")),
             "bandit": os.path.exists(os.path.join(REPORT_DIR, "bandit-report.json")),
             "trivy": os.path.exists(os.path.join(REPORT_DIR, "trivy-report.json")),
+            "gitleaks": os.path.exists(os.path.join(REPORT_DIR, "gitleaks-report.json")),
+            "dast": os.path.exists(os.path.join(REPORT_DIR, "dast-report.json")),
         }
     })
 

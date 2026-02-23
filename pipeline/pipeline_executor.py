@@ -44,11 +44,21 @@ HISTORY_DIR.mkdir(parents=True, exist_ok=True)
 
 # Default report paths
 DEFAULT_BANDIT_REPORT = REPORTS_DIR / "bandit-report.json"
+DEFAULT_SAST_REPORT = REPORTS_DIR / "sast-report.json"
 DEFAULT_TRIVY_REPORT = REPORTS_DIR / "trivy-report.json"
+DEFAULT_GITLEAKS_REPORT = REPORTS_DIR / "gitleaks-report.json"
+DEFAULT_DAST_REPORT = REPORTS_DIR / "dast-report.json"
 DEFAULT_DECISION_REPORT = REPORTS_DIR / "security_decision.json"
 
 # Temp workspace prefix
 WORKSPACE_PREFIX = "sentinelops_scan_"
+
+# Import multi-language SAST scanner
+from .sast_scanner import run_sast_scan, detect_languages, LANGUAGE_INFO
+
+# Import Gitleaks and DAST scanners
+from .gitleaks_scanner import run_secrets_scan
+from .dast_scanner import run_dast_scan
 
 class StageStatus(str, Enum):
     PENDING = "pending"
@@ -168,8 +178,10 @@ class PipelineExecutor:
             stages={
                 "clone": {"name": "Clone Repository", "status": StageStatus.PENDING.value},
                 "build": {"name": "Build Image", "status": StageStatus.PENDING.value},
-                "bandit_scan": {"name": "Bandit Security Scan", "status": StageStatus.PENDING.value},
+                "sast_scan": {"name": "SAST Security Scan", "status": StageStatus.PENDING.value},
+                "gitleaks_scan": {"name": "Secret Detection (Gitleaks)", "status": StageStatus.PENDING.value},
                 "trivy_scan": {"name": "Trivy Container Scan", "status": StageStatus.PENDING.value},
+                "dast_scan": {"name": "DAST Security Scan (ZAP)", "status": StageStatus.PENDING.value},
                 "policy_check": {"name": "Policy Evaluation", "status": StageStatus.PENDING.value},
                 "decision": {"name": "Deployment Decision", "status": StageStatus.PENDING.value}
             }
@@ -239,62 +251,86 @@ class PipelineExecutor:
             # Stage 2: Build Docker Image
             self.update_stage(pipeline.id, "build", StageStatus.RUNNING)
             dockerfile_path = os.path.join(work_dir, "Dockerfile")
+            has_dockerfile = os.path.exists(dockerfile_path)
+            built_image_name = None
             
-            if os.path.exists(dockerfile_path):
+            if has_dockerfile:
                 try:
                     build_image = image_name or f"sentinelops-scan-{pipeline.id}"
                     result = subprocess.run(
                         ["docker", "build", "-t", build_image, work_dir],
-                        capture_output=True, text=True, timeout=300
+                        capture_output=True, text=True, timeout=900
                     )
                     if result.returncode != 0:
                         raise Exception(result.stderr)
+                    built_image_name = build_image
                     self.update_stage(pipeline.id, "build", StageStatus.SUCCESS,
                                     f"Built image: {build_image}")
+                except subprocess.TimeoutExpired:
+                    self.update_stage(pipeline.id, "build", StageStatus.FAILED, 
+                                    error="Docker build timed out after 900 seconds — continuing with filesystem scans")
+                    logger.warning("⚠ Docker build timed out — pipeline will continue without image scans")
                 except Exception as e:
                     self.update_stage(pipeline.id, "build", StageStatus.FAILED, error=str(e))
-                    raise
+                    logger.warning(f"⚠ Docker build failed: {e} — continuing with filesystem scans")
             else:
-                image_name = image_name or "python:3.11-slim"
                 self.update_stage(pipeline.id, "build", StageStatus.SKIPPED, 
-                                "No Dockerfile found, using base image for scan")
+                                "No Dockerfile found — Trivy will scan filesystem instead")
             
-            # Stage 3: Bandit Security Scan
-            self.update_stage(pipeline.id, "bandit_scan", StageStatus.RUNNING)
-            bandit_report_path = os.path.join(self.reports_dir, "bandit-report.json")
+            # Stage 3: Multi-Language SAST Scan
+            self.update_stage(pipeline.id, "sast_scan", StageStatus.RUNNING)
             try:
-                result = subprocess.run(
-                    ["bandit", "-r", work_dir, "-f", "json", "-o", bandit_report_path, 
-                     "--exclude", ".git,node_modules,venv,__pycache__"],
-                    capture_output=True, text=True, timeout=180
-                )
-                # Bandit returns 1 if issues found, which is okay
-                if result.returncode not in [0, 1]:
-                    raise Exception(result.stderr)
-                self.update_stage(pipeline.id, "bandit_scan", StageStatus.SUCCESS,
-                                "Bandit scan completed")
-            except FileNotFoundError:
-                self.update_stage(pipeline.id, "bandit_scan", StageStatus.FAILED, 
-                                error="Bandit not installed")
-                raise Exception("Bandit not installed")
+                sast_report = run_sast_scan(work_dir, self.reports_dir)
+                tools_used = [t for t, info in sast_report.get('tools_used', {}).items() if info.get('success')]
+                langs = list(sast_report.get('languages_detected', {}).keys())
+                total_issues = sast_report.get('metrics', {}).get('totals', {}).get('total', 0)
+                self.update_stage(pipeline.id, "sast_scan", StageStatus.SUCCESS,
+                                f"SAST scan completed: {total_issues} issues found across {len(langs)} language(s) using {', '.join(tools_used) or 'no tools'}")
             except Exception as e:
-                self.update_stage(pipeline.id, "bandit_scan", StageStatus.FAILED, error=str(e))
+                self.update_stage(pipeline.id, "sast_scan", StageStatus.FAILED, error=str(e))
                 raise
             
-            # Stage 4: Trivy Container Scan
+            # Define report paths for later stages
+            bandit_report_path = os.path.join(self.reports_dir, "bandit-report.json")
+            
+            # Stage 4: Gitleaks Secret Detection
+            self.update_stage(pipeline.id, "gitleaks_scan", StageStatus.RUNNING)
+            try:
+                gitleaks_report = run_secrets_scan(work_dir, self.reports_dir)
+                secrets_count = gitleaks_report.get('total_secrets', 0)
+                tool_used = gitleaks_report.get('tool', 'unknown')
+                self.update_stage(pipeline.id, "gitleaks_scan", StageStatus.SUCCESS,
+                                f"Secret scan ({tool_used}): {secrets_count} secret(s) found")
+            except Exception as e:
+                self.update_stage(pipeline.id, "gitleaks_scan", StageStatus.FAILED, error=str(e))
+                # Don't fail pipeline for gitleaks errors
+                logger.warning(f"Gitleaks scan failed: {e}")
+                gitleaks_report = {}
+            
+            # Stage 5: Trivy Container Scan
             self.update_stage(pipeline.id, "trivy_scan", StageStatus.RUNNING)
             trivy_report_path = os.path.join(self.reports_dir, "trivy-report.json")
-            scan_target = image_name or f"sentinelops-scan-{pipeline.id}"
             
             try:
+                if built_image_name:
+                    # Scan the built Docker image
+                    scan_target = built_image_name
+                    trivy_cmd = ["trivy", "image", "--format", "json", "--output", trivy_report_path, scan_target]
+                    scan_mode_msg = f"image scan for {scan_target}"
+                else:
+                    # No Docker image — scan filesystem for dependency vulnerabilities
+                    scan_target = work_dir
+                    trivy_cmd = ["trivy", "fs", "--format", "json", "--output", trivy_report_path, scan_target]
+                    scan_mode_msg = f"filesystem scan on {os.path.basename(work_dir)}"
+                
                 result = subprocess.run(
-                    ["trivy", "image", "--format", "json", "--output", trivy_report_path, scan_target],
+                    trivy_cmd,
                     capture_output=True, text=True, timeout=300
                 )
                 if result.returncode != 0 and "No such image" not in result.stderr:
                     raise Exception(result.stderr)
                 self.update_stage(pipeline.id, "trivy_scan", StageStatus.SUCCESS,
-                                f"Trivy scan completed for {scan_target}")
+                                f"Trivy {scan_mode_msg} completed")
             except FileNotFoundError:
                 self.update_stage(pipeline.id, "trivy_scan", StageStatus.FAILED,
                                 error="Trivy not installed")
@@ -303,10 +339,40 @@ class PipelineExecutor:
                 self.update_stage(pipeline.id, "trivy_scan", StageStatus.FAILED, error=str(e))
                 raise
             
-            # Stage 5: Policy Evaluation
+            # Stage 6: DAST Scan (only if Docker image was built)
+            if built_image_name:
+                self.update_stage(pipeline.id, "dast_scan", StageStatus.RUNNING)
+                try:
+                    dockerfile_path = os.path.join(work_dir, "Dockerfile")
+                    dast_report = run_dast_scan(
+                        target_url=None,
+                        reports_dir=self.reports_dir,
+                        scan_type="baseline",
+                        image_name=built_image_name,
+                        dockerfile_path=dockerfile_path if os.path.exists(dockerfile_path) else None,
+                    )
+                    dast_alerts = dast_report.get('total_alerts', 0)
+                    self.update_stage(pipeline.id, "dast_scan", StageStatus.SUCCESS,
+                                    f"DAST scan completed: {dast_alerts} alert(s) found")
+                except Exception as e:
+                    self.update_stage(pipeline.id, "dast_scan", StageStatus.FAILED, error=str(e))
+                    logger.warning(f"DAST scan failed: {e}")
+                    dast_report = {}
+            else:
+                self.update_stage(pipeline.id, "dast_scan", StageStatus.SKIPPED,
+                                "No Docker image — DAST scan requires a running application")
+                dast_report = {}
+            
+            # Stage 7: Policy Evaluation
             self.update_stage(pipeline.id, "policy_check", StageStatus.RUNNING)
             try:
-                vuln_summary = self._analyze_vulnerabilities(bandit_report_path, trivy_report_path)
+                gitleaks_report_path = os.path.join(self.reports_dir, "gitleaks-report.json")
+                dast_report_path = os.path.join(self.reports_dir, "dast-report.json")
+                vuln_summary = self._analyze_vulnerabilities(
+                    bandit_report_path, trivy_report_path,
+                    gitleaks_path=gitleaks_report_path,
+                    dast_path=dast_report_path,
+                )
                 pipeline.vulnerability_summary = vuln_summary
                 pipeline.security_score = vuln_summary.get('security_score', 0)
                 self.update_stage(pipeline.id, "policy_check", StageStatus.SUCCESS,
@@ -315,7 +381,7 @@ class PipelineExecutor:
                 self.update_stage(pipeline.id, "policy_check", StageStatus.FAILED, error=str(e))
                 raise
             
-            # Stage 6: Deployment Decision
+            # Stage 8: Deployment Decision
             self.update_stage(pipeline.id, "decision", StageStatus.RUNNING)
             is_deployable = self._evaluate_deployment(pipeline.security_score, vuln_summary)
             pipeline.is_deployable = is_deployable
@@ -355,13 +421,15 @@ class PipelineExecutor:
         
         return pipeline
     
-    def _analyze_vulnerabilities(self, bandit_path: str, trivy_path: str) -> Dict[str, Any]:
+    def _analyze_vulnerabilities(self, bandit_path: str, trivy_path: str,
+                                   gitleaks_path: str = None, dast_path: str = None) -> Dict[str, Any]:
         """Analyze vulnerability reports and calculate security score.
         
-        Separates code vulnerabilities (Bandit SAST) from base image/dependency
-        vulnerabilities (Trivy) and applies different weights:
-        - Code vulns: full weight (these are bugs in YOUR code)
-        - Image vulns: reduced weight (~50%, these are OS/dependency CVEs)
+        Reads the unified SAST report (sast-report.json) when available,
+        falling back to bandit-report.json for backward compatibility.
+        Also integrates Gitleaks (secrets) and DAST (ZAP) results.
+        Separates code vulnerabilities (SAST) from base image/dependency
+        vulnerabilities (Trivy) and applies different weights.
         """
         summary = {
             'critical': 0,
@@ -369,10 +437,15 @@ class PipelineExecutor:
             'medium': 0,
             'low': 0,
             'total': 0,
-            'bandit_issues': 0,
+            'sast_issues': 0,
+            'bandit_issues': 0,  # backward compat alias
             'trivy_vulns': 0,
+            'secrets_found': 0,
+            'dast_alerts': 0,
             'security_score': 100,
-            # Separate counts for weighted scoring
+            'sast_high': 0,
+            'sast_medium': 0,
+            'sast_low': 0,
             'bandit_high': 0,
             'bandit_medium': 0,
             'bandit_low': 0,
@@ -380,28 +453,60 @@ class PipelineExecutor:
             'trivy_high': 0,
             'trivy_medium': 0,
             'trivy_low': 0,
+            'secrets_critical': 0,
+            'secrets_high': 0,
+            'secrets_medium': 0,
+            'dast_high': 0,
+            'dast_medium': 0,
+            'dast_low': 0,
+            'languages_detected': [],
+            'tools_used': [],
         }
         
-        # Analyze Bandit report (code vulnerabilities)
+        # Try unified SAST report first, then fall back to Bandit-only
+        sast_report_path = os.path.join(os.path.dirname(bandit_path), 'sast-report.json')
         try:
-            with open(bandit_path, 'r') as f:
-                bandit_data = json.load(f)
-                results = bandit_data.get('results', [])
-                summary['bandit_issues'] = len(results)
-                
-                for issue in results:
-                    severity = issue.get('issue_severity', '').upper()
-                    if severity == 'HIGH':
-                        summary['high'] += 1
-                        summary['bandit_high'] += 1
-                    elif severity == 'MEDIUM':
-                        summary['medium'] += 1
-                        summary['bandit_medium'] += 1
-                    elif severity == 'LOW':
-                        summary['low'] += 1
-                        summary['bandit_low'] += 1
+            if os.path.exists(sast_report_path):
+                with open(sast_report_path, 'r') as f:
+                    sast_data = json.load(f)
+                metrics = sast_data.get('metrics', {}).get('totals', {})
+                summary['sast_issues'] = metrics.get('total', 0)
+                summary['sast_high'] = metrics.get('high', 0)
+                summary['sast_medium'] = metrics.get('medium', 0)
+                summary['sast_low'] = metrics.get('low', 0)
+                # Backward compat
+                summary['bandit_issues'] = summary['sast_issues']
+                summary['bandit_high'] = summary['sast_high']
+                summary['bandit_medium'] = summary['sast_medium']
+                summary['bandit_low'] = summary['sast_low']
+                summary['high'] += summary['sast_high']
+                summary['medium'] += summary['sast_medium']
+                summary['low'] += summary['sast_low']
+                summary['languages_detected'] = list(sast_data.get('languages_detected', {}).keys())
+                summary['tools_used'] = [t for t, info in sast_data.get('tools_used', {}).items() if info.get('success')]
+            else:
+                # Fallback: read bandit report directly
+                with open(bandit_path, 'r') as f:
+                    bandit_data = json.load(f)
+                    results = bandit_data.get('results', [])
+                    summary['sast_issues'] = len(results)
+                    summary['bandit_issues'] = len(results)
+                    for issue in results:
+                        severity = issue.get('issue_severity', '').upper()
+                        if severity == 'HIGH':
+                            summary['high'] += 1
+                            summary['sast_high'] += 1
+                            summary['bandit_high'] += 1
+                        elif severity == 'MEDIUM':
+                            summary['medium'] += 1
+                            summary['sast_medium'] += 1
+                            summary['bandit_medium'] += 1
+                        elif severity == 'LOW':
+                            summary['low'] += 1
+                            summary['sast_low'] += 1
+                            summary['bandit_low'] += 1
         except Exception as e:
-            print(f"Error reading Bandit report: {e}")
+            print(f"Error reading SAST/Bandit report: {e}")
         
         # Analyze Trivy report (image/dependency vulnerabilities)
         try:
@@ -430,28 +535,78 @@ class PipelineExecutor:
         except Exception as e:
             print(f"Error reading Trivy report: {e}")
         
+        # Analyze Gitleaks report (secrets)
+        if gitleaks_path:
+            try:
+                if os.path.exists(gitleaks_path):
+                    with open(gitleaks_path, 'r') as f:
+                        gitleaks_data = json.load(f)
+                    secrets = gitleaks_data.get('results', [])
+                    summary['secrets_found'] = len(secrets)
+                    for secret in secrets:
+                        sev = secret.get('severity', 'MEDIUM').upper()
+                        if sev == 'CRITICAL':
+                            summary['secrets_critical'] += 1
+                            summary['critical'] += 1
+                        elif sev == 'HIGH':
+                            summary['secrets_high'] += 1
+                            summary['high'] += 1
+                        else:
+                            summary['secrets_medium'] += 1
+                            summary['medium'] += 1
+            except Exception as e:
+                print(f"Error reading Gitleaks report: {e}")
+        
+        # Analyze DAST report (ZAP)
+        if dast_path:
+            try:
+                if os.path.exists(dast_path):
+                    with open(dast_path, 'r') as f:
+                        dast_data = json.load(f)
+                    dast_alerts = dast_data.get('results', [])
+                    summary['dast_alerts'] = len(dast_alerts)
+                    for alert in dast_alerts:
+                        risk = alert.get('risk', 'LOW').upper()
+                        if risk == 'HIGH':
+                            summary['dast_high'] += 1
+                            summary['high'] += 1
+                        elif risk == 'MEDIUM':
+                            summary['dast_medium'] += 1
+                            summary['medium'] += 1
+                        elif risk == 'LOW':
+                            summary['dast_low'] += 1
+                            summary['low'] += 1
+            except Exception as e:
+                print(f"Error reading DAST report: {e}")
+        
         summary['total'] = summary['critical'] + summary['high'] + summary['medium'] + summary['low']
         
         # Calculate security score with SEPARATED weights for code vs image vulns
-        #
-        # Code vulnerabilities (Bandit SAST) — full weight, these are YOUR code bugs
-        # Max code penalty: 25 + 10 + 5 = 40
-        code_high_impact = min(25, summary['bandit_high'] * 8)
-        code_medium_impact = min(10, summary['bandit_medium'] * 3)
-        code_low_impact = min(5, summary['bandit_low'] * 1)
+        # Code vulnerabilities (SAST) — full weight
+        code_high_impact = min(25, summary['sast_high'] * 8)
+        code_medium_impact = min(10, summary['sast_medium'] * 3)
+        code_low_impact = min(5, summary['sast_low'] * 1)
         
         # Image/dependency vulnerabilities (Trivy) — reduced weight (~50%)
-        # These are OS-level or dependency CVEs, not directly in your code
-        # Max image penalty: 25 + 15 + 8 + 2 = 50
         image_critical_impact = min(25, summary['trivy_critical'] * 10)
         image_high_impact = min(15, summary['trivy_high'] * 3)
         image_medium_impact = min(8, summary['trivy_medium'] * 1)
         image_low_impact = min(2, int(summary['trivy_low'] * 0.5))
         
-        # Total max penalty: 40 (code) + 50 (image) = 90
-        # Minimum possible score: 10 (even in worst case)
+        # Secrets (Gitleaks) — critical weight (secrets are severe)
+        secrets_critical_impact = min(30, summary['secrets_critical'] * 12)
+        secrets_high_impact = min(20, summary['secrets_high'] * 8)
+        secrets_medium_impact = min(10, summary['secrets_medium'] * 4)
+        
+        # DAST findings — moderate weight
+        dast_high_impact = min(20, summary['dast_high'] * 6)
+        dast_medium_impact = min(10, summary['dast_medium'] * 2)
+        dast_low_impact = min(3, summary['dast_low'] * 1)
+        
         total_penalty = (code_high_impact + code_medium_impact + code_low_impact +
-                         image_critical_impact + image_high_impact + image_medium_impact + image_low_impact)
+                         image_critical_impact + image_high_impact + image_medium_impact + image_low_impact +
+                         secrets_critical_impact + secrets_high_impact + secrets_medium_impact +
+                         dast_high_impact + dast_medium_impact + dast_low_impact)
         
         score = 100 - total_penalty
         summary['security_score'] = max(0, min(100, int(score)))
@@ -500,6 +655,16 @@ class PipelineExecutor:
         if policy.get("blockHigh", False):
             max_high = policy.get("maxHighVulns", 5)
             if summary.get('high', 0) > max_high:
+                return False
+        
+        # Block on secrets if policy says so (default: block)
+        if policy.get("blockOnSecrets", True):
+            if summary.get('secrets_found', 0) > 0:
+                return False
+        
+        # Block on DAST high findings if policy says so (default: don't block)
+        if policy.get("blockOnDastHigh", False):
+            if summary.get('dast_high', 0) > 0:
                 return False
         
         return True
@@ -729,71 +894,68 @@ def clone_repository(repo_url: str, branch: str, workspace_path: str) -> Tuple[b
         return False, f"Unexpected error during git clone: {str(e)}"
 
 
+def run_multi_sast_scan(
+    repo_path: str,
+    reports_dir: str = None,
+) -> Tuple[bool, str, Dict[str, Any]]:
+    """
+    Run multi-language SAST scan on the repository.
+    
+    Uses the sast_scanner module to auto-detect languages and run
+    appropriate SAST tools (Bandit, Semgrep, Gosec, Flawfinder, ShellCheck).
+    
+    Args:
+        repo_path: Path to the repository to scan
+        reports_dir: Directory to save reports (defaults to runtime/reports/)
+        
+    Returns:
+        Tuple of (success, message, scan_results)
+    """
+    if reports_dir is None:
+        reports_dir = str(REPORTS_DIR)
+    
+    logger.info(f"Running multi-language SAST scan on: {repo_path}")
+    logger.info(f"Reports will be saved to: {reports_dir}")
+    
+    try:
+        sast_report = run_sast_scan(repo_path, reports_dir)
+        
+        total_issues = sast_report.get('metrics', {}).get('totals', {}).get('total', 0)
+        langs = list(sast_report.get('languages_detected', {}).keys())
+        tools = [t for t, info in sast_report.get('tools_used', {}).items() if info.get('success')]
+        
+        msg = f"SAST scan completed: {total_issues} issues across {len(langs)} language(s) using {', '.join(tools) or 'no tools available'}"
+        logger.info(msg)
+        
+        return True, msg, sast_report
+        
+    except Exception as e:
+        return False, f"SAST scan failed: {str(e)}", {}
+
+
+# Backward compatibility alias
 def run_bandit_scan(
     repo_path: str,
     output_path: str = None
 ) -> Tuple[bool, str, Dict[str, Any]]:
     """
-    Run Bandit SAST scan on the repository.
-    
-    Args:
-        repo_path: Path to the repository to scan
-        output_path: Path to save the JSON report (defaults to runtime/reports/)
-        
-    Returns:
-        Tuple of (success, message, scan_results)
+    Backward-compatible wrapper: runs multi-language SAST scan
+    and returns results in bandit-compatible format.
     """
-    if output_path is None:
-        output_path = str(DEFAULT_BANDIT_REPORT)
+    reports_dir = os.path.dirname(output_path) if output_path else str(REPORTS_DIR)
+    success, message, sast_report = run_multi_sast_scan(repo_path, reports_dir)
     
-    logger.info(f"Running Bandit scan on: {repo_path}")
-    logger.info(f"Report will be saved to: {output_path}")
+    # Return the bandit-compatible report for backward compat
+    bandit_path = os.path.join(reports_dir, "bandit-report.json")
+    bandit_results = {}
+    if os.path.exists(bandit_path):
+        try:
+            with open(bandit_path, 'r') as f:
+                bandit_results = json.load(f)
+        except Exception:
+            pass
     
-    # Ensure output directory exists
-    os.makedirs(os.path.dirname(output_path), exist_ok=True)
-    
-    try:
-        # Run bandit with exclusions for common non-code directories
-        result = subprocess.run(
-            [
-                "bandit",
-                "-r", repo_path,
-                "-f", "json",
-                "-o", output_path,
-                "--exclude", ".git,node_modules,venv,__pycache__,.tox,dist,build,.eggs"
-            ],
-            capture_output=True,
-            text=True,
-            timeout=300
-        )
-        
-        # Bandit returns:
-        # 0 = no issues found
-        # 1 = issues found (still successful scan)
-        # Other = actual error
-        if result.returncode not in [0, 1]:
-            error_msg = result.stderr.strip() or "Unknown Bandit error"
-            return False, f"Bandit scan failed: {error_msg}", {}
-        
-        # Load and return results
-        scan_results = {}
-        if os.path.exists(output_path):
-            with open(output_path, 'r') as f:
-                scan_results = json.load(f)
-        
-        issue_count = len(scan_results.get('results', []))
-        logger.info(f"Bandit scan completed: {issue_count} issues found")
-        
-        return True, f"Bandit scan completed: {issue_count} issues found", scan_results
-        
-    except subprocess.TimeoutExpired:
-        return False, "Bandit scan timed out (>300s)", {}
-    except FileNotFoundError:
-        return False, "Bandit is not installed. Install with: pip install bandit", {}
-    except json.JSONDecodeError:
-        return False, "Failed to parse Bandit output", {}
-    except Exception as e:
-        return False, f"Unexpected error during Bandit scan: {str(e)}", {}
+    return success, message, bandit_results
 
 
 def run_trivy_scan(
@@ -865,19 +1027,20 @@ def run_trivy_scan(
 
 def analyze_scan_results(
     bandit_results: Dict[str, Any],
-    trivy_results: Dict[str, Any]
+    trivy_results: Dict[str, Any],
+    sast_report: Dict[str, Any] = None,
 ) -> Dict[str, Any]:
     """
     Analyze scan results and calculate security metrics.
     
-    Separates code vulnerabilities (Bandit) from image/dependency vulnerabilities
-    (Trivy) and applies different weights:
-    - Code vulns: full weight
-    - Image vulns: reduced weight (~50%)
+    Supports both the new unified SAST report and legacy Bandit-only results.
+    Separates code vulnerabilities (SAST) from image/dependency vulnerabilities
+    (Trivy) and applies different weights.
     
     Args:
-        bandit_results: Bandit scan results
+        bandit_results: Bandit/legacy scan results (backward compat)
         trivy_results: Trivy scan results
+        sast_report: Unified SAST report (preferred when available)
         
     Returns:
         Dictionary with vulnerability summary and security score
@@ -888,9 +1051,13 @@ def analyze_scan_results(
         'medium': 0,
         'low': 0,
         'total': 0,
+        'sast_issues': 0,
         'bandit_issues': 0,
         'trivy_vulns': 0,
         'security_score': 100,
+        'sast_high': 0,
+        'sast_medium': 0,
+        'sast_low': 0,
         'bandit_high': 0,
         'bandit_medium': 0,
         'bandit_low': 0,
@@ -898,23 +1065,45 @@ def analyze_scan_results(
         'trivy_high': 0,
         'trivy_medium': 0,
         'trivy_low': 0,
+        'languages_detected': [],
+        'tools_used': [],
     }
     
-    # Analyze Bandit results (code vulnerabilities)
-    if bandit_results:
+    # Prefer unified SAST report when available
+    if sast_report and sast_report.get('metrics'):
+        metrics = sast_report.get('metrics', {}).get('totals', {})
+        summary['sast_issues'] = metrics.get('total', 0)
+        summary['sast_high'] = metrics.get('high', 0)
+        summary['sast_medium'] = metrics.get('medium', 0)
+        summary['sast_low'] = metrics.get('low', 0)
+        summary['bandit_issues'] = summary['sast_issues']
+        summary['bandit_high'] = summary['sast_high']
+        summary['bandit_medium'] = summary['sast_medium']
+        summary['bandit_low'] = summary['sast_low']
+        summary['high'] += summary['sast_high']
+        summary['medium'] += summary['sast_medium']
+        summary['low'] += summary['sast_low']
+        summary['languages_detected'] = list(sast_report.get('languages_detected', {}).keys())
+        summary['tools_used'] = [t for t, info in sast_report.get('tools_used', {}).items() if info.get('success')]
+    elif bandit_results:
+        # Fallback to bandit-only results
         results = bandit_results.get('results', [])
         summary['bandit_issues'] = len(results)
+        summary['sast_issues'] = len(results)
         
         for issue in results:
             severity = issue.get('issue_severity', '').upper()
             if severity == 'HIGH':
                 summary['high'] += 1
+                summary['sast_high'] += 1
                 summary['bandit_high'] += 1
             elif severity == 'MEDIUM':
                 summary['medium'] += 1
+                summary['sast_medium'] += 1
                 summary['bandit_medium'] += 1
             elif severity == 'LOW':
                 summary['low'] += 1
+                summary['sast_low'] += 1
                 summary['bandit_low'] += 1
     
     # Analyze Trivy results (image/dependency vulnerabilities)
@@ -944,9 +1133,9 @@ def analyze_scan_results(
     )
     
     # Calculate security score with SEPARATED weights for code vs image vulns
-    code_high_impact = min(25, summary['bandit_high'] * 8)
-    code_medium_impact = min(10, summary['bandit_medium'] * 3)
-    code_low_impact = min(5, summary['bandit_low'] * 1)
+    code_high_impact = min(25, summary['sast_high'] * 8)
+    code_medium_impact = min(10, summary['sast_medium'] * 3)
+    code_low_impact = min(5, summary['sast_low'] * 1)
     
     image_critical_impact = min(25, summary['trivy_critical'] * 10)
     image_high_impact = min(15, summary['trivy_high'] * 3)
@@ -1022,10 +1211,32 @@ def clear_old_reports(clear_trivy: bool = True) -> None:
             DEFAULT_BANDIT_REPORT.unlink()
             logger.info("Cleared old Bandit report")
         
+        # Clear unified SAST report
+        if DEFAULT_SAST_REPORT.exists():
+            DEFAULT_SAST_REPORT.unlink()
+            logger.info("Cleared old SAST report")
+        
+        # Clear any tool-specific reports (semgrep, gosec, etc.)
+        for report_name in ["semgrep-report.json", "gosec-report.json", 
+                           "flawfinder-report.json", "shellcheck-report.json"]:
+            report_path = REPORTS_DIR / report_name
+            if report_path.exists():
+                report_path.unlink()
+        
         # Clear Trivy report if requested
         if clear_trivy and DEFAULT_TRIVY_REPORT.exists():
             DEFAULT_TRIVY_REPORT.unlink()
             logger.info("Cleared old Trivy report")
+        
+        # Clear Gitleaks report
+        if DEFAULT_GITLEAKS_REPORT.exists():
+            DEFAULT_GITLEAKS_REPORT.unlink()
+            logger.info("Cleared old Gitleaks report")
+        
+        # Clear DAST report
+        if DEFAULT_DAST_REPORT.exists():
+            DEFAULT_DAST_REPORT.unlink()
+            logger.info("Cleared old DAST report")
         
         # Clear decision report
         if DEFAULT_DECISION_REPORT.exists():
@@ -1142,28 +1353,65 @@ def run_pipeline(
         logger.info(f"✓ {message}")
         
         # =================================================================
-        # STEP 4: Run Bandit SAST scan
+        # STEP 4: Run Multi-Language SAST scan
         # =================================================================
-        result.stages['bandit'] = {
-            'name': 'Bandit Security Scan',
+        result.stages['sast'] = {
+            'name': 'Multi-Language SAST Scan',
             'status': 'running',
             'started_at': datetime.now().isoformat()
         }
         
-        bandit_output = str(DEFAULT_BANDIT_REPORT)
-        success, message, bandit_results = run_bandit_scan(workspace_path, bandit_output)
+        reports_dir = str(REPORTS_DIR)
+        success, message, sast_report = run_multi_sast_scan(workspace_path, reports_dir)
         
         if not success:
-            result.stages['bandit']['status'] = 'failed'
-            result.stages['bandit']['error'] = message
-            raise PipelineError(message, stage='bandit')
+            result.stages['sast']['status'] = 'failed'
+            result.stages['sast']['error'] = message
+            raise PipelineError(message, stage='sast')
         
-        result.stages['bandit']['status'] = 'success'
-        result.stages['bandit']['message'] = message
-        result.stages['bandit']['issues_found'] = len(bandit_results.get('results', []))
-        result.stages['bandit']['finished_at'] = datetime.now().isoformat()
-        result.bandit_report_path = bandit_output
+        sast_metrics = sast_report.get('metrics', {}).get('totals', {})
+        result.stages['sast']['status'] = 'success'
+        result.stages['sast']['message'] = message
+        result.stages['sast']['issues_found'] = sast_metrics.get('total', 0)
+        result.stages['sast']['languages'] = list(sast_report.get('languages_detected', {}).keys())
+        result.stages['sast']['tools'] = [t for t, info in sast_report.get('tools_used', {}).items() if info.get('success')]
+        result.stages['sast']['finished_at'] = datetime.now().isoformat()
+        result.bandit_report_path = str(REPORTS_DIR / "sast-report.json")
+        # Also keep backward compat bandit results reference
+        bandit_results = {}
+        bandit_path = str(DEFAULT_BANDIT_REPORT)
+        if os.path.exists(bandit_path):
+            try:
+                with open(bandit_path, 'r') as f:
+                    bandit_results = json.load(f)
+            except Exception:
+                pass
         logger.info(f"✓ {message}")
+        
+        # =================================================================
+        # STEP 4.5: Run Gitleaks secret detection
+        # =================================================================
+        result.stages['gitleaks'] = {
+            'name': 'Secret Detection (Gitleaks)',
+            'status': 'running',
+            'started_at': datetime.now().isoformat()
+        }
+        
+        try:
+            gitleaks_report = run_secrets_scan(workspace_path, str(REPORTS_DIR))
+            secrets_count = gitleaks_report.get('total_secrets', 0)
+            tool_used = gitleaks_report.get('tool', 'unknown')
+            result.stages['gitleaks']['status'] = 'success'
+            result.stages['gitleaks']['message'] = f"Secret scan ({tool_used}): {secrets_count} secret(s) found"
+            result.stages['gitleaks']['secrets_found'] = secrets_count
+            result.stages['gitleaks']['finished_at'] = datetime.now().isoformat()
+            logger.info(f"✓ Gitleaks: {secrets_count} secret(s) found")
+        except Exception as e:
+            result.stages['gitleaks']['status'] = 'failed'
+            result.stages['gitleaks']['error'] = str(e)
+            result.stages['gitleaks']['finished_at'] = datetime.now().isoformat()
+            logger.warning(f"⚠ Gitleaks scan failed: {e}")
+            gitleaks_report = {}
         
         # =================================================================
         # STEP 5: Run Trivy scan (optional)
@@ -1203,6 +1451,44 @@ def run_pipeline(
             }
         
         # =================================================================
+        # STEP 5.5: Run DAST scan (if we have a container image)
+        # =================================================================
+        dast_report = {}
+        if run_trivy and trivy_target and not os.path.isdir(trivy_target or ''):
+            # trivy_target is a Docker image — we can run DAST against it
+            result.stages['dast'] = {
+                'name': 'DAST Security Scan (ZAP)',
+                'status': 'running',
+                'started_at': datetime.now().isoformat()
+            }
+            try:
+                dockerfile_path = os.path.join(workspace_path, 'Dockerfile') if workspace_path else None
+                dast_report = run_dast_scan(
+                    target_url=None,
+                    reports_dir=str(REPORTS_DIR),
+                    scan_type='baseline',
+                    image_name=trivy_target,
+                    dockerfile_path=dockerfile_path if dockerfile_path and os.path.exists(dockerfile_path) else None,
+                )
+                dast_alerts = dast_report.get('total_alerts', 0)
+                result.stages['dast']['status'] = 'success'
+                result.stages['dast']['message'] = f"DAST scan completed: {dast_alerts} alert(s) found"
+                result.stages['dast']['alerts_found'] = dast_alerts
+                result.stages['dast']['finished_at'] = datetime.now().isoformat()
+                logger.info(f"✓ DAST: {dast_alerts} alert(s) found")
+            except Exception as e:
+                result.stages['dast']['status'] = 'failed'
+                result.stages['dast']['error'] = str(e)
+                result.stages['dast']['finished_at'] = datetime.now().isoformat()
+                logger.warning(f"⚠ DAST scan failed: {e}")
+        else:
+            result.stages['dast'] = {
+                'name': 'DAST Security Scan (ZAP)',
+                'status': 'skipped',
+                'message': 'No Docker image target — DAST scan requires a running application'
+            }
+        
+        # =================================================================
         # STEP 6: Analyze results
         # =================================================================
         result.stages['analysis'] = {
@@ -1211,7 +1497,7 @@ def run_pipeline(
             'started_at': datetime.now().isoformat()
         }
         
-        vuln_summary = analyze_scan_results(bandit_results, trivy_results)
+        vuln_summary = analyze_scan_results(bandit_results, trivy_results, sast_report=sast_report)
         result.vulnerability_summary = vuln_summary
         result.security_score = vuln_summary['security_score']
         

@@ -12,6 +12,7 @@ import {
   LogOut,
   User,
   GitBranch,
+  Code2,
 } from 'lucide-react'
 import { cn } from '../utils/helpers'
 import { useAuth } from '../context/AuthContext'
@@ -20,7 +21,7 @@ import NotificationDropdown from './NotificationDropdown'
 const navigation = [
   { name: 'Dashboard', href: '/dashboard', icon: LayoutDashboard },
   { name: 'Pipeline', href: '/dashboard/pipeline', icon: GitBranch },
-  { name: 'Bandit Analysis', href: '/dashboard/bandit', icon: Bug },
+  { name: 'Code Analysis', href: '/dashboard/sast', icon: Code2 },
   { name: 'Trivy Scan', href: '/dashboard/trivy', icon: Container },
   { name: 'Settings', href: '/dashboard/settings', icon: Settings },
 ]
@@ -35,40 +36,41 @@ export default function Layout() {
     const path = location.pathname
     if (path === '/dashboard') return 'Dashboard'
     if (path.includes('/pipeline')) return 'Pipeline'
-    if (path.includes('/bandit')) return 'Bandit Analysis'
+    if (path.includes('/sast')) return 'Code Analysis'
+    if (path.includes('/bandit')) return 'Code Analysis'
     if (path.includes('/trivy')) return 'Trivy Scan'
     if (path.includes('/settings')) return 'Settings'
     return 'Dashboard'
   }
 
   return (
-    <div className="min-h-screen bg-slate-50">
+    <div className="min-h-screen bg-[#0B0E11] grid-bg">
       {/* Mobile sidebar backdrop */}
       {sidebarOpen && (
         <div
-          className="fixed inset-0 z-40 bg-slate-900/50 backdrop-blur-sm lg:hidden"
+          className="fixed inset-0 z-40 bg-black/60 backdrop-blur-sm lg:hidden"
           onClick={() => setSidebarOpen(false)}
         />
       )}
 
-      {/* Sidebar */}
+      {/* Sidebar — Glassmorphism */}
       <aside
         className={cn(
-          'fixed top-0 left-0 z-50 h-full w-72 bg-white border-r border-slate-200 transition-transform duration-300 lg:translate-x-0',
+          'fixed top-0 left-0 z-50 h-full w-72 bg-[#161b22]/80 backdrop-blur-2xl border-r border-white/[0.06] transition-transform duration-300 lg:translate-x-0',
           sidebarOpen ? 'translate-x-0' : '-translate-x-full'
         )}
       >
         {/* Logo */}
-        <div className="flex items-center gap-3 px-6 py-6 border-b border-slate-100">
-          <div className="flex items-center justify-center w-10 h-10 rounded-xl bg-gradient-to-br from-primary-600 to-primary-500 shadow-lg shadow-primary-500/20">
+        <div className="flex items-center gap-3 px-6 py-6 border-b border-white/[0.06]">
+          <div className="flex items-center justify-center w-10 h-10 rounded-xl bg-gradient-to-br from-violet-600 to-violet-400 shadow-glow-sm">
             <Shield className="w-6 h-6 text-white" />
           </div>
           <div>
-            <h1 className="text-xl font-bold text-slate-800">SentinelOps</h1>
-            <p className="text-xs text-slate-500">Security Dashboard</p>
+            <h1 className="text-xl font-bold text-white tracking-tight">SentinelOps</h1>
+            <p className="text-xs text-steel-400 font-mono">COMMAND CENTER</p>
           </div>
           <button
-            className="ml-auto lg:hidden text-slate-400 hover:text-slate-600"
+            className="ml-auto lg:hidden text-steel-400 hover:text-white"
             onClick={() => setSidebarOpen(false)}
           >
             <X className="w-6 h-6" />
@@ -76,9 +78,9 @@ export default function Layout() {
         </div>
 
         {/* Navigation */}
-        <nav className="p-4 space-y-2">
-          <p className="px-4 py-2 text-xs font-semibold text-slate-400 uppercase tracking-wider">
-            Main Menu
+        <nav className="p-4 space-y-1">
+          <p className="px-4 py-2 text-[10px] font-semibold text-steel-500 uppercase tracking-[0.2em] font-mono">
+            Operations
           </p>
           {navigation.map((item) => (
             <NavLink
@@ -95,14 +97,14 @@ export default function Layout() {
           ))}
         </nav>
 
-        {/* Security Status Card */}
+        {/* System Status Card */}
         <div className="absolute bottom-6 left-4 right-4">
-          <div className="glass-card p-4 bg-gradient-to-br from-slate-50 to-slate-100 border border-slate-200">
+          <div className="glass-card p-4 card-glow">
             <div className="flex items-center gap-3 mb-3">
-              <div className="w-2 h-2 rounded-full bg-green-500 animate-pulse" />
-              <span className="text-sm font-medium text-slate-700">System Active</span>
+              <div className="w-2 h-2 rounded-full bg-lime-400 animate-pulse shadow-glow-lime" />
+              <span className="text-sm font-medium text-steel-200">System Active</span>
             </div>
-            <p className="text-xs text-slate-500 mb-3">
+            <p className="text-xs text-steel-400 mb-3 font-mono">
               Last scan: Today at 10:30 AM
             </p>
             <button className="btn-primary w-full text-sm">
@@ -114,12 +116,12 @@ export default function Layout() {
 
       {/* Main Content */}
       <div className="lg:pl-72">
-        {/* Top Header */}
-        <header className="sticky top-0 z-30 bg-white/80 backdrop-blur-xl border-b border-slate-200">
+        {/* Top Header — Frosted glass */}
+        <header className="sticky top-0 z-30 bg-[#0B0E11]/70 backdrop-blur-2xl border-b border-white/[0.06]">
           <div className="flex items-center justify-between px-6 py-4">
             <div className="flex items-center gap-4">
               <button
-                className="lg:hidden text-slate-500 hover:text-slate-700"
+                className="lg:hidden text-steel-400 hover:text-white"
                 onClick={() => setSidebarOpen(true)}
               >
                 <Menu className="w-6 h-6" />
@@ -127,9 +129,9 @@ export default function Layout() {
 
               {/* Breadcrumb */}
               <div className="flex items-center text-sm">
-                <span className="text-slate-500">Home</span>
-                <ChevronRight className="w-4 h-4 mx-2 text-slate-400" />
-                <span className="text-slate-800 font-medium">{getBreadcrumb()}</span>
+                <span className="text-steel-500">Home</span>
+                <ChevronRight className="w-4 h-4 mx-2 text-steel-600" />
+                <span className="text-steel-200 font-medium">{getBreadcrumb()}</span>
               </div>
             </div>
 
@@ -138,19 +140,19 @@ export default function Layout() {
               <NotificationDropdown />
 
               {/* Profile */}
-              <div className="relative flex items-center gap-3 pl-4 border-l border-slate-200">
+              <div className="relative flex items-center gap-3 pl-4 border-l border-white/[0.06]">
                 <button
                   onClick={() => setShowUserMenu(!showUserMenu)}
                   className="flex items-center gap-3 hover:opacity-80 transition-opacity"
                 >
-                  <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-primary-500 to-primary-600 flex items-center justify-center text-white shadow-md shadow-primary-500/10">
+                  <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-violet-500 to-violet-600 flex items-center justify-center text-white shadow-glow-sm">
                     <span className="text-sm font-semibold">
                       {user?.username?.charAt(0).toUpperCase() || 'U'}
                     </span>
                   </div>
                   <div className="hidden sm:block text-left">
-                    <p className="text-sm font-medium text-slate-700">{user?.username || 'User'}</p>
-                    <p className="text-xs text-slate-500">{user?.email || ''}</p>
+                    <p className="text-sm font-medium text-steel-200">{user?.username || 'User'}</p>
+                    <p className="text-xs text-steel-500">{user?.email || ''}</p>
                   </div>
                 </button>
 
@@ -161,12 +163,12 @@ export default function Layout() {
                       className="fixed inset-0 z-40"
                       onClick={() => setShowUserMenu(false)}
                     />
-                    <div className="absolute right-0 top-full mt-2 w-56 bg-white border border-slate-200 rounded-xl shadow-xl z-50 overflow-hidden">
-                      <div className="p-4 border-b border-slate-100">
-                        <p className="text-slate-800 font-medium">{user?.username}</p>
-                        <p className="text-slate-500 text-sm">{user?.email}</p>
+                    <div className="absolute right-0 top-full mt-2 w-56 bg-[#161b22]/95 backdrop-blur-2xl border border-white/[0.08] rounded-xl shadow-2xl z-50 overflow-hidden">
+                      <div className="p-4 border-b border-white/[0.06]">
+                        <p className="text-steel-100 font-medium">{user?.username}</p>
+                        <p className="text-steel-500 text-sm">{user?.email}</p>
                         {isAdmin() && (
-                          <span className="inline-block mt-2 px-2 py-1 text-xs bg-primary-50 text-primary-600 rounded-lg font-medium">
+                          <span className="inline-block mt-2 px-2 py-1 text-xs bg-violet-500/10 text-violet-400 rounded-lg font-medium border border-violet-500/20">
                             Admin
                           </span>
                         )}
@@ -175,7 +177,7 @@ export default function Layout() {
                         <NavLink
                           to="/dashboard/settings"
                           onClick={() => setShowUserMenu(false)}
-                          className="flex items-center gap-3 px-3 py-2 text-slate-600 hover:text-primary-600 hover:bg-primary-50 rounded-lg transition-colors"
+                          className="flex items-center gap-3 px-3 py-2 text-steel-300 hover:text-violet-400 hover:bg-violet-500/10 rounded-lg transition-colors"
                         >
                           <User className="w-4 h-4" />
                           Profile Settings
@@ -185,7 +187,7 @@ export default function Layout() {
                             setShowUserMenu(false)
                             logout()
                           }}
-                          className="flex items-center gap-3 w-full px-3 py-2 text-red-500 hover:bg-red-50 rounded-lg transition-colors"
+                          className="flex items-center gap-3 w-full px-3 py-2 text-neon-red hover:bg-red-500/10 rounded-lg transition-colors"
                         >
                           <LogOut className="w-4 h-4" />
                           Sign Out

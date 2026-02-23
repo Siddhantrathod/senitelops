@@ -12,7 +12,7 @@ export default function LoadingSpinner({ size = 'md', className }) {
     <div className={cn('flex items-center justify-center', className)}>
       <div
         className={cn(
-          'animate-spin rounded-full border-2 border-dark-700 border-t-primary-500',
+          'animate-spin rounded-full border-2 border-white/10 border-t-violet-500',
           sizes[size]
         )}
       />
@@ -24,7 +24,7 @@ export function PageLoader() {
   return (
     <div className="flex flex-col items-center justify-center min-h-[400px] gap-4">
       <LoadingSpinner size="lg" />
-      <p className="text-dark-400 text-sm animate-pulse">Loading security data...</p>
+      <p className="text-steel-400 text-sm animate-pulse font-mono">Initializing security modules...</p>
     </div>
   )
 }
@@ -32,9 +32,9 @@ export function PageLoader() {
 export function CardLoader() {
   return (
     <div className="glass-card p-6 animate-pulse">
-      <div className="h-4 bg-dark-700 rounded w-1/3 mb-4" />
-      <div className="h-8 bg-dark-700 rounded w-1/2 mb-2" />
-      <div className="h-3 bg-dark-700 rounded w-1/4" />
+      <div className="h-4 bg-white/[0.06] rounded w-1/3 mb-4" />
+      <div className="h-8 bg-white/[0.06] rounded w-1/2 mb-2" />
+      <div className="h-3 bg-white/[0.06] rounded w-1/4" />
     </div>
   )
 }

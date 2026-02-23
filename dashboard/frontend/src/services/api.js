@@ -31,9 +31,9 @@ api.interceptors.response.use(
     // Only redirect on 401, not 422 (which might be a transient issue)
     if (error.response?.status === 401) {
       const currentPath = window.location.pathname
-      if (currentPath !== '/login') {
+      if (currentPath !== '/login' && currentPath !== '/') {
         localStorage.removeItem('token')
-        window.location.href = '/login'
+        window.location.href = '/'
       }
     }
     return Promise.reject(error)
@@ -50,6 +50,26 @@ export const fetchBanditReport = async () => {
   }
 }
 
+export const fetchSASTReport = async () => {
+  try {
+    const response = await api.get('/sast')
+    return response.data
+  } catch (error) {
+    console.error('Error fetching SAST report:', error)
+    throw error
+  }
+}
+
+export const fetchSASTLanguages = async () => {
+  try {
+    const response = await api.get('/sast/languages')
+    return response.data
+  } catch (error) {
+    console.error('Error fetching SAST languages:', error)
+    throw error
+  }
+}
+
 export const fetchTrivyReport = async () => {
   try {
     const response = await api.get('/trivy')
@@ -62,16 +82,18 @@ export const fetchTrivyReport = async () => {
 
 export const fetchSecuritySummary = async () => {
   try {
-    // Fetch both reports, but handle failures gracefully
-    const [banditResult, trivyResult] = await Promise.allSettled([
+    // Fetch SAST, bandit (fallback), and trivy reports
+    const [sastResult, banditResult, trivyResult] = await Promise.allSettled([
+      fetchSASTReport(),
       fetchBanditReport(),
       fetchTrivyReport(),
     ])
 
+    const sast = sastResult.status === 'fulfilled' ? sastResult.value : null
     const bandit = banditResult.status === 'fulfilled' ? banditResult.value : null
     const trivy = trivyResult.status === 'fulfilled' ? trivyResult.value : null
 
-    return { bandit, trivy }
+    return { sast, bandit, trivy }
   } catch (error) {
     console.error('Error fetching security summary:', error)
     throw error
@@ -160,6 +182,30 @@ export const triggerLocalScan = async (options) => {
     return response.data
   } catch (error) {
     console.error('Error triggering local scan:', error)
+    throw error
+  }
+}
+
+// Gitleaks API endpoints
+export const fetchGitleaksReport = async () => {
+  try {
+    const response = await api.get('/gitleaks')
+    return response.data
+  } catch (error) {
+    if (error.response?.status === 404) return null
+    console.error('Error fetching Gitleaks report:', error)
+    throw error
+  }
+}
+
+// DAST API endpoints
+export const fetchDastReport = async () => {
+  try {
+    const response = await api.get('/dast')
+    return response.data
+  } catch (error) {
+    if (error.response?.status === 404) return null
+    console.error('Error fetching DAST report:', error)
     throw error
   }
 }

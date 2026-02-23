@@ -6,9 +6,9 @@ export default function SecurityScoreGauge({ score, size = 200 }) {
   const progress = (score / 100) * circumference
 
   const getColor = (score) => {
-    if (score >= 80) return CHART_COLORS.success
-    if (score >= 60) return CHART_COLORS.warning
-    return CHART_COLORS.danger
+    if (score >= 80) return '#00ff88'
+    if (score >= 60) return '#ffb800'
+    return '#ff3b5c'
   }
 
   const getGrade = (score) => {
@@ -42,7 +42,7 @@ export default function SecurityScoreGauge({ score, size = 200 }) {
         <path
           d={`M 10, ${size / 2} A ${radius}, ${radius} 0 0 1 ${size - 10}, ${size / 2}`}
           fill="none"
-          stroke="#334155"
+          stroke="rgba(255,255,255,0.06)"
           strokeWidth="12"
           strokeLinecap="round"
         />

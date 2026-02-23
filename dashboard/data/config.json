@@ -1,6 +1,6 @@
 {
-  "github_repo_url": "https://github.com/Siddhantrathod/sentinelops-secure-app",
-  "github_branch": "main",
+  "github_repo_url": "https://github.com/juice-shop/juice-shop",
+  "github_branch": "master",
   "auto_scan_enabled": true,
   "scan_on_push": true,
   "target_image": "",
@@ -9,6 +9,6 @@
   "repo_configured": true,
   "policy_configured": false,
   "initial_scan_completed": true,
-  "updated_at": "2026-02-10T00:48:15.301439",
+  "updated_at": "2026-02-19T23:28:15.008329",
   "updated_by": "admin"
 }

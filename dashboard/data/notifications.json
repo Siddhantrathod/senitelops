@@ -1,5 +1,258 @@
 [
   {
+    "id": "cc8ecc66",
+    "type": "warning",
+    "title": "Pipeline Failed",
+    "message": "Security scan failed to complete",
+    "metadata": {
+      "pipeline_id": "f3e0d08d"
+    },
+    "time": "2026-02-23T23:37:15.249317",
+    "read": false
+  },
+  {
+    "id": "454afb13",
+    "type": "info",
+    "title": "Pipeline Triggered",
+    "message": "Security scan started for branch 'master' by admin",
+    "metadata": {
+      "pipeline_id": "f3e0d08d",
+      "branch": "master"
+    },
+    "time": "2026-02-19T23:47:34.588703",
+    "read": false
+  },
+  {
+    "id": "b5da59c9",
+    "type": "warning",
+    "title": "Pipeline Failed",
+    "message": "Security scan failed to complete",
+    "metadata": {
+      "pipeline_id": "f89504d5"
+    },
+    "time": "2026-02-19T23:47:13.156359",
+    "read": false
+  },
+  {
+    "id": "4e0c73d0",
+    "type": "info",
+    "title": "Pipeline Triggered",
+    "message": "Security scan started for branch 'master' by admin",
+    "metadata": {
+      "pipeline_id": "f89504d5",
+      "branch": "master"
+    },
+    "time": "2026-02-19T23:37:27.822167",
+    "read": false
+  },
+  {
+    "id": "feaf8efd",
+    "type": "info",
+    "title": "Pipeline Triggered",
+    "message": "Security scan started for branch 'master' by admin",
+    "metadata": {
+      "pipeline_id": "5fb33a1c",
+      "branch": "master"
+    },
+    "time": "2026-02-19T23:28:20.075818",
+    "read": false
+  },
+  {
+    "id": "060f2693",
+    "type": "info",
+    "title": "Pipeline Triggered",
+    "message": "Security scan started for branch 'main' by admin",
+    "metadata": {
+      "pipeline_id": "32bf12cb",
+      "branch": "main"
+    },
+    "time": "2026-02-19T23:25:40.440472",
+    "read": false
+  },
+  {
+    "id": "a631388f",
+    "type": "info",
+    "title": "Pipeline Triggered",
+    "message": "Security scan started for branch 'main' by admin",
+    "metadata": {
+      "pipeline_id": "3e519b42",
+      "branch": "main"
+    },
+    "time": "2026-02-19T23:18:03.483816",
+    "read": false
+  },
+  {
+    "id": "a406f76b",
+    "type": "success",
+    "title": "Deployment Approved",
+    "message": "Pipeline passed security checks. Score: 73/100",
+    "metadata": {
+      "pipeline_id": "fcc7d23b",
+      "security_score": 73
+    },
+    "time": "2026-02-19T23:15:59.492282",
+    "read": false
+  },
+  {
+    "id": "67638a8b",
+    "type": "info",
+    "title": "Pipeline Triggered",
+    "message": "Security scan started for branch 'main' by admin",
+    "metadata": {
+      "pipeline_id": "fcc7d23b",
+      "branch": "main"
+    },
+    "time": "2026-02-19T23:15:36.471327",
+    "read": false
+  },
+  {
+    "id": "b56e53f3",
+    "type": "critical",
+    "title": "Deployment Blocked",
+    "message": "Pipeline blocked. Score 55 below threshold; 2 critical vulnerabilities; 16 high severity issues. Score: 55/100",
+    "metadata": {
+      "pipeline_id": "4c8b36b6",
+      "security_score": 55,
+      "reasons": [
+        "Score 55 below threshold",
+        "2 critical vulnerabilities",
+        "16 high severity issues"
+      ]
+    },
+    "time": "2026-02-19T23:12:59.379682",
+    "read": false
+  },
+  {
+    "id": "c1989f30",
+    "type": "info",
+    "title": "Pipeline Triggered",
+    "message": "Security scan started for branch 'main' by admin",
+    "metadata": {
+      "pipeline_id": "4c8b36b6",
+      "branch": "main"
+    },
+    "time": "2026-02-19T23:12:43.948351",
+    "read": false
+  },
+  {
+    "id": "4d814893",
+    "type": "critical",
+    "title": "Deployment Blocked",
+    "message": "Pipeline blocked. Score 50 below threshold; 3 critical vulnerabilities; 11 high severity issues. Score: 50/100",
+    "metadata": {
+      "pipeline_id": "6ea5e870",
+      "security_score": 50,
+      "reasons": [
+        "Score 50 below threshold",
+        "3 critical vulnerabilities",
+        "11 high severity issues"
+      ]
+    },
+    "time": "2026-02-19T23:10:55.309116",
+    "read": false
+  },
+  {
+    "id": "05c19e91",
+    "type": "critical",
+    "title": "Deployment Blocked",
+    "message": "Pipeline blocked. Score 50 below threshold; 3 critical vulnerabilities; 11 high severity issues. Score: 50/100",
+    "metadata": {
+      "pipeline_id": "6ea5e870",
+      "security_score": 50,
+      "reasons": [
+        "Score 50 below threshold",
+        "3 critical vulnerabilities",
+        "11 high severity issues"
+      ]
+    },
+    "time": "2026-02-19T22:31:59.127566",
+    "read": false
+  },
+  {
+    "id": "291930d4",
+    "type": "info",
+    "title": "Pipeline Triggered",
+    "message": "Security scan started for branch 'main' by admin",
+    "metadata": {
+      "pipeline_id": "6ea5e870",
+      "branch": "main"
+    },
+    "time": "2026-02-19T22:11:32.489019",
+    "read": false
+  },
+  {
+    "id": "d9ab187e",
+    "type": "success",
+    "title": "Deployment Approved",
+    "message": "Pipeline passed security checks. Score: 65/100",
+    "metadata": {
+      "pipeline_id": "bf411279",
+      "security_score": 65
+    },
+    "time": "2026-02-19T22:08:33.401795",
+    "read": false
+  },
+  {
+    "id": "d1fdc593",
+    "type": "info",
+    "title": "Pipeline Triggered",
+    "message": "Security scan started for branch 'main' by admin",
+    "metadata": {
+      "pipeline_id": "bf411279",
+      "branch": "main"
+    },
+    "time": "2026-02-19T22:05:23.072773",
+    "read": false
+  },
+  {
+    "id": "2c180970",
+    "type": "info",
+    "title": "Pipeline Triggered",
+    "message": "Security scan started for branch 'main' by admin",
+    "metadata": {
+      "pipeline_id": "76eecd71",
+      "branch": "main"
+    },
+    "time": "2026-02-19T21:50:43.013731",
+    "read": false
+  },
+  {
+    "id": "291703e4",
+    "type": "success",
+    "title": "Deployment Approved",
+    "message": "Pipeline passed security checks. Score: 50/100",
+    "metadata": {
+      "pipeline_id": "c852937f",
+      "security_score": 50
+    },
+    "time": "2026-02-19T21:15:59.329591",
+    "read": false
+  },
+  {
+    "id": "3c788e5e",
+    "type": "success",
+    "title": "Deployment Approved",
+    "message": "Pipeline passed security checks. Score: 50/100",
+    "metadata": {
+      "pipeline_id": "c852937f",
+      "security_score": 50
+    },
+    "time": "2026-02-18T22:58:06.911393",
+    "read": false
+  },
+  {
+    "id": "6218a886",
+    "type": "success",
+    "title": "Deployment Approved",
+    "message": "Pipeline passed security checks. Score: 50/100",
+    "metadata": {
+      "pipeline_id": "c852937f",
+      "security_score": 50
+    },
+    "time": "2026-02-18T22:05:14.096768",
+    "read": false
+  },
+  {
     "id": "30a78dc1",
     "type": "success",
     "title": "Deployment Approved",
