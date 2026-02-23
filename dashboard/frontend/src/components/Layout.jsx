@@ -13,6 +13,8 @@ import {
   User,
   GitBranch,
   Code2,
+  Globe,
+  Crown,
 } from 'lucide-react'
 import { cn } from '../utils/helpers'
 import { useAuth } from '../context/AuthContext'
@@ -23,6 +25,7 @@ const navigation = [
   { name: 'Pipeline', href: '/dashboard/pipeline', icon: GitBranch },
   { name: 'Code Analysis', href: '/dashboard/sast', icon: Code2 },
   { name: 'Trivy Scan', href: '/dashboard/trivy', icon: Container },
+  { name: 'DAST Scan', href: '/dashboard/dast', icon: Globe },
   { name: 'Settings', href: '/dashboard/settings', icon: Settings },
 ]
 
@@ -39,6 +42,8 @@ export default function Layout() {
     if (path.includes('/sast')) return 'Code Analysis'
     if (path.includes('/bandit')) return 'Code Analysis'
     if (path.includes('/trivy')) return 'Trivy Scan'
+    if (path.includes('/dast')) return 'DAST Scan'
+    if (path.includes('/admin')) return 'Admin Panel'
     if (path.includes('/settings')) return 'Settings'
     return 'Dashboard'
   }
@@ -95,6 +100,25 @@ export default function Layout() {
               {item.name}
             </NavLink>
           ))}
+
+          {/* Admin Section */}
+          {isAdmin() && (
+            <>
+              <p className="px-4 pt-4 pb-2 text-[10px] font-semibold text-steel-500 uppercase tracking-[0.2em] font-mono">
+                Administration
+              </p>
+              <NavLink
+                to="/dashboard/admin"
+                className={({ isActive }) =>
+                  cn('nav-link', isActive && 'active')
+                }
+                onClick={() => setSidebarOpen(false)}
+              >
+                <Crown className="w-5 h-5" />
+                Admin Panel
+              </NavLink>
+            </>
+          )}
         </nav>
 
         {/* System Status Card */}

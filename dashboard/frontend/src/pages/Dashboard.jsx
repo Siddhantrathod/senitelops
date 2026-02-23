@@ -17,8 +17,10 @@ import {
   Loader2,
   Code2,
   Languages,
+  Globe,
+  KeyRound,
 } from 'lucide-react'
-import { fetchSecuritySummary, fetchLatestPipeline, triggerPipeline, fetchSetupStatus } from '../services/api'
+import { fetchSecuritySummary, fetchLatestPipeline, triggerPipeline, fetchSetupStatus, fetchGitleaksReport, fetchDastReport } from '../services/api'
 import { formatDate, calculateRiskScore, getSecurityGrade } from '../utils/helpers'
 import StatCard from '../components/StatCard'
 import SeverityPieChart from '../components/charts/SeverityPieChart'
@@ -89,11 +91,13 @@ export default function Dashboard() {
 
   const loadData = async () => {
     try {
-      const [result, latestPipeline] = await Promise.all([
+      const [result, latestPipeline, gitleaksResult, dastResult] = await Promise.all([
         fetchSecuritySummary(),
-        fetchLatestPipeline().catch(() => null)
+        fetchLatestPipeline().catch(() => null),
+        fetchGitleaksReport().catch(() => null),
+        fetchDastReport().catch(() => null),
       ])
-      setData(result)
+      setData({ ...result, gitleaks: gitleaksResult, dast: dastResult })
       setPipeline(latestPipeline)
     } catch (err) {
       setError('Failed to load security data. Please ensure the backend is running.')
@@ -143,7 +147,9 @@ export default function Dashboard() {
 
   // Use SAST totals if available, otherwise compute from bandit
   const codeIssueCount = sastResults.length > 0 ? sastResults.length : banditResults.length
-  const totalVulnerabilities = codeIssueCount + trivyResults.length
+  const gitleaksCount = data?.gitleaks?.total_secrets || 0
+  const dastCount = data?.dast?.total_alerts || 0
+  const totalVulnerabilities = codeIssueCount + trivyResults.length + gitleaksCount + dastCount
 
   // Calculate severity counts from SAST if available
   const codeSeverityCounts = sastResults.length > 0
@@ -189,12 +195,26 @@ export default function Dashboard() {
   const codeSecurityScore = codeIssueCount > 0 ? 100 - calculateRiskScore(
     sastResults.length > 0 ? sastResults.map(r => ({ Severity: r.severity })) : banditResults
   ) : 100
+
+  // Gitleaks data
+  const gitleaksData = data?.gitleaks || null
+  const secretsCount = gitleaksData?.total_secrets || 0
+  const secretsCritical = gitleaksData?.metrics?.critical || 0
+  const secretsHigh = gitleaksData?.metrics?.high || 0
+
+  // DAST data
+  const dastData = data?.dast || null
+  const dastAlerts = dastData?.total_alerts || 0
+  const dastHigh = dastData?.metrics?.high || 0
+  const dastMedium = dastData?.metrics?.medium || 0
+  const dastLow = dastData?.metrics?.low || 0
+
   const radarData = [
     { category: 'Code Security', score: codeSecurityScore },
     { category: 'Container Security', score: 100 - calculateRiskScore(trivyResults) },
     { category: 'Dependencies', score: trivyResults.length > 3 ? 60 : 90 },
-    { category: 'Configuration', score: banditResults.some(v => v.test_id === 'B201') ? 50 : 85 },
-    { category: 'Secrets', score: banditResults.some(v => v.test_id === 'B105') ? 40 : 95 },
+    { category: 'Secrets', score: secretsCount > 0 ? Math.max(0, 100 - secretsCount * 15) : 95 },
+    { category: 'DAST', score: dastAlerts > 0 ? Math.max(0, 100 - dastHigh * 20 - dastMedium * 5) : 95 },
     { category: 'Compliance', score: totalVulnerabilities > 5 ? 65 : 85 },
   ]
 
@@ -202,6 +222,8 @@ export default function Dashboard() {
   const vulnerabilityByType = [
     { name: 'Code Analysis', count: codeIssueCount, severity: 'high' },
     { name: 'Container Scan', count: trivyResults.length, severity: 'medium' },
+    { name: 'Secret Detection', count: secretsCount, severity: 'high' },
+    { name: 'DAST Alerts', count: dastAlerts, severity: 'medium' },
   ]
 
   // Trend data (mock for demo - in real app this would be historical)
@@ -431,6 +453,58 @@ export default function Dashboard() {
               {trivySeverityCounts.HIGH > 0 && (
                 <span className="badge badge-high">{trivySeverityCounts.HIGH} High</span>
               )}
+            </div>
+          </div>
+        </Link>
+
+        {/* DAST Scan Summary */}
+        <Link to="/dashboard/dast" className="glass-card-hover p-6 group">
+          <div className="flex items-start justify-between mb-4">
+            <div className="p-3 rounded-xl bg-cyan-500/10 border border-cyan-500/20">
+              <Globe className="w-6 h-6 text-cyan-400" />
+            </div>
+            <ChevronRight className="w-5 h-5 text-steel-600 group-hover:text-violet-400 group-hover:translate-x-1 transition-all" />
+          </div>
+          <h3 className="text-xl font-semibold text-white mb-2">DAST Security Scan</h3>
+          <p className="text-steel-400 text-sm mb-4">
+            Dynamic runtime vulnerability testing {dastData?.tool ? `(${dastData.tool.toUpperCase()})` : '(OWASP ZAP)'}
+          </p>
+          <div className="flex items-center gap-4">
+            <div className="flex items-center gap-2">
+              <span className="text-2xl font-bold text-white font-mono">{dastAlerts}</span>
+              <span className="text-steel-400 text-sm">alerts found</span>
+            </div>
+            <div className="h-8 w-px bg-white/[0.06]" />
+            <div className="flex gap-2">
+              {dastHigh > 0 && <span className="badge badge-high">{dastHigh} High</span>}
+              {dastMedium > 0 && <span className="badge badge-medium">{dastMedium} Med</span>}
+              {dastAlerts === 0 && <span className="badge bg-lime-500/15 text-lime-400 border-lime-500/25">Clean</span>}
+            </div>
+          </div>
+        </Link>
+
+        {/* Gitleaks Secrets Summary */}
+        <Link to="/dashboard/sast" className="glass-card-hover p-6 group">
+          <div className="flex items-start justify-between mb-4">
+            <div className="p-3 rounded-xl bg-amber-500/10 border border-amber-500/20">
+              <KeyRound className="w-6 h-6 text-amber-400" />
+            </div>
+            <ChevronRight className="w-5 h-5 text-steel-600 group-hover:text-violet-400 group-hover:translate-x-1 transition-all" />
+          </div>
+          <h3 className="text-xl font-semibold text-white mb-2">Secret Detection</h3>
+          <p className="text-steel-400 text-sm mb-4">
+            Gitleaks hardcoded secret scanning
+          </p>
+          <div className="flex items-center gap-4">
+            <div className="flex items-center gap-2">
+              <span className="text-2xl font-bold text-white font-mono">{secretsCount}</span>
+              <span className="text-steel-400 text-sm">secrets found</span>
+            </div>
+            <div className="h-8 w-px bg-white/[0.06]" />
+            <div className="flex gap-2">
+              {secretsCritical > 0 && <span className="badge badge-critical">{secretsCritical} Critical</span>}
+              {secretsHigh > 0 && <span className="badge badge-high">{secretsHigh} High</span>}
+              {secretsCount === 0 && <span className="badge bg-lime-500/15 text-lime-400 border-lime-500/25">Clean</span>}
             </div>
           </div>
         </Link>

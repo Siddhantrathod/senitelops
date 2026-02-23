@@ -277,4 +277,78 @@ export const getGoogleAuthUrl = () => {
   return `${API_BASE_URL}/auth/google`
 }
 
+// ==================== ADMIN API ====================
+
+export const fetchAdminStats = async () => {
+  try {
+    const response = await api.get('/admin/stats')
+    return response.data
+  } catch (error) {
+    console.error('Error fetching admin stats:', error)
+    throw error
+  }
+}
+
+export const fetchAdminUsers = async () => {
+  try {
+    const response = await api.get('/admin/users')
+    return response.data
+  } catch (error) {
+    console.error('Error fetching admin users:', error)
+    throw error
+  }
+}
+
+export const updateAdminUser = async (userId, data) => {
+  try {
+    const response = await api.put(`/admin/users/${userId}`, data)
+    return response.data
+  } catch (error) {
+    console.error('Error updating user:', error)
+    throw error
+  }
+}
+
+export const deleteAdminUser = async (userId) => {
+  try {
+    const response = await api.delete(`/admin/users/${userId}`)
+    return response.data
+  } catch (error) {
+    console.error('Error deleting user:', error)
+    throw error
+  }
+}
+
+export const resetAdminUserPassword = async (userId, newPassword) => {
+  try {
+    const response = await api.post(`/admin/users/${userId}/reset-password`, { newPassword })
+    return response.data
+  } catch (error) {
+    console.error('Error resetting password:', error)
+    throw error
+  }
+}
+
+export const fetchAdminPipelines = async (limit = 50, status = null) => {
+  try {
+    let url = `/admin/pipelines?limit=${limit}`
+    if (status) url += `&status=${status}`
+    const response = await api.get(url)
+    return response.data
+  } catch (error) {
+    console.error('Error fetching admin pipelines:', error)
+    throw error
+  }
+}
+
+export const fetchAdminVulnSummary = async () => {
+  try {
+    const response = await api.get('/admin/vulnerabilities/summary')
+    return response.data
+  } catch (error) {
+    console.error('Error fetching admin vuln summary:', error)
+    throw error
+  }
+}
+
 export default api

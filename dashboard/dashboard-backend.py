@@ -1729,6 +1729,309 @@ def validate_scan_input():
     })
 
 
+# ==================== ADMIN PANEL API ====================
+
+@app.route("/api/admin/stats", methods=["GET"])
+@jwt_required()
+def admin_stats():
+    """Get platform-wide statistics for admin panel"""
+    current_user = get_current_user_info()
+    if current_user["role"] != "admin":
+        return jsonify({"error": "Admin access required"}), 403
+
+    users = get_users()
+    pipelines = pipeline_executor.get_pipelines(50)
+    config = get_config()
+    policy = get_policy()
+
+    # User stats
+    total_users = len(users)
+    admin_count = sum(1 for u in users if u.get("role") == "admin")
+    viewer_count = sum(1 for u in users if u.get("role") == "viewer")
+    user_count = sum(1 for u in users if u.get("role") == "user")
+    google_users = sum(1 for u in users if u.get("authProvider") == "google")
+    local_users = total_users - google_users
+
+    # Pipeline stats
+    total_pipelines = len(pipelines)
+    successful = sum(1 for p in pipelines if p.get("status") == "success")
+    failed = sum(1 for p in pipelines if p.get("status") == "failed")
+    running = sum(1 for p in pipelines if p.get("status") == "running")
+    avg_score = 0
+    scores = [p.get("security_score") for p in pipelines if p.get("security_score") is not None]
+    if scores:
+        avg_score = round(sum(scores) / len(scores))
+    deployable_count = sum(1 for p in pipelines if p.get("is_deployable"))
+    blocked_count = sum(1 for p in pipelines if p.get("is_deployable") is False)
+
+    # Report availability
+    reports_status = {
+        "sast": os.path.exists(os.path.join(REPORT_DIR, "sast-report.json")),
+        "bandit": os.path.exists(os.path.join(REPORT_DIR, "bandit-report.json")),
+        "trivy": os.path.exists(os.path.join(REPORT_DIR, "trivy-report.json")),
+        "gitleaks": os.path.exists(os.path.join(REPORT_DIR, "gitleaks-report.json")),
+        "dast": os.path.exists(os.path.join(REPORT_DIR, "dast-report.json")),
+        "decision": os.path.exists(os.path.join(REPORT_DIR, "security_decision.json")),
+    }
+
+    return jsonify({
+        "users": {
+            "total": total_users,
+            "admins": admin_count,
+            "users": user_count,
+            "viewers": viewer_count,
+            "google_auth": google_users,
+            "local_auth": local_users,
+        },
+        "pipelines": {
+            "total": total_pipelines,
+            "successful": successful,
+            "failed": failed,
+            "running": running,
+            "avg_security_score": avg_score,
+            "deployable": deployable_count,
+            "blocked": blocked_count,
+        },
+        "config": {
+            "repo_url": config.get("github_repo_url", ""),
+            "branch": config.get("github_branch", "main"),
+            "auto_scan": config.get("auto_scan_enabled", False),
+            "scan_on_push": config.get("scan_on_push", False),
+            "setup_completed": config.get("setup_completed", False),
+        },
+        "policy": policy,
+        "reports": reports_status,
+    })
+
+
+@app.route("/api/admin/users", methods=["GET"])
+@jwt_required()
+def admin_get_users():
+    """Get all users with details (admin only)"""
+    current_user = get_current_user_info()
+    if current_user["role"] != "admin":
+        return jsonify({"error": "Admin access required"}), 403
+
+    users = get_users()
+    safe_users = []
+    for u in users:
+        safe_users.append({
+            "id": u["id"],
+            "username": u["username"],
+            "email": u["email"],
+            "role": u["role"],
+            "fullName": u.get("fullName", ""),
+            "organization": u.get("organization", ""),
+            "roleTitle": u.get("roleTitle", ""),
+            "phone": u.get("phone", ""),
+            "authProvider": u.get("authProvider", "local"),
+            "lastLoginAt": u.get("lastLoginAt"),
+            "createdAt": u.get("createdAt"),
+        })
+    return jsonify({"users": safe_users, "total": len(safe_users)})
+
+
+@app.route("/api/admin/users/<int:user_id>", methods=["PUT"])
+@jwt_required()
+def admin_update_user(user_id):
+    """Update a user's role or details (admin only)"""
+    current_user = get_current_user_info()
+    if current_user["role"] != "admin":
+        return jsonify({"error": "Admin access required"}), 403
+
+    data = request.get_json()
+    users = get_users()
+    user = next((u for u in users if u["id"] == user_id), None)
+    if not user:
+        return jsonify({"error": "User not found"}), 404
+
+    allowed_fields = ["role", "fullName", "organization", "roleTitle", "phone"]
+    valid_roles = ["admin", "user", "viewer"]
+
+    for field in allowed_fields:
+        if field in data:
+            if field == "role" and data[field] not in valid_roles:
+                return jsonify({"error": f"Invalid role. Must be one of: {', '.join(valid_roles)}"}), 400
+            user[field] = data[field]
+
+    save_users(users)
+    return jsonify({"message": "User updated successfully", "user": {
+        "id": user["id"], "username": user["username"], "email": user["email"],
+        "role": user["role"], "fullName": user.get("fullName", ""),
+    }})
+
+
+@app.route("/api/admin/users/<int:user_id>", methods=["DELETE"])
+@jwt_required()
+def admin_delete_user(user_id):
+    """Delete a user (admin only, cannot delete self)"""
+    current_user = get_current_user_info()
+    if current_user["role"] != "admin":
+        return jsonify({"error": "Admin access required"}), 403
+
+    if current_user["id"] == user_id:
+        return jsonify({"error": "Cannot delete your own account"}), 400
+
+    users = get_users()
+    user = next((u for u in users if u["id"] == user_id), None)
+    if not user:
+        return jsonify({"error": "User not found"}), 404
+
+    users = [u for u in users if u["id"] != user_id]
+    save_users(users)
+
+    return jsonify({"message": f"User '{user['username']}' deleted successfully"})
+
+
+@app.route("/api/admin/users/<int:user_id>/reset-password", methods=["POST"])
+@jwt_required()
+def admin_reset_password(user_id):
+    """Reset a user's password (admin only)"""
+    current_user = get_current_user_info()
+    if current_user["role"] != "admin":
+        return jsonify({"error": "Admin access required"}), 403
+
+    data = request.get_json()
+    new_password = data.get("newPassword", "")
+    if not new_password or len(new_password) < 6:
+        return jsonify({"error": "Password must be at least 6 characters"}), 400
+
+    users = get_users()
+    user = next((u for u in users if u["id"] == user_id), None)
+    if not user:
+        return jsonify({"error": "User not found"}), 404
+
+    user["password"] = bcrypt.hashpw(new_password.encode('utf-8'), bcrypt.gensalt()).decode('utf-8')
+    save_users(users)
+
+    return jsonify({"message": f"Password reset for '{user['username']}'"})
+
+
+@app.route("/api/admin/pipelines", methods=["GET"])
+@jwt_required()
+def admin_get_pipelines():
+    """Get all pipeline runs with full details (admin only)"""
+    current_user = get_current_user_info()
+    if current_user["role"] != "admin":
+        return jsonify({"error": "Admin access required"}), 403
+
+    limit = request.args.get('limit', 50, type=int)
+    status_filter = request.args.get('status', None)
+
+    pipelines = pipeline_executor.get_pipelines(limit)
+
+    if status_filter:
+        pipelines = [p for p in pipelines if p.get("status") == status_filter]
+
+    # Enrich with failure reasons and short logs
+    enriched = []
+    for p in pipelines:
+        entry = dict(p)
+        # Extract failure reasons from stages
+        failures = []
+        stage_logs = []
+        for stage_key, stage_data in (p.get("stages") or {}).items():
+            if isinstance(stage_data, dict):
+                if stage_data.get("status") == "failed":
+                    failures.append({
+                        "stage": stage_data.get("name", stage_key),
+                        "error": stage_data.get("error", "Unknown error"),
+                    })
+                if stage_data.get("logs"):
+                    stage_logs.append({
+                        "stage": stage_data.get("name", stage_key),
+                        "log": stage_data.get("logs", "")[:200],
+                    })
+        entry["failure_reasons"] = failures
+        entry["stage_logs"] = stage_logs
+        enriched.append(entry)
+
+    return jsonify({"pipelines": enriched, "total": len(enriched)})
+
+
+@app.route("/api/admin/vulnerabilities/summary", methods=["GET"])
+@jwt_required()
+def admin_vuln_summary():
+    """Get a summary of major vulnerabilities across all scanners (admin only)"""
+    current_user = get_current_user_info()
+    if current_user["role"] != "admin":
+        return jsonify({"error": "Admin access required"}), 403
+
+    critical_findings = []
+
+    # SAST critical/high
+    sast_data = load_json_file("sast-report.json")
+    if sast_data and sast_data.get("results"):
+        for issue in sast_data["results"]:
+            sev = (issue.get("severity") or "").upper()
+            if sev in ("CRITICAL", "HIGH"):
+                critical_findings.append({
+                    "source": "SAST",
+                    "tool": issue.get("tool", "unknown"),
+                    "severity": sev,
+                    "message": (issue.get("message") or "")[:150],
+                    "file": issue.get("file", ""),
+                    "line": issue.get("line", 0),
+                    "language": issue.get("language", ""),
+                    "rule_id": issue.get("rule_id", ""),
+                })
+
+    # Trivy critical/high
+    trivy_data = load_json_file("trivy-report.json")
+    if trivy_data and trivy_data.get("Results"):
+        for result in trivy_data["Results"]:
+            for vuln in (result.get("Vulnerabilities") or []):
+                sev = (vuln.get("Severity") or "").upper()
+                if sev in ("CRITICAL", "HIGH"):
+                    critical_findings.append({
+                        "source": "Trivy",
+                        "tool": "trivy",
+                        "severity": sev,
+                        "message": (vuln.get("Title") or vuln.get("Description", ""))[:150],
+                        "file": vuln.get("PkgName", ""),
+                        "line": 0,
+                        "vulnerability_id": vuln.get("VulnerabilityID", ""),
+                        "fixed_version": vuln.get("FixedVersion", ""),
+                    })
+
+    # Gitleaks all secrets (secrets are always important)
+    gitleaks_data = load_json_file("gitleaks-report.json")
+    if gitleaks_data and gitleaks_data.get("results"):
+        for secret in gitleaks_data["results"]:
+            critical_findings.append({
+                "source": "Gitleaks",
+                "tool": "gitleaks",
+                "severity": secret.get("severity", "HIGH"),
+                "message": f"Secret detected: {secret.get('rule_id', 'unknown')}",
+                "file": secret.get("file", ""),
+                "line": secret.get("line", 0),
+            })
+
+    # DAST high/medium
+    dast_data = load_json_file("dast-report.json")
+    if dast_data and dast_data.get("results"):
+        for alert in dast_data["results"]:
+            risk = (alert.get("risk") or "LOW").upper()
+            if risk in ("HIGH", "MEDIUM"):
+                critical_findings.append({
+                    "source": "DAST",
+                    "tool": dast_data.get("tool", "zap"),
+                    "severity": risk,
+                    "message": (alert.get("name") or alert.get("description", ""))[:150],
+                    "url": alert.get("url", ""),
+                    "cwe_id": alert.get("cwe_id", ""),
+                })
+
+    # Sort by severity
+    severity_order = {"CRITICAL": 0, "HIGH": 1, "MEDIUM": 2, "LOW": 3}
+    critical_findings.sort(key=lambda x: severity_order.get(x.get("severity", "LOW"), 3))
+
+    return jsonify({
+        "findings": critical_findings[:100],
+        "total": len(critical_findings),
+    })
+
+
 # ==================== LOCAL SCAN ====================
 
 @app.route("/api/scan/local", methods=["POST"])

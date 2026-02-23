@@ -1,5 +1,5 @@
 {
-  "github_repo_url": "https://github.com/juice-shop/juice-shop",
+  "github_repo_url": "https://github.com/digininja/DVWA",
   "github_branch": "master",
   "auto_scan_enabled": true,
   "scan_on_push": true,
@@ -9,6 +9,6 @@
   "repo_configured": true,
   "policy_configured": false,
   "initial_scan_completed": true,
-  "updated_at": "2026-02-19T23:28:15.008329",
+  "updated_at": "2026-02-24T00:11:39.199652",
   "updated_by": "admin"
 }

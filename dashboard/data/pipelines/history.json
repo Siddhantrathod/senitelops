@@ -1,6 +1,124 @@
 {
   "pipelines": [
     {
+      "id": "92232f15",
+      "repo_name": "DVWA",
+      "branch": "master",
+      "commit_sha": "manual",
+      "commit_message": "Manual trigger by admin",
+      "author": "admin",
+      "status": "success",
+      "triggered_at": "2026-02-24T00:11:43.586886",
+      "started_at": "2026-02-24T00:11:43.604884",
+      "finished_at": "2026-02-24T00:14:51.655649",
+      "duration_seconds": 188.050765,
+      "stages": {
+        "clone": {
+          "name": "Clone Repository",
+          "status": "success",
+          "logs": "Cloned https://github.com/digininja/DVWA successfully",
+          "started_at": "2026-02-24T00:11:43.608442",
+          "finished_at": "2026-02-24T00:11:45.504090",
+          "duration_seconds": 1.895648
+        },
+        "build": {
+          "name": "Build Image",
+          "status": "success",
+          "logs": "Built image: sentinelops-scan-92232f15",
+          "started_at": "2026-02-24T00:11:45.506086",
+          "finished_at": "2026-02-24T00:13:18.187007",
+          "duration_seconds": 92.680921
+        },
+        "sast_scan": {
+          "name": "SAST Security Scan",
+          "status": "success",
+          "logs": "SAST scan completed: 2 issues found across 3 language(s) using bandit",
+          "started_at": "2026-02-24T00:13:18.188821",
+          "finished_at": "2026-02-24T00:13:18.637079",
+          "duration_seconds": 0.448258
+        },
+        "gitleaks_scan": {
+          "name": "Secret Detection (Gitleaks)",
+          "status": "success",
+          "logs": "Secret scan (regex-fallback): 6 secret(s) found",
+          "started_at": "2026-02-24T00:13:18.638409",
+          "finished_at": "2026-02-24T00:13:18.700675",
+          "duration_seconds": 0.062266
+        },
+        "trivy_scan": {
+          "name": "Trivy Container Scan",
+          "status": "success",
+          "logs": "Trivy image scan for sentinelops-scan-92232f15 completed",
+          "started_at": "2026-02-24T00:13:18.701956",
+          "finished_at": "2026-02-24T00:13:30.426098",
+          "duration_seconds": 11.724142
+        },
+        "dast_scan": {
+          "name": "DAST Security Scan (ZAP)",
+          "status": "success",
+          "logs": "DAST scan completed: 0 alert(s) found",
+          "started_at": "2026-02-24T00:13:30.428638",
+          "finished_at": "2026-02-24T00:14:51.617273",
+          "duration_seconds": 81.188635
+        },
+        "policy_check": {
+          "name": "Policy Evaluation",
+          "status": "success",
+          "logs": "Security Score: 51/100",
+          "started_at": "2026-02-24T00:14:51.619692",
+          "finished_at": "2026-02-24T00:14:51.645914",
+          "duration_seconds": 0.026222
+        },
+        "decision": {
+          "name": "Deployment Decision",
+          "status": "success",
+          "logs": "\u274c BLOCKED - Security requirements not met",
+          "started_at": "2026-02-24T00:14:51.648722",
+          "finished_at": "2026-02-24T00:14:51.652586",
+          "duration_seconds": 0.003864
+        }
+      },
+      "security_score": 51,
+      "is_deployable": false,
+      "vulnerability_summary": {
+        "critical": 0,
+        "high": 46,
+        "medium": 202,
+        "low": 548,
+        "total": 796,
+        "sast_issues": 2,
+        "bandit_issues": 2,
+        "trivy_vulns": 798,
+        "secrets_found": 6,
+        "dast_alerts": 0,
+        "security_score": 51,
+        "sast_high": 0,
+        "sast_medium": 1,
+        "sast_low": 1,
+        "bandit_high": 0,
+        "bandit_medium": 1,
+        "bandit_low": 1,
+        "trivy_critical": 0,
+        "trivy_high": 40,
+        "trivy_medium": 201,
+        "trivy_low": 547,
+        "secrets_critical": 0,
+        "secrets_high": 6,
+        "secrets_medium": 0,
+        "dast_high": 0,
+        "dast_medium": 0,
+        "dast_low": 0,
+        "languages_detected": [
+          "php",
+          "javascript",
+          "python"
+        ],
+        "tools_used": [
+          "bandit"
+        ]
+      }
+    },
+    {
       "id": "f3e0d08d",
       "repo_name": "juice-shop",
       "branch": "master",
@@ -2034,5 +2152,5 @@
       }
     }
   ],
-  "updated_at": "2026-02-19T23:52:41.294853"
+  "updated_at": "2026-02-24T00:14:51.655749"
 }

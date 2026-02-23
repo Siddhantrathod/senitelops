@@ -1,5 +1,17 @@
 [
   {
+    "id": "f212b941",
+    "type": "info",
+    "title": "Pipeline Triggered",
+    "message": "Security scan started for branch 'master' by admin",
+    "metadata": {
+      "pipeline_id": "92232f15",
+      "branch": "master"
+    },
+    "time": "2026-02-24T00:11:43.604360",
+    "read": false
+  },
+  {
     "id": "cc8ecc66",
     "type": "warning",
     "title": "Pipeline Failed",
