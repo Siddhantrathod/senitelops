@@ -30,15 +30,15 @@ export default function LandingPage() {
   const navigate = useNavigate()
 
   return (
-    <div className="min-h-screen bg-[#0B0E11] flex flex-col">
+    <div className="min-h-screen bg-surface flex flex-col">
       {/* Navigation */}
-      <nav className="fixed w-full z-50 bg-[#0B0E11]/80 backdrop-blur-2xl border-b border-white/[0.06]">
+      <nav className="fixed w-full z-50 bg-surface/80 backdrop-blur-2xl border-b border-theme">
         <div className="container mx-auto px-6 h-20 flex items-center justify-between">
           <div className="flex items-center gap-3">
             <div className="flex items-center justify-center w-10 h-10 rounded-xl bg-gradient-to-br from-violet-500 to-violet-600 shadow-glow-sm">
               <Shield className="w-6 h-6 text-white" />
             </div>
-            <span className="text-xl font-bold text-white">SentinelOps</span>
+            <span className="text-xl font-bold text-steel-50">SentinelOps</span>
           </div>
           <div className="hidden md:flex items-center gap-8">
             <a href="#features" className="text-steel-400 hover:text-violet-400 font-medium transition-colors">Features</a>
@@ -68,7 +68,7 @@ export default function LandingPage() {
             <span className="flex h-2 w-2 rounded-full bg-lime-400 animate-pulse" />
             <span className="text-sm font-medium text-steel-300 font-mono">v1.0 is now live</span>
           </div>
-          <h1 className="text-5xl md:text-7xl font-bold text-white mb-6 tracking-tight animate-fade-in" style={{ animationDelay: '0.1s' }}>
+          <h1 className="text-5xl md:text-7xl font-bold text-steel-50 mb-6 tracking-tight animate-fade-in" style={{ animationDelay: '0.1s' }}>
             Secure Your{' '}
             <span className="bg-clip-text text-transparent bg-gradient-to-r from-violet-400 to-fuchsia-400">DevOps Pipeline</span>
           </h1>
@@ -87,7 +87,7 @@ export default function LandingPage() {
       </section>
 
       {/* Stats Section */}
-      <section className="py-16 border-y border-white/[0.06]">
+      <section className="py-16 border-y border-theme">
         <div className="container mx-auto px-6">
           <div className="grid grid-cols-2 md:grid-cols-4 gap-8">
             {stats.map((stat, index) => (
@@ -107,7 +107,7 @@ export default function LandingPage() {
         <div className="container mx-auto px-6">
           <div className="text-center mb-16">
             <span className="inline-block px-4 py-1 rounded-full bg-violet-500/10 text-violet-400 text-sm font-semibold border border-violet-500/20 mb-4">Features</span>
-            <h2 className="text-4xl font-bold text-white mb-4">Enterprise-Grade Security Features</h2>
+            <h2 className="text-4xl font-bold text-steel-50 mb-4">Enterprise-Grade Security Features</h2>
             <p className="text-steel-500 max-w-2xl mx-auto text-lg">Everything you need to secure your applications from code to deployment.</p>
           </div>
 
@@ -121,7 +121,7 @@ export default function LandingPage() {
                 <div className={`w-14 h-14 rounded-xl ${feature.bgColor} border ${feature.borderColor} flex items-center justify-center mb-6 group-hover:scale-110 transition-transform duration-300`}>
                   <feature.icon className={`w-7 h-7 ${feature.color}`} />
                 </div>
-                <h3 className="text-xl font-bold text-white mb-3">{feature.title}</h3>
+                <h3 className="text-xl font-bold text-steel-50 mb-3">{feature.title}</h3>
                 <p className="text-steel-500 leading-relaxed">{feature.description}</p>
               </div>
             ))}
@@ -130,11 +130,11 @@ export default function LandingPage() {
       </section>
 
       {/* How It Works Section */}
-      <section id="how-it-works" className="py-24 border-t border-white/[0.06]">
+      <section id="how-it-works" className="py-24 border-t border-theme">
         <div className="container mx-auto px-6">
           <div className="text-center mb-16">
             <span className="inline-block px-4 py-1 rounded-full bg-lime-500/10 text-lime-400 text-sm font-semibold border border-lime-500/20 mb-4">How It Works</span>
-            <h2 className="text-4xl font-bold text-white mb-4">Secure in Three Simple Steps</h2>
+            <h2 className="text-4xl font-bold text-steel-50 mb-4">Secure in Three Simple Steps</h2>
             <p className="text-steel-500 max-w-2xl mx-auto text-lg">Get started in minutes and protect your codebase from vulnerabilities.</p>
           </div>
 
@@ -147,10 +147,10 @@ export default function LandingPage() {
                 <div className="relative z-10 inline-flex items-center justify-center w-20 h-20 rounded-2xl bg-gradient-to-br from-violet-500 to-violet-600 shadow-glow mb-6">
                   <step.icon className="w-10 h-10 text-white" />
                 </div>
-                <div className="absolute -top-2 -right-2 md:right-1/3 bg-[#0B0E11] border-2 border-violet-500 rounded-full px-3 py-1 text-sm font-bold font-mono text-violet-400">
+                <div className="absolute -top-2 -right-2 md:right-1/3 bg-surface border-2 border-violet-500 rounded-full px-3 py-1 text-sm font-bold font-mono text-violet-400">
                   {step.number}
                 </div>
-                <h3 className="text-xl font-bold text-white mb-3">{step.title}</h3>
+                <h3 className="text-xl font-bold text-steel-50 mb-3">{step.title}</h3>
                 <p className="text-steel-500 leading-relaxed max-w-xs mx-auto">{step.description}</p>
               </div>
             ))}
@@ -185,7 +185,7 @@ export default function LandingPage() {
       </section>
 
       {/* Trust Section */}
-      <section className="py-16 border-t border-white/[0.06]">
+      <section className="py-16 border-t border-theme">
         <div className="container mx-auto px-6">
           <div className="text-center mb-10">
             <p className="text-steel-600 font-medium uppercase tracking-[0.15em] text-xs font-mono">Trusted by developers worldwide</p>
@@ -199,14 +199,14 @@ export default function LandingPage() {
       </section>
 
       {/* Footer */}
-      <footer className="py-12 bg-[#161b22]/50 border-t border-white/[0.06] mt-auto">
+      <footer className="py-12 bg-surface-secondary/50 border-t border-theme mt-auto">
         <div className="container mx-auto px-6">
           <div className="flex flex-col md:flex-row items-center justify-between gap-8">
             <div className="flex items-center gap-3">
               <div className="p-2 bg-violet-500/10 border border-violet-500/20 rounded-lg">
                 <Shield className="w-6 h-6 text-violet-400" />
               </div>
-              <span className="font-bold text-white text-lg">SentinelOps</span>
+              <span className="font-bold text-steel-50 text-lg">SentinelOps</span>
             </div>
             <div className="text-steel-600 text-sm font-mono">© 2026 SentinelOps. All rights reserved.</div>
             <div className="flex gap-6">

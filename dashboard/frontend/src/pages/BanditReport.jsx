@@ -82,13 +82,44 @@ export default function BanditReport() {
       setLoading(false)
     } catch (err) {
       console.error('BanditReport error:', err)
-      setError('Failed to load Bandit report. Please ensure the backend is running.')
+      if (err.response?.status === 404) {
+        setError('no-report')
+      } else {
+        setError('Failed to load Bandit report. Please ensure the backend is running.')
+      }
       setLoading(false)
     }
   }
 
   // Show loader while loading, auth loading, or redirecting
   if (authLoading || loading || redirecting) return <PageLoader />
+
+  if (error === 'no-report') {
+    return (
+      <div className="space-y-6 animate-fade-in">
+        <div className="flex items-center gap-4">
+          <div className="p-3 rounded-xl bg-amber-500/10 border border-amber-500/20">
+            <Bug className="w-8 h-8 text-amber-400" />
+          </div>
+          <div>
+            <h1 className="text-3xl font-bold text-steel-50">Bandit Security Scan</h1>
+            <p className="text-steel-500">Python-specific security analysis</p>
+          </div>
+        </div>
+        <Alert variant="warning" title="No Bandit Report Available">
+          <p className="mb-4">
+            No Bandit scan has been performed yet. Bandit analyzes Python code for common security issues.
+          </p>
+          <p className="text-sm text-steel-400">
+            Run a pipeline scan on a Python project to generate a Bandit report.
+          </p>
+          <button onClick={() => navigate('/dashboard/pipeline')} className="btn-primary mt-4 text-sm">
+            Go to Pipeline
+          </button>
+        </Alert>
+      </div>
+    )
+  }
 
   if (error) {
     return (

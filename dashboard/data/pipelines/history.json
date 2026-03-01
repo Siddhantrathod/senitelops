@@ -1,6 +1,920 @@
 {
   "pipelines": [
     {
+      "id": "b3e2e595",
+      "repo_name": "sentinelops-vulnerable-app",
+      "branch": "main",
+      "commit_sha": "manual",
+      "commit_message": "Manual trigger by siddhantrathod.2022",
+      "author": "siddhantrathod.2022",
+      "status": "success",
+      "triggered_at": "2026-02-28T10:24:40.886375",
+      "started_at": "2026-02-28T10:24:40.907431",
+      "finished_at": "2026-02-28T10:25:30.557858",
+      "duration_seconds": 49.650427,
+      "stages": {
+        "clone": {
+          "name": "Clone Repository",
+          "status": "success",
+          "logs": "Cloned https://github.com/Siddhantrathod/sentinelops-vulnerable-app successfully",
+          "started_at": "2026-02-28T10:24:40.912940",
+          "finished_at": "2026-02-28T10:24:42.579675",
+          "duration_seconds": 1.666735
+        },
+        "build": {
+          "name": "Build Image",
+          "status": "skipped",
+          "logs": "No Dockerfile found \u2014 Trivy will scan filesystem instead",
+          "started_at": "2026-02-28T10:24:42.583260"
+        },
+        "sast_scan": {
+          "name": "SAST Security Scan",
+          "status": "success",
+          "logs": "SAST scan completed: 6 issues found across 1 language(s) using bandit",
+          "started_at": "2026-02-28T10:24:42.588426",
+          "finished_at": "2026-02-28T10:24:42.754438",
+          "duration_seconds": 0.166012
+        },
+        "gitleaks_scan": {
+          "name": "Secret Detection (Gitleaks)",
+          "status": "success",
+          "logs": "Secret scan (regex-fallback): 0 secret(s) found",
+          "started_at": "2026-02-28T10:24:42.756294",
+          "finished_at": "2026-02-28T10:24:42.759993",
+          "duration_seconds": 0.003699
+        },
+        "trivy_scan": {
+          "name": "Trivy Container Scan",
+          "status": "success",
+          "logs": "Trivy filesystem scan on sentinelops_3chs4eln completed",
+          "started_at": "2026-02-28T10:24:42.761841",
+          "finished_at": "2026-02-28T10:25:30.543959",
+          "duration_seconds": 47.782118
+        },
+        "dast_scan": {
+          "name": "DAST Security Scan (ZAP)",
+          "status": "skipped",
+          "logs": "No Docker image \u2014 DAST scan requires a running application"
+        },
+        "policy_check": {
+          "name": "Policy Evaluation",
+          "status": "success",
+          "logs": "Security Score: 61/100",
+          "started_at": "2026-02-28T10:25:30.548604",
+          "finished_at": "2026-02-28T10:25:30.551277",
+          "duration_seconds": 0.002673
+        },
+        "decision": {
+          "name": "Deployment Decision",
+          "status": "success",
+          "logs": "\u2705 APPROVED for deployment",
+          "started_at": "2026-02-28T10:25:30.553332",
+          "finished_at": "2026-02-28T10:25:30.555453",
+          "duration_seconds": 0.002121
+        }
+      },
+      "security_score": 61,
+      "is_deployable": true,
+      "vulnerability_summary": {
+        "critical": 0,
+        "high": 5,
+        "medium": 8,
+        "low": 3,
+        "total": 16,
+        "sast_issues": 6,
+        "bandit_issues": 6,
+        "trivy_vulns": 10,
+        "secrets_found": 0,
+        "dast_alerts": 0,
+        "security_score": 61,
+        "sast_high": 2,
+        "sast_medium": 2,
+        "sast_low": 2,
+        "bandit_high": 2,
+        "bandit_medium": 2,
+        "bandit_low": 2,
+        "trivy_critical": 0,
+        "trivy_high": 3,
+        "trivy_medium": 6,
+        "trivy_low": 1,
+        "secrets_critical": 0,
+        "secrets_high": 0,
+        "secrets_medium": 0,
+        "dast_high": 0,
+        "dast_medium": 0,
+        "dast_low": 0,
+        "languages_detected": [
+          "python"
+        ],
+        "tools_used": [
+          "bandit"
+        ]
+      }
+    },
+    {
+      "id": "d8971fbe",
+      "repo_name": "sentinelops-vulnerable-app",
+      "branch": "main",
+      "commit_sha": "manual",
+      "commit_message": "Manual trigger by siddhantrathod.2022",
+      "author": "siddhantrathod.2022",
+      "status": "failed",
+      "triggered_at": "2026-02-28T10:19:10.026998",
+      "started_at": "2026-02-28T10:19:10.045773",
+      "finished_at": "2026-02-28T10:19:10.071509",
+      "duration_seconds": 0.025736,
+      "stages": {
+        "clone": {
+          "name": "Clone Repository",
+          "status": "failed",
+          "logs": "",
+          "started_at": "2026-02-28T10:19:10.050011",
+          "error": "Cloning into '/tmp/sentinelops_nuek2qb_'...\nfatal: unable to access 'https://github.com/Siddhantrathod/sentinelops-vulnerable-app/': Could not resolve host: github.com\n",
+          "finished_at": "2026-02-28T10:19:10.068321",
+          "duration_seconds": 0.01831
+        },
+        "build": {
+          "name": "Build Image",
+          "status": "pending"
+        },
+        "sast_scan": {
+          "name": "SAST Security Scan",
+          "status": "pending"
+        },
+        "gitleaks_scan": {
+          "name": "Secret Detection (Gitleaks)",
+          "status": "pending"
+        },
+        "trivy_scan": {
+          "name": "Trivy Container Scan",
+          "status": "pending"
+        },
+        "dast_scan": {
+          "name": "DAST Security Scan (ZAP)",
+          "status": "pending"
+        },
+        "policy_check": {
+          "name": "Policy Evaluation",
+          "status": "pending"
+        },
+        "decision": {
+          "name": "Deployment Decision",
+          "status": "pending"
+        }
+      },
+      "security_score": null,
+      "is_deployable": null,
+      "vulnerability_summary": null
+    },
+    {
+      "id": "5b7fbeb1",
+      "repo_name": "0l4bs",
+      "branch": "master",
+      "commit_sha": "manual",
+      "commit_message": "Manual trigger by admin",
+      "author": "admin",
+      "status": "success",
+      "triggered_at": "2026-02-24T01:24:10.301229",
+      "started_at": "2026-02-24T01:24:10.317225",
+      "finished_at": "2026-02-24T01:25:09.166347",
+      "duration_seconds": 58.849122,
+      "stages": {
+        "clone": {
+          "name": "Clone Repository",
+          "status": "success",
+          "logs": "Cloned https://github.com/tegal1337/0l4bs successfully",
+          "started_at": "2026-02-24T01:24:10.321090",
+          "finished_at": "2026-02-24T01:24:11.863298",
+          "duration_seconds": 1.542208
+        },
+        "build": {
+          "name": "Build Image",
+          "status": "success",
+          "logs": "Built image: sentinelops-scan-5b7fbeb1",
+          "started_at": "2026-02-24T01:24:11.865642",
+          "finished_at": "2026-02-24T01:24:29.067707",
+          "duration_seconds": 17.202065
+        },
+        "sast_scan": {
+          "name": "SAST Security Scan",
+          "status": "success",
+          "logs": "SAST scan completed: 0 issues found across 2 language(s) using no tools",
+          "started_at": "2026-02-24T01:24:29.069709",
+          "finished_at": "2026-02-24T01:24:29.189505",
+          "duration_seconds": 0.119796
+        },
+        "gitleaks_scan": {
+          "name": "Secret Detection (Gitleaks)",
+          "status": "success",
+          "logs": "Secret scan (regex-fallback): 0 secret(s) found",
+          "started_at": "2026-02-24T01:24:29.191067",
+          "finished_at": "2026-02-24T01:24:29.204188",
+          "duration_seconds": 0.013121
+        },
+        "trivy_scan": {
+          "name": "Trivy Container Scan",
+          "status": "success",
+          "logs": "Trivy image scan for sentinelops-scan-5b7fbeb1 completed",
+          "started_at": "2026-02-24T01:24:29.206928",
+          "finished_at": "2026-02-24T01:24:33.049168",
+          "duration_seconds": 3.84224
+        },
+        "dast_scan": {
+          "name": "DAST Security Scan (ZAP)",
+          "status": "success",
+          "logs": "DAST scan completed: 11 alert(s) found",
+          "started_at": "2026-02-24T01:24:33.050961",
+          "finished_at": "2026-02-24T01:25:08.987767",
+          "duration_seconds": 35.936806
+        },
+        "policy_check": {
+          "name": "Policy Evaluation",
+          "status": "success",
+          "logs": "Security Score: 41/100",
+          "started_at": "2026-02-24T01:25:08.990155",
+          "finished_at": "2026-02-24T01:25:09.151071",
+          "duration_seconds": 0.160916
+        },
+        "decision": {
+          "name": "Deployment Decision",
+          "status": "success",
+          "logs": "\u274c BLOCKED - Security requirements not met",
+          "started_at": "2026-02-24T01:25:09.152918",
+          "finished_at": "2026-02-24T01:25:09.164537",
+          "duration_seconds": 0.011619
+        }
+      },
+      "security_score": 41,
+      "is_deployable": false,
+      "vulnerability_summary": {
+        "critical": 43,
+        "high": 1326,
+        "medium": 3886,
+        "low": 840,
+        "total": 6095,
+        "sast_issues": 0,
+        "bandit_issues": 0,
+        "trivy_vulns": 6107,
+        "secrets_found": 0,
+        "dast_alerts": 11,
+        "security_score": 41,
+        "sast_high": 0,
+        "sast_medium": 0,
+        "sast_low": 0,
+        "bandit_high": 0,
+        "bandit_medium": 0,
+        "bandit_low": 0,
+        "trivy_critical": 43,
+        "trivy_high": 1326,
+        "trivy_medium": 3883,
+        "trivy_low": 833,
+        "secrets_critical": 0,
+        "secrets_high": 0,
+        "secrets_medium": 0,
+        "dast_high": 0,
+        "dast_medium": 3,
+        "dast_low": 7,
+        "languages_detected": [
+          "php",
+          "javascript"
+        ],
+        "tools_used": []
+      }
+    },
+    {
+      "id": "d45ac5f0",
+      "repo_name": "dvca",
+      "branch": "master",
+      "commit_sha": "manual",
+      "commit_message": "Manual trigger by admin",
+      "author": "admin",
+      "status": "success",
+      "triggered_at": "2026-02-24T01:21:34.564069",
+      "started_at": "2026-02-24T01:21:34.578266",
+      "finished_at": "2026-02-24T01:21:39.172550",
+      "duration_seconds": 4.594284,
+      "stages": {
+        "clone": {
+          "name": "Clone Repository",
+          "status": "success",
+          "logs": "Cloned https://github.com/m6a-UdS/dvca successfully",
+          "started_at": "2026-02-24T01:21:34.582132",
+          "finished_at": "2026-02-24T01:21:38.393576",
+          "duration_seconds": 3.811444
+        },
+        "build": {
+          "name": "Build Image",
+          "status": "skipped",
+          "logs": "No Dockerfile found \u2014 Trivy will scan filesystem instead",
+          "started_at": "2026-02-24T01:21:38.395347"
+        },
+        "sast_scan": {
+          "name": "SAST Security Scan",
+          "status": "success",
+          "logs": "SAST scan completed: 6 issues found across 2 language(s) using bandit",
+          "started_at": "2026-02-24T01:21:38.399963",
+          "finished_at": "2026-02-24T01:21:38.823648",
+          "duration_seconds": 0.423685
+        },
+        "gitleaks_scan": {
+          "name": "Secret Detection (Gitleaks)",
+          "status": "success",
+          "logs": "Secret scan (regex-fallback): 0 secret(s) found",
+          "started_at": "2026-02-24T01:21:38.825472",
+          "finished_at": "2026-02-24T01:21:38.837635",
+          "duration_seconds": 0.012163
+        },
+        "trivy_scan": {
+          "name": "Trivy Container Scan",
+          "status": "success",
+          "logs": "Trivy filesystem scan on sentinelops_y8oygsxp completed",
+          "started_at": "2026-02-24T01:21:38.839299",
+          "finished_at": "2026-02-24T01:21:39.160308",
+          "duration_seconds": 0.321009
+        },
+        "dast_scan": {
+          "name": "DAST Security Scan (ZAP)",
+          "status": "skipped",
+          "logs": "No Docker image \u2014 DAST scan requires a running application"
+        },
+        "policy_check": {
+          "name": "Policy Evaluation",
+          "status": "success",
+          "logs": "Security Score: 82/100",
+          "started_at": "2026-02-24T01:21:39.164981",
+          "finished_at": "2026-02-24T01:21:39.167289",
+          "duration_seconds": 0.002308
+        },
+        "decision": {
+          "name": "Deployment Decision",
+          "status": "success",
+          "logs": "\u2705 APPROVED for deployment",
+          "started_at": "2026-02-24T01:21:39.169076",
+          "finished_at": "2026-02-24T01:21:39.170778",
+          "duration_seconds": 0.001702
+        }
+      },
+      "security_score": 82,
+      "is_deployable": true,
+      "vulnerability_summary": {
+        "critical": 0,
+        "high": 1,
+        "medium": 5,
+        "low": 0,
+        "total": 6,
+        "sast_issues": 6,
+        "bandit_issues": 6,
+        "trivy_vulns": 0,
+        "secrets_found": 0,
+        "dast_alerts": 0,
+        "security_score": 82,
+        "sast_high": 1,
+        "sast_medium": 5,
+        "sast_low": 0,
+        "bandit_high": 1,
+        "bandit_medium": 5,
+        "bandit_low": 0,
+        "trivy_critical": 0,
+        "trivy_high": 0,
+        "trivy_medium": 0,
+        "trivy_low": 0,
+        "secrets_critical": 0,
+        "secrets_high": 0,
+        "secrets_medium": 0,
+        "dast_high": 0,
+        "dast_medium": 0,
+        "dast_low": 0,
+        "languages_detected": [
+          "python",
+          "javascript"
+        ],
+        "tools_used": [
+          "bandit"
+        ]
+      }
+    },
+    {
+      "id": "7fac5cbc",
+      "repo_name": "xvwa",
+      "branch": "master",
+      "commit_sha": "manual",
+      "commit_message": "Manual trigger by admin",
+      "author": "admin",
+      "status": "success",
+      "triggered_at": "2026-02-24T01:14:55.290547",
+      "started_at": "2026-02-24T01:14:55.304389",
+      "finished_at": "2026-02-24T01:14:57.754681",
+      "duration_seconds": 2.450292,
+      "stages": {
+        "clone": {
+          "name": "Clone Repository",
+          "status": "success",
+          "logs": "Cloned https://github.com/s4n7h0/xvwa successfully",
+          "started_at": "2026-02-24T01:14:55.307230",
+          "finished_at": "2026-02-24T01:14:57.578059",
+          "duration_seconds": 2.270829
+        },
+        "build": {
+          "name": "Build Image",
+          "status": "skipped",
+          "logs": "No Dockerfile found \u2014 Trivy will scan filesystem instead",
+          "started_at": "2026-02-24T01:14:57.579666"
+        },
+        "sast_scan": {
+          "name": "SAST Security Scan",
+          "status": "success",
+          "logs": "SAST scan completed: 0 issues found across 2 language(s) using no tools",
+          "started_at": "2026-02-24T01:14:57.582826",
+          "finished_at": "2026-02-24T01:14:57.585918",
+          "duration_seconds": 0.003092
+        },
+        "gitleaks_scan": {
+          "name": "Secret Detection (Gitleaks)",
+          "status": "success",
+          "logs": "Secret scan (regex-fallback): 0 secret(s) found",
+          "started_at": "2026-02-24T01:14:57.587548",
+          "finished_at": "2026-02-24T01:14:57.614434",
+          "duration_seconds": 0.026886
+        },
+        "trivy_scan": {
+          "name": "Trivy Container Scan",
+          "status": "success",
+          "logs": "Trivy filesystem scan on sentinelops_blpet9t3 completed",
+          "started_at": "2026-02-24T01:14:57.616019",
+          "finished_at": "2026-02-24T01:14:57.744561",
+          "duration_seconds": 0.128542
+        },
+        "dast_scan": {
+          "name": "DAST Security Scan (ZAP)",
+          "status": "skipped",
+          "logs": "No Docker image \u2014 DAST scan requires a running application"
+        },
+        "policy_check": {
+          "name": "Policy Evaluation",
+          "status": "success",
+          "logs": "Security Score: 100/100",
+          "started_at": "2026-02-24T01:14:57.747989",
+          "finished_at": "2026-02-24T01:14:57.749802",
+          "duration_seconds": 0.001813
+        },
+        "decision": {
+          "name": "Deployment Decision",
+          "status": "success",
+          "logs": "\u2705 APPROVED for deployment",
+          "started_at": "2026-02-24T01:14:57.751301",
+          "finished_at": "2026-02-24T01:14:57.753035",
+          "duration_seconds": 0.001734
+        }
+      },
+      "security_score": 100,
+      "is_deployable": true,
+      "vulnerability_summary": {
+        "critical": 0,
+        "high": 0,
+        "medium": 0,
+        "low": 0,
+        "total": 0,
+        "sast_issues": 0,
+        "bandit_issues": 0,
+        "trivy_vulns": 0,
+        "secrets_found": 0,
+        "dast_alerts": 0,
+        "security_score": 100,
+        "sast_high": 0,
+        "sast_medium": 0,
+        "sast_low": 0,
+        "bandit_high": 0,
+        "bandit_medium": 0,
+        "bandit_low": 0,
+        "trivy_critical": 0,
+        "trivy_high": 0,
+        "trivy_medium": 0,
+        "trivy_low": 0,
+        "secrets_critical": 0,
+        "secrets_high": 0,
+        "secrets_medium": 0,
+        "dast_high": 0,
+        "dast_medium": 0,
+        "dast_low": 0,
+        "languages_detected": [
+          "php",
+          "javascript"
+        ],
+        "tools_used": []
+      }
+    },
+    {
+      "id": "7bbab609",
+      "repo_name": "WebGoat",
+      "branch": "main",
+      "commit_sha": "manual",
+      "commit_message": "Manual trigger by admin",
+      "author": "admin",
+      "status": "success",
+      "triggered_at": "2026-02-24T01:13:09.152184",
+      "started_at": "2026-02-24T01:13:09.157146",
+      "finished_at": "2026-02-24T01:14:48.602050",
+      "duration_seconds": 99.444904,
+      "stages": {
+        "clone": {
+          "name": "Clone Repository",
+          "status": "success",
+          "logs": "Cloned https://github.com/WebGoat/WebGoat successfully",
+          "started_at": "2026-02-24T01:13:09.161280",
+          "finished_at": "2026-02-24T01:13:13.640728",
+          "duration_seconds": 4.479448
+        },
+        "build": {
+          "name": "Build Image",
+          "status": "failed",
+          "logs": "",
+          "started_at": "2026-02-24T01:13:13.642616",
+          "error": "#0 building with \"default\" instance using docker driver\n\n#1 [internal] load build definition from Dockerfile\n#1 transferring dockerfile: 1.43kB done\n#1 DONE 0.0s\n\n#2 [internal] load metadata for docker.io/library/eclipse-temurin:25-jdk-noble\n#2 DONE 0.0s\n\n#3 [internal] load .dockerignore\n#3 transferring context: 70B done\n#3 DONE 0.0s\n\n#4 [internal] load build context\n#4 transferring context: 2B done\n#4 DONE 0.0s\n\n#5 [1/4] FROM docker.io/library/eclipse-temurin:25-jdk-noble\n#5 DONE 0.0s\n\n#6 [2/4] RUN   useradd -ms /bin/bash webgoat &&   chgrp -R 0 /home/webgoat &&   chmod -R g=u /home/webgoat\n#6 DONE 0.3s\n\n#7 [3/4] COPY --chown=webgoat target/webgoat-*.jar /home/webgoat/webgoat.jar\n#7 ERROR: lstat /target: no such file or directory\n------\n > [3/4] COPY --chown=webgoat target/webgoat-*.jar /home/webgoat/webgoat.jar:\n------\nDockerfile:14\n--------------------\n  12 |     USER webgoat\n  13 |     \n  14 | >>> COPY --chown=webgoat target/webgoat-*.jar /home/webgoat/webgoat.jar\n  15 |     \n  16 |     EXPOSE 8080\n--------------------\nERROR: failed to solve: lstat /target: no such file or directory\n",
+          "finished_at": "2026-02-24T01:13:14.293323",
+          "duration_seconds": 0.650707
+        },
+        "sast_scan": {
+          "name": "SAST Security Scan",
+          "status": "success",
+          "logs": "SAST scan completed: 0 issues found across 3 language(s) using no tools",
+          "started_at": "2026-02-24T01:13:14.295356",
+          "finished_at": "2026-02-24T01:13:14.312224",
+          "duration_seconds": 0.016868
+        },
+        "gitleaks_scan": {
+          "name": "Secret Detection (Gitleaks)",
+          "status": "success",
+          "logs": "Secret scan (regex-fallback): 17 secret(s) found",
+          "started_at": "2026-02-24T01:13:14.314085",
+          "finished_at": "2026-02-24T01:13:14.664919",
+          "duration_seconds": 0.350834
+        },
+        "trivy_scan": {
+          "name": "Trivy Container Scan",
+          "status": "success",
+          "logs": "Trivy filesystem scan on sentinelops_0mtvn0pd completed",
+          "started_at": "2026-02-24T01:13:14.666477",
+          "finished_at": "2026-02-24T01:14:48.590652",
+          "duration_seconds": 93.924175
+        },
+        "dast_scan": {
+          "name": "DAST Security Scan (ZAP)",
+          "status": "skipped",
+          "logs": "No Docker image \u2014 DAST scan requires a running application"
+        },
+        "policy_check": {
+          "name": "Policy Evaluation",
+          "status": "success",
+          "logs": "Security Score: 6/100",
+          "started_at": "2026-02-24T01:14:48.593729",
+          "finished_at": "2026-02-24T01:14:48.596618",
+          "duration_seconds": 0.002889
+        },
+        "decision": {
+          "name": "Deployment Decision",
+          "status": "success",
+          "logs": "\u274c BLOCKED - Security requirements not met",
+          "started_at": "2026-02-24T01:14:48.598042",
+          "finished_at": "2026-02-24T01:14:48.599760",
+          "duration_seconds": 0.001718
+        }
+      },
+      "security_score": 6,
+      "is_deployable": false,
+      "vulnerability_summary": {
+        "critical": 12,
+        "high": 30,
+        "medium": 17,
+        "low": 3,
+        "total": 62,
+        "sast_issues": 0,
+        "bandit_issues": 0,
+        "trivy_vulns": 45,
+        "secrets_found": 17,
+        "dast_alerts": 0,
+        "security_score": 6,
+        "sast_high": 0,
+        "sast_medium": 0,
+        "sast_low": 0,
+        "bandit_high": 0,
+        "bandit_medium": 0,
+        "bandit_low": 0,
+        "trivy_critical": 2,
+        "trivy_high": 23,
+        "trivy_medium": 17,
+        "trivy_low": 3,
+        "secrets_critical": 10,
+        "secrets_high": 7,
+        "secrets_medium": 0,
+        "dast_high": 0,
+        "dast_medium": 0,
+        "dast_low": 0,
+        "languages_detected": [
+          "java",
+          "shell",
+          "javascript"
+        ],
+        "tools_used": []
+      }
+    },
+    {
+      "id": "88df93b2",
+      "repo_name": "WebGoat",
+      "branch": "main",
+      "commit_sha": "manual",
+      "commit_message": "Manual trigger by admin",
+      "author": "admin",
+      "status": "running",
+      "triggered_at": "2026-02-24T01:05:35.662405",
+      "started_at": "2026-02-24T01:05:35.668740",
+      "finished_at": null,
+      "duration_seconds": null,
+      "stages": {
+        "clone": {
+          "name": "Clone Repository",
+          "status": "success",
+          "logs": "Cloned https://github.com/WebGoat/WebGoat successfully",
+          "started_at": "2026-02-24T01:05:35.672646",
+          "finished_at": "2026-02-24T01:05:39.317220",
+          "duration_seconds": 3.644574
+        },
+        "build": {
+          "name": "Build Image",
+          "status": "failed",
+          "logs": "",
+          "started_at": "2026-02-24T01:05:39.319234",
+          "error": "DEPRECATED: The legacy builder is deprecated and will be removed in a future release.\n            Install the buildx component to build images with BuildKit:\n            https://docs.docker.com/go/buildx/\n\nCOPY failed: no source files were specified\n",
+          "finished_at": "2026-02-24T01:05:39.411411",
+          "duration_seconds": 0.092177
+        },
+        "sast_scan": {
+          "name": "SAST Security Scan",
+          "status": "success",
+          "logs": "SAST scan completed: 0 issues found across 3 language(s) using no tools",
+          "started_at": "2026-02-24T01:05:39.413750",
+          "finished_at": "2026-02-24T01:05:39.731551",
+          "duration_seconds": 0.317801
+        },
+        "gitleaks_scan": {
+          "name": "Secret Detection (Gitleaks)",
+          "status": "success",
+          "logs": "Secret scan (regex-fallback): 17 secret(s) found",
+          "started_at": "2026-02-24T01:05:39.732953",
+          "finished_at": "2026-02-24T01:05:40.126661",
+          "duration_seconds": 0.393708
+        },
+        "trivy_scan": {
+          "name": "Trivy Container Scan",
+          "status": "running",
+          "logs": "",
+          "started_at": "2026-02-24T01:05:40.128293"
+        },
+        "dast_scan": {
+          "name": "DAST Security Scan (ZAP)",
+          "status": "pending"
+        },
+        "policy_check": {
+          "name": "Policy Evaluation",
+          "status": "pending"
+        },
+        "decision": {
+          "name": "Deployment Decision",
+          "status": "pending"
+        }
+      },
+      "security_score": null,
+      "is_deployable": null,
+      "vulnerability_summary": null
+    },
+    {
+      "id": "691a8144",
+      "repo_name": "WebGoat",
+      "branch": "main",
+      "commit_sha": "manual",
+      "commit_message": "Manual trigger by admin",
+      "author": "admin",
+      "status": "success",
+      "triggered_at": "2026-02-24T01:00:21.411102",
+      "started_at": "2026-02-24T01:00:21.426766",
+      "finished_at": "2026-02-24T01:01:50.759498",
+      "duration_seconds": 89.332732,
+      "stages": {
+        "clone": {
+          "name": "Clone Repository",
+          "status": "success",
+          "logs": "Cloned https://github.com/WebGoat/WebGoat successfully",
+          "started_at": "2026-02-24T01:00:21.431787",
+          "finished_at": "2026-02-24T01:00:25.689181",
+          "duration_seconds": 4.257394
+        },
+        "build": {
+          "name": "Build Image",
+          "status": "failed",
+          "logs": "",
+          "started_at": "2026-02-24T01:00:25.691567",
+          "error": "DEPRECATED: The legacy builder is deprecated and will be removed in a future release.\n            Install the buildx component to build images with BuildKit:\n            https://docs.docker.com/go/buildx/\n\nCOPY failed: no source files were specified\n",
+          "finished_at": "2026-02-24T01:00:25.711495",
+          "duration_seconds": 0.019928
+        },
+        "sast_scan": {
+          "name": "SAST Security Scan",
+          "status": "success",
+          "logs": "SAST scan completed: 0 issues found across 3 language(s) using no tools",
+          "started_at": "2026-02-24T01:00:25.714645",
+          "finished_at": "2026-02-24T01:00:25.844829",
+          "duration_seconds": 0.130184
+        },
+        "gitleaks_scan": {
+          "name": "Secret Detection (Gitleaks)",
+          "status": "success",
+          "logs": "Secret scan (regex-fallback): 17 secret(s) found",
+          "started_at": "2026-02-24T01:00:25.846543",
+          "finished_at": "2026-02-24T01:00:26.195849",
+          "duration_seconds": 0.349306
+        },
+        "trivy_scan": {
+          "name": "Trivy Container Scan",
+          "status": "success",
+          "logs": "Trivy filesystem scan on sentinelops__wtfe29v completed",
+          "started_at": "2026-02-24T01:00:26.197535",
+          "finished_at": "2026-02-24T01:01:50.748239",
+          "duration_seconds": 84.550704
+        },
+        "dast_scan": {
+          "name": "DAST Security Scan (ZAP)",
+          "status": "skipped",
+          "logs": "No Docker image \u2014 DAST scan requires a running application"
+        },
+        "policy_check": {
+          "name": "Policy Evaluation",
+          "status": "success",
+          "logs": "Security Score: 6/100",
+          "started_at": "2026-02-24T01:01:50.752036",
+          "finished_at": "2026-02-24T01:01:50.755167",
+          "duration_seconds": 0.003131
+        },
+        "decision": {
+          "name": "Deployment Decision",
+          "status": "success",
+          "logs": "\u274c BLOCKED - Security requirements not met",
+          "started_at": "2026-02-24T01:01:50.756633",
+          "finished_at": "2026-02-24T01:01:50.758030",
+          "duration_seconds": 0.001397
+        }
+      },
+      "security_score": 6,
+      "is_deployable": false,
+      "vulnerability_summary": {
+        "critical": 12,
+        "high": 30,
+        "medium": 17,
+        "low": 3,
+        "total": 62,
+        "sast_issues": 0,
+        "bandit_issues": 0,
+        "trivy_vulns": 45,
+        "secrets_found": 17,
+        "dast_alerts": 0,
+        "security_score": 6,
+        "sast_high": 0,
+        "sast_medium": 0,
+        "sast_low": 0,
+        "bandit_high": 0,
+        "bandit_medium": 0,
+        "bandit_low": 0,
+        "trivy_critical": 2,
+        "trivy_high": 23,
+        "trivy_medium": 17,
+        "trivy_low": 3,
+        "secrets_critical": 10,
+        "secrets_high": 7,
+        "secrets_medium": 0,
+        "dast_high": 0,
+        "dast_medium": 0,
+        "dast_low": 0,
+        "languages_detected": [
+          "java",
+          "shell",
+          "javascript"
+        ],
+        "tools_used": []
+      }
+    },
+    {
+      "id": "2f810c04",
+      "repo_name": "WebGoat",
+      "branch": "main",
+      "commit_sha": "manual",
+      "commit_message": "Manual trigger by admin",
+      "author": "admin",
+      "status": "success",
+      "triggered_at": "2026-02-24T00:55:03.864587",
+      "started_at": "2026-02-24T00:55:03.869466",
+      "finished_at": "2026-02-24T00:56:55.345212",
+      "duration_seconds": 111.475746,
+      "stages": {
+        "clone": {
+          "name": "Clone Repository",
+          "status": "success",
+          "logs": "Cloned https://github.com/WebGoat/WebGoat successfully",
+          "started_at": "2026-02-24T00:55:03.872823",
+          "finished_at": "2026-02-24T00:55:07.222708",
+          "duration_seconds": 3.349885
+        },
+        "build": {
+          "name": "Build Image",
+          "status": "failed",
+          "logs": "",
+          "started_at": "2026-02-24T00:55:07.224413",
+          "error": "DEPRECATED: The legacy builder is deprecated and will be removed in a future release.\n            Install the buildx component to build images with BuildKit:\n            https://docs.docker.com/go/buildx/\n\nCOPY failed: no source files were specified\n",
+          "finished_at": "2026-02-24T00:55:22.976127",
+          "duration_seconds": 15.751714
+        },
+        "sast_scan": {
+          "name": "SAST Security Scan",
+          "status": "success",
+          "logs": "SAST scan completed: 0 issues found across 3 language(s) using no tools",
+          "started_at": "2026-02-24T00:55:22.978351",
+          "finished_at": "2026-02-24T00:55:23.250721",
+          "duration_seconds": 0.27237
+        },
+        "gitleaks_scan": {
+          "name": "Secret Detection (Gitleaks)",
+          "status": "success",
+          "logs": "Secret scan (regex-fallback): 17 secret(s) found",
+          "started_at": "2026-02-24T00:55:23.252875",
+          "finished_at": "2026-02-24T00:55:23.591090",
+          "duration_seconds": 0.338215
+        },
+        "trivy_scan": {
+          "name": "Trivy Container Scan",
+          "status": "success",
+          "logs": "Trivy filesystem scan on sentinelops_tiwf6ul4 completed",
+          "started_at": "2026-02-24T00:55:23.592507",
+          "finished_at": "2026-02-24T00:56:55.335766",
+          "duration_seconds": 91.743259
+        },
+        "dast_scan": {
+          "name": "DAST Security Scan (ZAP)",
+          "status": "skipped",
+          "logs": "No Docker image \u2014 DAST scan requires a running application"
+        },
+        "policy_check": {
+          "name": "Policy Evaluation",
+          "status": "success",
+          "logs": "Security Score: 6/100",
+          "started_at": "2026-02-24T00:56:55.338743",
+          "finished_at": "2026-02-24T00:56:55.341196",
+          "duration_seconds": 0.002453
+        },
+        "decision": {
+          "name": "Deployment Decision",
+          "status": "success",
+          "logs": "\u274c BLOCKED - Security requirements not met",
+          "started_at": "2026-02-24T00:56:55.342465",
+          "finished_at": "2026-02-24T00:56:55.343808",
+          "duration_seconds": 0.001343
+        }
+      },
+      "security_score": 6,
+      "is_deployable": false,
+      "vulnerability_summary": {
+        "critical": 12,
+        "high": 30,
+        "medium": 17,
+        "low": 3,
+        "total": 62,
+        "sast_issues": 0,
+        "bandit_issues": 0,
+        "trivy_vulns": 45,
+        "secrets_found": 17,
+        "dast_alerts": 0,
+        "security_score": 6,
+        "sast_high": 0,
+        "sast_medium": 0,
+        "sast_low": 0,
+        "bandit_high": 0,
+        "bandit_medium": 0,
+        "bandit_low": 0,
+        "trivy_critical": 2,
+        "trivy_high": 23,
+        "trivy_medium": 17,
+        "trivy_low": 3,
+        "secrets_critical": 10,
+        "secrets_high": 7,
+        "secrets_medium": 0,
+        "dast_high": 0,
+        "dast_medium": 0,
+        "dast_low": 0,
+        "languages_detected": [
+          "java",
+          "shell",
+          "javascript"
+        ],
+        "tools_used": []
+      }
+    },
+    {
       "id": "92232f15",
       "repo_name": "DVWA",
       "branch": "master",
@@ -2152,5 +3066,5 @@
       }
     }
   ],
-  "updated_at": "2026-02-24T00:14:51.655749"
+  "updated_at": "2026-02-28T10:25:30.557911"
 }

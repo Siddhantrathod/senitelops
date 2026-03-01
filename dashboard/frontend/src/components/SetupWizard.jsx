@@ -4,7 +4,7 @@ import {
   Loader2, ArrowRight, ArrowLeft, Settings, Link as LinkIcon,
 } from 'lucide-react'
 
-const inputClass = 'w-full py-2.5 px-4 bg-white/[0.04] text-white rounded-xl border border-white/[0.08] focus:border-violet-500/50 focus:ring-1 focus:ring-violet-500/30 outline-none transition-all placeholder-steel-600 font-mono text-sm'
+const inputClass = 'w-full py-2.5 px-4 bg-white/[0.04] text-steel-50 rounded-xl border border-white/[0.08] focus:border-violet-500/50 focus:ring-1 focus:ring-violet-500/30 outline-none transition-all placeholder-steel-600 font-mono text-sm'
 
 export default function SetupWizard({ onComplete, onCancel }) {
   const [step, setStep] = useState(1)
@@ -70,7 +70,7 @@ export default function SetupWizard({ onComplete, onCancel }) {
           <div className="inline-flex items-center justify-center w-16 h-16 rounded-full bg-violet-500/10 border border-violet-500/20 mb-4">
             <Shield className="w-8 h-8 text-violet-400" />
           </div>
-          <h1 className="text-3xl font-bold text-white mb-2">Welcome to SentinelOps</h1>
+          <h1 className="text-3xl font-bold text-steel-50 mb-2">Welcome to SentinelOps</h1>
           <p className="text-steel-500">Let's set up your security scanning platform</p>
         </div>
 
@@ -99,7 +99,7 @@ export default function SetupWizard({ onComplete, onCancel }) {
             <div className="space-y-6">
               <div className="flex items-center gap-3 mb-6">
                 <GitBranch className="w-6 h-6 text-violet-400" />
-                <h2 className="text-xl font-semibold text-white">Connect Your Repository</h2>
+                <h2 className="text-xl font-semibold text-steel-50">Connect Your Repository</h2>
               </div>
               <p className="text-steel-400 mb-6">
                 Enter the GitHub repository URL that SentinelOps should monitor and scan for security vulnerabilities.
@@ -130,7 +130,7 @@ export default function SetupWizard({ onComplete, onCancel }) {
             <div className="space-y-6">
               <div className="flex items-center gap-3 mb-6">
                 <Settings className="w-6 h-6 text-violet-400" />
-                <h2 className="text-xl font-semibold text-white">Configure Security Policy</h2>
+                <h2 className="text-xl font-semibold text-steel-50">Configure Security Policy</h2>
               </div>
               <p className="text-steel-400 mb-6">
                 Set your security thresholds. The pipeline will be blocked if these policies are violated.
@@ -164,7 +164,7 @@ export default function SetupWizard({ onComplete, onCancel }) {
                       <input type="checkbox" checked={formData.policy[field]}
                         onChange={(e) => handlePolicyChange(field, e.target.checked)}
                         className="w-5 h-5 rounded bg-white/[0.04] border-white/[0.12] text-violet-500 focus:ring-violet-500/30" />
-                      <span className="text-steel-200 group-hover:text-white transition-colors">{label}</span>
+                      <span className="text-steel-200 group-hover:text-steel-50 transition-colors">{label}</span>
                     </label>
                   ))}
                 </div>
@@ -177,14 +177,14 @@ export default function SetupWizard({ onComplete, onCancel }) {
             <div className="space-y-6">
               <div className="flex items-center gap-3 mb-6">
                 <Rocket className="w-6 h-6 text-violet-400" />
-                <h2 className="text-xl font-semibold text-white">Review & Launch</h2>
+                <h2 className="text-xl font-semibold text-steel-50">Review & Launch</h2>
               </div>
               <p className="text-steel-400 mb-6">Review your configuration and launch the initial security scan.</p>
 
               <div className="space-y-4">
                 <div className="bg-white/[0.02] border border-white/[0.06] rounded-xl p-4">
                   <h3 className="text-[10px] uppercase tracking-[0.15em] font-mono text-steel-500 mb-2">Repository</h3>
-                  <p className="text-white font-mono text-sm">{formData.repo_url}</p>
+                  <p className="text-steel-50 font-mono text-sm">{formData.repo_url}</p>
                   <p className="text-steel-500 text-sm mt-1 font-mono">Branch: {formData.branch}</p>
                 </div>
 
@@ -200,7 +200,7 @@ export default function SetupWizard({ onComplete, onCancel }) {
                     ].map(([label, value]) => (
                       <div key={label} className="contents">
                         <div className="text-steel-500">{label}:</div>
-                        <div className="text-white font-mono">{value}</div>
+                        <div className="text-steel-50 font-mono">{value}</div>
                       </div>
                     ))}
                   </div>

@@ -258,7 +258,8 @@ class PipelineExecutor:
                 try:
                     build_image = image_name or f"sentinelops-scan-{pipeline.id}"
                     result = subprocess.run(
-                        ["docker", "build", "-t", build_image, work_dir],
+                        ["docker", "buildx", "build", "--load",
+                         "-f", dockerfile_path, "-t", build_image, work_dir],
                         capture_output=True, text=True, timeout=900
                     )
                     if result.returncode != 0:

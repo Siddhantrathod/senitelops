@@ -155,7 +155,7 @@ export default function NotificationDropdown() {
             >
                 <Bell className="w-5 h-5" />
                 {unreadCount > 0 && (
-                    <span className="absolute -top-0.5 -right-0.5 w-5 h-5 bg-neon-red rounded-full flex items-center justify-center text-xs font-bold text-white border-2 border-[#0B0E11]">
+                    <span className="absolute -top-0.5 -right-0.5 w-5 h-5 bg-neon-red rounded-full flex items-center justify-center text-xs font-bold text-white border-2 border-surface">
                         {unreadCount > 9 ? '9+' : unreadCount}
                     </span>
                 )}
@@ -171,12 +171,12 @@ export default function NotificationDropdown() {
                     />
 
                     {/* Panel */}
-                    <div className="absolute right-0 top-full mt-2 w-96 bg-[#161b22]/95 backdrop-blur-2xl border border-white/[0.08] rounded-2xl shadow-2xl z-50 overflow-hidden animate-fade-in">
+                    <div className="absolute right-0 top-full mt-2 w-96 bg-surface-secondary/98 dark:bg-surface-secondary/95 backdrop-blur-2xl border border-theme-strong rounded-2xl shadow-2xl z-50 overflow-hidden animate-fade-in">
                         {/* Header */}
                         <div className="flex items-center justify-between px-4 py-3 border-b border-white/[0.06] bg-white/[0.02]">
                             <div className="flex items-center gap-2">
                                 <Shield className="w-5 h-5 text-violet-400" />
-                                <h3 className="font-semibold text-white">Notifications</h3>
+                                <h3 className="font-semibold text-steel-50">Notifications</h3>
                                 {unreadCount > 0 && (
                                     <span className="px-2 py-0.5 text-xs font-medium bg-violet-500/10 text-violet-400 rounded-full border border-violet-500/20">
                                         {unreadCount} new
@@ -185,7 +185,7 @@ export default function NotificationDropdown() {
                             </div>
                             <button
                                 onClick={() => setIsOpen(false)}
-                                className="p-1 text-steel-500 hover:text-white rounded-lg hover:bg-white/[0.06]"
+                                className="p-1 text-steel-500 hover:text-steel-50 rounded-lg hover:bg-theme-active"
                             >
                                 <X className="w-4 h-4" />
                             </button>
@@ -232,7 +232,7 @@ export default function NotificationDropdown() {
                                                         <div className="flex items-start justify-between gap-2">
                                                             <p className={cn(
                                                                 'text-sm text-steel-200 truncate',
-                                                                !notification.read && 'font-semibold text-white'
+                                                                !notification.read && 'font-semibold text-steel-50'
                                                             )}>
                                                                 {notification.title}
                                                             </p>

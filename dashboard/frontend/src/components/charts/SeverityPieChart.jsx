@@ -13,12 +13,12 @@ const CustomTooltip = ({ active, payload }) => {
     const data = payload[0]
     return (
       <div className="glass-card p-3 shadow-2xl">
-        <p className="text-white font-medium">{data.name}</p>
+        <p className="text-steel-50 font-medium">{data.name}</p>
         <p className="text-steel-400 text-sm font-mono">
-          Count: <span className="text-white font-semibold">{data.value}</span>
+          Count: <span className="text-steel-50 font-semibold">{data.value}</span>
         </p>
         <p className="text-steel-400 text-sm font-mono">
-          Percentage: <span className="text-white font-semibold">{(data.payload.percent * 100).toFixed(1)}%</span>
+          Percentage: <span className="text-steel-50 font-semibold">{(data.payload.percent * 100).toFixed(1)}%</span>
         </p>
       </div>
     )
@@ -59,7 +59,7 @@ export default function SeverityPieChart({ data, title, height = 300 }) {
   return (
     <div className="glass-card p-6">
       {title && (
-        <h3 className="text-lg font-semibold text-white mb-4">{title}</h3>
+        <h3 className="text-lg font-semibold text-steel-50 mb-4">{title}</h3>
       )}
       <ResponsiveContainer width="100%" height={height}>
         <PieChart>

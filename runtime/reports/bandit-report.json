@@ -1,8 +1,8 @@
 {
   "errors": [],
-  "generated_at": "2026-02-19T17:48:05Z",
+  "generated_at": "2026-02-28T04:54:42Z",
   "metrics": {
-    "/tmp/sentinelops_f5pz9uwl/app_vulnerable/app.py": {
+    "/tmp/sentinelops_3chs4eln/app_vulnerable/app.py": {
       "CONFIDENCE.HIGH": 3,
       "CONFIDENCE.LOW": 0,
       "CONFIDENCE.MEDIUM": 3,
@@ -34,7 +34,7 @@
       "code": "1 from flask import Flask, jsonify, request\n2 import subprocess\n3 import os\n",
       "col_offset": 0,
       "end_col_offset": 17,
-      "filename": "/tmp/sentinelops_f5pz9uwl/app_vulnerable/app.py",
+      "filename": "/tmp/sentinelops_3chs4eln/app_vulnerable/app.py",
       "issue_confidence": "HIGH",
       "issue_cwe": {
         "id": 78,
@@ -54,7 +54,7 @@
       "code": "6 \n7 SECRET_KEY = \"mysecret123\"\n8 \n",
       "col_offset": 13,
       "end_col_offset": 26,
-      "filename": "/tmp/sentinelops_f5pz9uwl/app_vulnerable/app.py",
+      "filename": "/tmp/sentinelops_3chs4eln/app_vulnerable/app.py",
       "issue_confidence": "MEDIUM",
       "issue_cwe": {
         "id": 259,
@@ -74,7 +74,7 @@
       "code": "41     cmd = request.args.get(\"cmd\")\n42     return subprocess.getoutput(cmd)\n43 \n",
       "col_offset": 11,
       "end_col_offset": 36,
-      "filename": "/tmp/sentinelops_f5pz9uwl/app_vulnerable/app.py",
+      "filename": "/tmp/sentinelops_3chs4eln/app_vulnerable/app.py",
       "issue_confidence": "HIGH",
       "issue_cwe": {
         "id": 78,
@@ -94,7 +94,7 @@
       "code": "47     expr = request.args.get(\"expr\")\n48     return str(eval(expr))\n49 \n",
       "col_offset": 15,
       "end_col_offset": 25,
-      "filename": "/tmp/sentinelops_f5pz9uwl/app_vulnerable/app.py",
+      "filename": "/tmp/sentinelops_3chs4eln/app_vulnerable/app.py",
       "issue_confidence": "HIGH",
       "issue_cwe": {
         "id": 78,
@@ -114,7 +114,7 @@
       "code": "51     # \u274c Insecure configuration\n52     app.run(debug=True, host=\"0.0.0.0\", port=5000)\n",
       "col_offset": 4,
       "end_col_offset": 50,
-      "filename": "/tmp/sentinelops_f5pz9uwl/app_vulnerable/app.py",
+      "filename": "/tmp/sentinelops_3chs4eln/app_vulnerable/app.py",
       "issue_confidence": "MEDIUM",
       "issue_cwe": {
         "id": 94,
@@ -134,7 +134,7 @@
       "code": "51     # \u274c Insecure configuration\n52     app.run(debug=True, host=\"0.0.0.0\", port=5000)\n",
       "col_offset": 29,
       "end_col_offset": 38,
-      "filename": "/tmp/sentinelops_f5pz9uwl/app_vulnerable/app.py",
+      "filename": "/tmp/sentinelops_3chs4eln/app_vulnerable/app.py",
       "issue_confidence": "MEDIUM",
       "issue_cwe": {
         "id": 605,

@@ -122,7 +122,7 @@ export default function DastReport() {
     return (
       <div className="space-y-6 animate-fade-in">
         <div>
-          <h1 className="text-3xl font-bold text-white mb-2">DAST Security Scan</h1>
+          <h1 className="text-3xl font-bold text-steel-50 mb-2">DAST Security Scan</h1>
           <p className="text-steel-400">Dynamic Application Security Testing with OWASP ZAP</p>
         </div>
         <Alert variant="info" title="No DAST Report Available">
@@ -194,7 +194,7 @@ export default function DastReport() {
       {/* Header */}
       <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
         <div>
-          <h1 className="text-3xl font-bold text-white mb-2 flex items-center gap-3">
+          <h1 className="text-3xl font-bold text-steel-50 mb-2 flex items-center gap-3">
             <Globe className="w-8 h-8 text-cyan-400" />
             DAST Security Scan
           </h1>
@@ -221,19 +221,19 @@ export default function DastReport() {
         <div className="flex items-center gap-2">
           <Zap className="w-5 h-5 text-cyan-400" />
           <span className="text-sm text-steel-300">
-            Tool: <span className="text-white font-medium">{toolName.toUpperCase()}</span>
+            Tool: <span className="text-steel-50 font-medium">{toolName.toUpperCase()}</span>
           </span>
         </div>
         <div className="flex items-center gap-2">
           <LinkIcon className="w-4 h-4 text-steel-500" />
           <span className="text-sm text-steel-300">
-            Target: <span className="text-white font-mono text-xs">{targetUrl}</span>
+            Target: <span className="text-steel-50 font-mono text-xs">{targetUrl}</span>
           </span>
         </div>
         <div className="flex items-center gap-2">
           <Shield className="w-4 h-4 text-steel-500" />
           <span className="text-sm text-steel-300">
-            Scan Type: <span className="text-white capitalize">{scanType}</span>
+            Scan Type: <span className="text-steel-50 capitalize">{scanType}</span>
           </span>
         </div>
         <div className="flex items-center gap-2">
@@ -315,7 +315,7 @@ export default function DastReport() {
             placeholder="Search alerts..."
             value={filters.search}
             onChange={e => setFilters({ ...filters, search: e.target.value })}
-            className="w-full pl-10 pr-4 py-2.5 bg-white/[0.04] text-white rounded-xl border border-white/[0.08] outline-none text-sm focus:ring-2 focus:ring-violet-500/30 placeholder-steel-600"
+            className="w-full pl-10 pr-4 py-2.5 bg-white/[0.04] text-steel-50 rounded-xl border border-white/[0.08] outline-none text-sm focus:ring-2 focus:ring-violet-500/30 placeholder-steel-600"
           />
         </div>
         <div className="flex items-center gap-1 bg-white/[0.02] p-1 rounded-xl border border-white/[0.06]">
@@ -350,7 +350,7 @@ export default function DastReport() {
                 {isExpanded ? <ChevronDown className="w-4 h-4 text-steel-500" /> : <ChevronRight className="w-4 h-4 text-steel-500" />}
                 <RiskBadge risk={alert.risk} />
                 <div className="flex-1 min-w-0">
-                  <p className="text-sm font-medium text-white truncate">{alert.name || 'Alert'}</p>
+                  <p className="text-sm font-medium text-steel-50 truncate">{alert.name || 'Alert'}</p>
                   <p className="text-xs text-steel-500 font-mono truncate">{alert.url || targetUrl}</p>
                 </div>
                 {alert.cwe_id && (
@@ -381,19 +381,19 @@ export default function DastReport() {
                     {alert.url && (
                       <div>
                         <span className="text-steel-500 block mb-1">URL</span>
-                        <span className="text-white font-mono break-all text-[11px]">{alert.url}</span>
+                        <span className="text-steel-50 font-mono break-all text-[11px]">{alert.url}</span>
                       </div>
                     )}
                     {alert.method && (
                       <div>
                         <span className="text-steel-500 block mb-1">Method</span>
-                        <span className="text-white font-mono">{alert.method}</span>
+                        <span className="text-steel-50 font-mono">{alert.method}</span>
                       </div>
                     )}
                     {alert.param && (
                       <div>
                         <span className="text-steel-500 block mb-1">Parameter</span>
-                        <span className="text-white font-mono">{alert.param}</span>
+                        <span className="text-steel-50 font-mono">{alert.param}</span>
                       </div>
                     )}
                     {alert.cwe_id && (

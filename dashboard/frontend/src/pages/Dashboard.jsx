@@ -410,13 +410,13 @@ export default function Dashboard() {
             </div>
             <ChevronRight className="w-5 h-5 text-steel-600 group-hover:text-violet-400 group-hover:translate-x-1 transition-all" />
           </div>
-          <h3 className="text-xl font-semibold text-white mb-2">SAST Code Analysis</h3>
+          <h3 className="text-xl font-semibold text-steel-50 mb-2">SAST Code Analysis</h3>
           <p className="text-steel-400 text-sm mb-4">
             Multi-language static analysis ({detectedLanguages.length > 0 ? detectedLanguages.map(l => l.charAt(0).toUpperCase() + l.slice(1)).join(', ') : 'No scan yet'})
           </p>
           <div className="flex items-center gap-4">
             <div className="flex items-center gap-2">
-              <span className="text-2xl font-bold text-white font-mono">{codeIssueCount}</span>
+              <span className="text-2xl font-bold text-steel-50 font-mono">{codeIssueCount}</span>
               <span className="text-steel-400 text-sm">issues found</span>
             </div>
             <div className="h-8 w-px bg-white/[0.06]" />
@@ -436,13 +436,13 @@ export default function Dashboard() {
             </div>
             <ChevronRight className="w-5 h-5 text-steel-600 group-hover:text-violet-400 group-hover:translate-x-1 transition-all" />
           </div>
-          <h3 className="text-xl font-semibold text-white mb-2">Trivy Container Scan</h3>
+          <h3 className="text-xl font-semibold text-steel-50 mb-2">Trivy Container Scan</h3>
           <p className="text-steel-400 text-sm mb-4">
             Vulnerability scanner for containers and dependencies
           </p>
           <div className="flex items-center gap-4">
             <div className="flex items-center gap-2">
-              <span className="text-2xl font-bold text-white font-mono">{trivyResults.length}</span>
+              <span className="text-2xl font-bold text-steel-50 font-mono">{trivyResults.length}</span>
               <span className="text-steel-400 text-sm">vulnerabilities</span>
             </div>
             <div className="h-8 w-px bg-white/[0.06]" />
@@ -465,13 +465,13 @@ export default function Dashboard() {
             </div>
             <ChevronRight className="w-5 h-5 text-steel-600 group-hover:text-violet-400 group-hover:translate-x-1 transition-all" />
           </div>
-          <h3 className="text-xl font-semibold text-white mb-2">DAST Security Scan</h3>
+          <h3 className="text-xl font-semibold text-steel-50 mb-2">DAST Security Scan</h3>
           <p className="text-steel-400 text-sm mb-4">
             Dynamic runtime vulnerability testing {dastData?.tool ? `(${dastData.tool.toUpperCase()})` : '(OWASP ZAP)'}
           </p>
           <div className="flex items-center gap-4">
             <div className="flex items-center gap-2">
-              <span className="text-2xl font-bold text-white font-mono">{dastAlerts}</span>
+              <span className="text-2xl font-bold text-steel-50 font-mono">{dastAlerts}</span>
               <span className="text-steel-400 text-sm">alerts found</span>
             </div>
             <div className="h-8 w-px bg-white/[0.06]" />
@@ -491,13 +491,13 @@ export default function Dashboard() {
             </div>
             <ChevronRight className="w-5 h-5 text-steel-600 group-hover:text-violet-400 group-hover:translate-x-1 transition-all" />
           </div>
-          <h3 className="text-xl font-semibold text-white mb-2">Secret Detection</h3>
+          <h3 className="text-xl font-semibold text-steel-50 mb-2">Secret Detection</h3>
           <p className="text-steel-400 text-sm mb-4">
             Gitleaks hardcoded secret scanning
           </p>
           <div className="flex items-center gap-4">
             <div className="flex items-center gap-2">
-              <span className="text-2xl font-bold text-white font-mono">{secretsCount}</span>
+              <span className="text-2xl font-bold text-steel-50 font-mono">{secretsCount}</span>
               <span className="text-steel-400 text-sm">secrets found</span>
             </div>
             <div className="h-8 w-px bg-white/[0.06]" />
@@ -513,7 +513,7 @@ export default function Dashboard() {
       {/* Recent Findings */}
       <div className="glass-card p-6">
         <div className="flex items-center justify-between mb-6">
-          <h3 className="text-lg font-semibold text-white">Recent Critical Findings</h3>
+          <h3 className="text-lg font-semibold text-steel-50">Recent Critical Findings</h3>
           <Link to="/dashboard/sast" className="text-violet-400 hover:text-violet-300 text-sm font-medium">
             View All →
           </Link>
@@ -533,12 +533,12 @@ export default function Dashboard() {
                       <AlertTriangle className="w-4 h-4" />
                     </div>
                     <div>
-                      <p className="text-white font-medium">
+                      <p className="text-steel-50 font-medium">
                         {vuln.rule_id || vuln.test_name?.replace(/_/g, ' ') || 'Finding'}
                       </p>
                       <p className="text-steel-500 text-sm font-mono">
                         {vuln.file || vuln.filename} • Line {vuln.line || vuln.line_number}
-                        {vuln.language && <span className="ml-2 px-1.5 py-0.5 text-xs bg-white/[0.06] rounded border border-white/[0.08]">{vuln.language}</span>}
+                        {vuln.language && <span className="ml-2 px-1.5 py-0.5 text-xs bg-theme-active rounded border border-theme">{vuln.language}</span>}
                       </p>
                     </div>
                   </div>
@@ -558,7 +558,7 @@ export default function Dashboard() {
                       <AlertTriangle className="w-4 h-4" />
                     </div>
                     <div>
-                      <p className="text-white font-medium">
+                      <p className="text-steel-50 font-medium">
                         {vuln.test_name?.replace(/_/g, ' ')}
                       </p>
                       <p className="text-steel-500 text-sm font-mono">

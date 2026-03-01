@@ -1,0 +1,8 @@
+export { default as ProfileTab } from './ProfileTab'
+export { default as SecurityTab } from './SecurityTab'
+export { default as NotificationsTab } from './NotificationsTab'
+export { default as ScanPreferencesTab } from './ScanPreferencesTab'
+export { default as GitIntegrationTab } from './GitIntegrationTab'
+export { default as AppearanceTab } from './AppearanceTab'
+export { default as ApiTokensTab } from './ApiTokensTab'
+export { default as AdvancedTab } from './AdvancedTab'

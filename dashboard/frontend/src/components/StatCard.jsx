@@ -50,7 +50,7 @@ export default function StatCard({
         <div className="flex-1">
           <p className="text-steel-400 text-sm font-medium mb-1">{title}</p>
           <div className="flex items-center gap-2">
-            <h3 className="text-3xl font-bold text-white tracking-tight font-mono data-readout">{value}</h3>
+            <h3 className="text-3xl font-bold text-steel-50 tracking-tight font-mono data-readout">{value}</h3>
           </div>
           {subtitle && (
             <p className="text-steel-500 text-xs mt-1">{subtitle}</p>

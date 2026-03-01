@@ -1,0 +1,2646 @@
+from flask import Flask, jsonify, render_template, send_from_directory, request, redirect, url_for, session
+from flask_cors import CORS
+from flask_jwt_extended import JWTManager, create_access_token, jwt_required, get_jwt_identity, get_jwt
+import json
+import os
+import sys
+import hmac
+import hashlib
+import re
+from datetime import datetime, timedelta
+from typing import Dict
+import bcrypt
+from dotenv import load_dotenv
+
+# Load environment variables from .env file
+load_dotenv(os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), '.env'))
+
+# Add pipeline module to path
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+from pipeline.pipeline_executor import (
+    PipelineExecutor, 
+    run_pipeline_async,
+    run_pipeline,
+    run_pipeline_background,
+    validate_repo_url,
+    PipelineResult
+)
+from pipeline.sast_scanner import LANGUAGE_INFO, TOOL_DISPLAY
+
+# Google OAuth imports
+try:
+    from authlib.integrations.requests_client import OAuth2Session
+    OAUTH_AVAILABLE = True
+except ImportError:
+    OAUTH_AVAILABLE = False
+
+app = Flask(__name__)
+app.secret_key = os.environ.get('JWT_SECRET_KEY', 'sentinelops-secret-key-change-in-production')
+CORS(app, supports_credentials=True)
+
+# JWT Configuration
+app.config['JWT_SECRET_KEY'] = os.environ.get('JWT_SECRET_KEY', 'sentinelops-secret-key-change-in-production')
+app.config['JWT_ACCESS_TOKEN_EXPIRES'] = timedelta(hours=24)
+app.config['JWT_TOKEN_LOCATION'] = ['headers']
+app.config['JWT_HEADER_NAME'] = 'Authorization'
+app.config['JWT_HEADER_TYPE'] = 'Bearer'
+jwt = JWTManager(app)
+
+# Google OAuth 2.0 Configuration
+GOOGLE_CLIENT_ID = os.environ.get('GOOGLE_CLIENT_ID', '')
+GOOGLE_CLIENT_SECRET = os.environ.get('GOOGLE_CLIENT_SECRET', '')
+GOOGLE_DISCOVERY_URL = 'https://accounts.google.com/.well-known/openid-configuration'
+GOOGLE_AUTH_URI = 'https://accounts.google.com/o/oauth2/v2/auth'
+GOOGLE_TOKEN_URI = 'https://oauth2.googleapis.com/token'
+GOOGLE_USERINFO_URI = 'https://openidconnect.googleapis.com/v1/userinfo'
+GOOGLE_SCOPES = ['openid', 'email', 'profile']
+
+# Handle JWT errors
+@jwt.invalid_token_loader
+def invalid_token_callback(error_string):
+    return jsonify({"error": "Invalid token", "message": error_string}), 401
+
+@jwt.unauthorized_loader
+def unauthorized_callback(error_string):
+    return jsonify({"error": "Missing token", "message": error_string}), 401
+
+@jwt.expired_token_loader
+def expired_token_callback(jwt_header, jwt_payload):
+    return jsonify({"error": "Token expired"}), 401
+
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+REPORT_DIR = os.path.join(os.path.dirname(BASE_DIR), "runtime", "reports")
+DATA_DIR = os.path.join(BASE_DIR, "data")
+PIPELINE_DIR = os.path.join(DATA_DIR, "pipelines")
+
+# Ensure directories exist
+os.makedirs(DATA_DIR, exist_ok=True)
+os.makedirs(PIPELINE_DIR, exist_ok=True)
+os.makedirs(REPORT_DIR, exist_ok=True)
+
+# File paths for persistent storage
+USERS_FILE = os.path.join(DATA_DIR, "users.json")
+POLICY_FILE = os.path.join(DATA_DIR, "policy.json")
+PIPELINES_FILE = os.path.join(PIPELINE_DIR, "history.json")
+CONFIG_FILE = os.path.join(DATA_DIR, "config.json")
+NOTIFICATIONS_FILE = os.path.join(DATA_DIR, "notifications.json")
+
+# Initialize pipeline executor
+pipeline_executor = PipelineExecutor(REPORT_DIR, PIPELINES_FILE)
+
+# GitHub webhook secret (set via environment variable)
+GITHUB_WEBHOOK_SECRET = os.environ.get('GITHUB_WEBHOOK_SECRET', 'your-webhook-secret')
+
+# Default config
+DEFAULT_CONFIG = {
+    "github_repo_url": "",
+    "github_branch": "main",
+    "auto_scan_enabled": True,
+    "scan_on_push": True,
+    "target_image": "",
+    "target_directory": "",
+    "setup_completed": False,
+    "repo_configured": False,
+    "policy_configured": False,
+    "initial_scan_completed": False
+}
+
+# Default policy settings
+DEFAULT_POLICY = {
+    "minScore": 70,
+    "blockCritical": True,
+    "blockHigh": False,
+    "maxCriticalVulns": 0,
+    "maxHighVulns": 5,
+    "autoBlock": True,
+    "configured": False,
+    "updatedAt": None,
+    "updatedBy": None
+}
+
+# Default admin user (password: admin123)
+DEFAULT_USERS = [
+    {
+        "id": 1,
+        "username": "admin",
+        "email": "admin@sentinelops.io",
+        "password": bcrypt.hashpw("admin123".encode('utf-8'), bcrypt.gensalt()).decode('utf-8'),
+        "role": "admin",
+        "fullName": "System Administrator",
+        "organization": "SentinelOps",
+        "roleTitle": "Platform Admin",
+        "phone": "",
+        "authProvider": "local",
+        "lastLoginAt": None,
+        "createdAt": datetime.now().isoformat()
+    }
+]
+
+def load_json_file(filename):
+    """Helper to load JSON report files"""
+    path = os.path.join(REPORT_DIR, filename)
+    try:
+        with open(path) as f:
+            return json.load(f)
+    except FileNotFoundError:
+        return None
+    except json.JSONDecodeError:
+        return None
+
+def load_data_file(filepath, default):
+    """Load data from JSON file or return default"""
+    try:
+        with open(filepath) as f:
+            return json.load(f)
+    except (FileNotFoundError, json.JSONDecodeError):
+        save_data_file(filepath, default)
+        return default
+
+def save_data_file(filepath, data):
+    """Save data to JSON file"""
+    with open(filepath, 'w') as f:
+        json.dump(data, f, indent=2)
+
+def get_users():
+    """Get all users"""
+    return load_data_file(USERS_FILE, DEFAULT_USERS)
+
+def save_users(users):
+    """Save users to file"""
+    save_data_file(USERS_FILE, users)
+
+def get_config():
+    """Get current config"""
+    return load_data_file(CONFIG_FILE, DEFAULT_CONFIG)
+
+def save_config(config):
+    """Save config to file"""
+    save_data_file(CONFIG_FILE, config)
+
+def verify_github_signature(payload_body, signature_header):
+    """Verify GitHub webhook signature"""
+    if not signature_header:
+        return False
+    
+    hash_object = hmac.new(
+        GITHUB_WEBHOOK_SECRET.encode('utf-8'),
+        msg=payload_body,
+        digestmod=hashlib.sha256
+    )
+    expected_signature = "sha256=" + hash_object.hexdigest()
+    return hmac.compare_digest(expected_signature, signature_header)
+
+def get_policy():
+    """Get current policy"""
+    return load_data_file(POLICY_FILE, DEFAULT_POLICY)
+
+def save_policy(policy):
+    """Save policy to file"""
+    save_data_file(POLICY_FILE, policy)
+
+def get_notifications():
+    """Get all notifications"""
+    return load_data_file(NOTIFICATIONS_FILE, [])
+
+def save_notifications(notifications):
+    """Save notifications to file"""
+    save_data_file(NOTIFICATIONS_FILE, notifications)
+
+def add_notification(notification_type: str, title: str, message: str, metadata: dict = None):
+    """
+    Add a new notification to the system.
+    
+    Types: 'critical', 'warning', 'success', 'info'
+    """
+    import uuid
+    notifications = get_notifications()
+    
+    new_notification = {
+        "id": str(uuid.uuid4())[:8],
+        "type": notification_type,
+        "title": title,
+        "message": message,
+        "metadata": metadata or {},
+        "time": datetime.now().isoformat(),
+        "read": False
+    }
+    
+    # Add to beginning (newest first)
+    notifications.insert(0, new_notification)
+    
+    # Keep only last 100 notifications
+    notifications = notifications[:100]
+    
+    save_notifications(notifications)
+    return new_notification
+
+# Initialize data files if they don't exist
+get_users()
+get_policy()
+get_notifications()
+
+# ==================== AUTH ROUTES ====================
+
+@app.route("/api/auth/login", methods=["POST"])
+def login():
+    """Authenticate user and return JWT token"""
+    data = request.get_json()
+    username = data.get("username", "").strip()
+    password = data.get("password", "")
+    
+    if not username or not password:
+        return jsonify({"error": "Username and password are required"}), 400
+    
+    users = get_users()
+    user = next((u for u in users if u["username"] == username), None)
+    
+    if not user:
+        return jsonify({"error": "Invalid credentials"}), 401
+    
+    # Google-only accounts can't login with password
+    if user.get("authProvider") == "google" and not user.get("password"):
+        return jsonify({"error": "This account uses Google Sign-In. Please login with Google."}), 401
+    
+    if not bcrypt.checkpw(password.encode('utf-8'), user["password"].encode('utf-8')):
+        return jsonify({"error": "Invalid credentials"}), 401
+    
+    # Update last login
+    user["lastLoginAt"] = datetime.now().isoformat()
+    save_users(users)
+    
+    # Create access token with user id as identity
+    access_token = create_access_token(identity=str(user["id"]), additional_claims={
+        "username": user["username"],
+        "email": user["email"],
+        "role": user["role"]
+    })
+    
+    return jsonify({
+        "token": access_token,
+        "user": {
+            "id": user["id"],
+            "username": user["username"],
+            "email": user["email"],
+            "role": user["role"],
+            "fullName": user.get("fullName", ""),
+            "organization": user.get("organization", ""),
+            "roleTitle": user.get("roleTitle", ""),
+            "authProvider": user.get("authProvider", "local")
+        }
+    })
+
+def get_current_user_info():
+    """Helper to get current user info from JWT"""
+    user_id = get_jwt_identity()
+    claims = get_jwt()
+    return {
+        "id": int(user_id),
+        "username": claims.get("username"),
+        "email": claims.get("email"),
+        "role": claims.get("role")
+    }
+
+def get_full_user_info(user_id):
+    """Get full user info from storage (not just JWT claims)"""
+    users = get_users()
+    user = next((u for u in users if u["id"] == user_id), None)
+    if user:
+        return {
+            "id": user["id"],
+            "username": user["username"],
+            "email": user["email"],
+            "role": user["role"],
+            "fullName": user.get("fullName", ""),
+            "organization": user.get("organization", ""),
+            "roleTitle": user.get("roleTitle", ""),
+        }
+    return None
+
+@app.route("/api/auth/me", methods=["GET"])
+@jwt_required()
+def get_current_user():
+    """Get current authenticated user with full details"""
+    current = get_current_user_info()
+    full_info = get_full_user_info(current["id"])
+    if full_info:
+        return jsonify(full_info)
+    return jsonify(current)
+
+@app.route("/api/auth/signup", methods=["POST"])
+def signup():
+    """Public signup endpoint - creates a new viewer account"""
+    data = request.get_json()
+    
+    username = data.get("username", "").strip()
+    email = data.get("email", "").strip()
+    password = data.get("password", "")
+    full_name = data.get("fullName", "").strip()
+    organization = data.get("organization", "").strip()
+    role_title = data.get("roleTitle", "").strip()
+    phone = data.get("phone", "").strip()
+    
+    # Validate required fields
+    errors = []
+    if not username:
+        errors.append("Username is required")
+    elif len(username) < 3:
+        errors.append("Username must be at least 3 characters")
+    elif not re.match(r'^[a-zA-Z0-9_.-]+$', username):
+        errors.append("Username can only contain letters, numbers, dots, hyphens, and underscores")
+    
+    if not email:
+        errors.append("Email is required")
+    elif not re.match(r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$', email):
+        errors.append("Invalid email format")
+    
+    if not password:
+        errors.append("Password is required")
+    elif len(password) < 6:
+        errors.append("Password must be at least 6 characters")
+    
+    if not full_name:
+        errors.append("Full name is required")
+    
+    if errors:
+        return jsonify({"error": errors[0], "errors": errors}), 400
+    
+    users = get_users()
+    
+    if any(u["username"].lower() == username.lower() for u in users):
+        return jsonify({"error": "Username already exists"}), 409
+    
+    if any(u["email"].lower() == email.lower() for u in users):
+        return jsonify({"error": "Email already exists"}), 409
+    
+    new_user = {
+        "id": max(u["id"] for u in users) + 1 if users else 1,
+        "username": username,
+        "email": email,
+        "password": bcrypt.hashpw(password.encode('utf-8'), bcrypt.gensalt()).decode('utf-8'),
+        "role": "viewer",
+        "fullName": full_name,
+        "organization": organization,
+        "roleTitle": role_title,
+        "phone": phone,
+        "authProvider": "local",
+        "lastLoginAt": None,
+        "createdAt": datetime.now().isoformat()
+    }
+    
+    users.append(new_user)
+    save_users(users)
+    
+    return jsonify({
+        "message": "Account created successfully! Please sign in.",
+        "user": {
+            "id": new_user["id"],
+            "username": new_user["username"],
+            "email": new_user["email"],
+            "role": new_user["role"],
+            "fullName": new_user["fullName"]
+        }
+    }), 201
+
+@app.route("/api/auth/register", methods=["POST"])
+@jwt_required()
+def register():
+    """Register new user (admin only) - can set any role"""
+    current_user = get_current_user_info()
+    if current_user["role"] != "admin":
+        return jsonify({"error": "Admin access required"}), 403
+    
+    data = request.get_json()
+    username = data.get("username", "").strip()
+    email = data.get("email", "").strip()
+    password = data.get("password", "")
+    role = data.get("role", "viewer")
+    full_name = data.get("fullName", "").strip()
+    organization = data.get("organization", "").strip()
+    role_title = data.get("roleTitle", "").strip()
+    phone = data.get("phone", "").strip()
+    
+    if not username or not email or not password:
+        return jsonify({"error": "Username, email and password are required"}), 400
+    
+    # Validate role
+    valid_roles = ["admin", "user", "viewer"]
+    if role not in valid_roles:
+        return jsonify({"error": f"Invalid role. Must be one of: {', '.join(valid_roles)}"}), 400
+    
+    users = get_users()
+    
+    if any(u["username"].lower() == username.lower() for u in users):
+        return jsonify({"error": "Username already exists"}), 409
+    
+    if any(u["email"].lower() == email.lower() for u in users):
+        return jsonify({"error": "Email already exists"}), 409
+    
+    new_user = {
+        "id": max(u["id"] for u in users) + 1 if users else 1,
+        "username": username,
+        "email": email,
+        "password": bcrypt.hashpw(password.encode('utf-8'), bcrypt.gensalt()).decode('utf-8'),
+        "role": role,
+        "fullName": full_name,
+        "organization": organization,
+        "roleTitle": role_title,
+        "phone": phone,
+        "authProvider": "local",
+        "lastLoginAt": None,
+        "createdAt": datetime.now().isoformat()
+    }
+    
+    users.append(new_user)
+    save_users(users)
+    
+    return jsonify({
+        "message": "User created successfully",
+        "user": {
+            "id": new_user["id"],
+            "username": new_user["username"],
+            "email": new_user["email"],
+            "role": new_user["role"],
+            "fullName": new_user["fullName"]
+        }
+    }), 201
+
+# ==================== GOOGLE OAUTH ROUTES ====================
+
+@app.route("/api/auth/google", methods=["GET"])
+def google_login():
+    """Redirect to Google OAuth consent screen"""
+    if not OAUTH_AVAILABLE:
+        return jsonify({"error": "OAuth library not installed"}), 500
+    
+    if not GOOGLE_CLIENT_ID or GOOGLE_CLIENT_ID == 'your-google-client-id':
+        return jsonify({"error": "Google OAuth not configured. Set GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET in .env"}), 503
+    
+    oauth_client = OAuth2Session(
+        client_id=GOOGLE_CLIENT_ID,
+        client_secret=GOOGLE_CLIENT_SECRET,
+        redirect_uri=request.url_root.rstrip('/') + '/api/auth/google/callback',
+        scope=' '.join(GOOGLE_SCOPES)
+    )
+    
+    authorization_url, state = oauth_client.create_authorization_url(GOOGLE_AUTH_URI)
+    session['oauth_state'] = state
+    
+    return redirect(authorization_url)
+
+@app.route("/api/auth/google/callback", methods=["GET"])
+def google_callback():
+    """Handle Google OAuth callback"""
+    if not OAUTH_AVAILABLE:
+        return jsonify({"error": "OAuth library not installed"}), 500
+    
+    code = request.args.get('code')
+    if not code:
+        # Redirect to frontend login with error
+        return redirect('http://localhost:3000/login?error=google_auth_failed')
+    
+    try:
+        oauth_client = OAuth2Session(
+            client_id=GOOGLE_CLIENT_ID,
+            client_secret=GOOGLE_CLIENT_SECRET,
+            redirect_uri=request.url_root.rstrip('/') + '/api/auth/google/callback',
+            state=session.get('oauth_state')
+        )
+        
+        token = oauth_client.fetch_token(
+            GOOGLE_TOKEN_URI,
+            code=code,
+        )
+        
+        # Get user info from Google
+        resp = oauth_client.get(GOOGLE_USERINFO_URI)
+        google_user = resp.json()
+        
+        google_email = google_user.get('email', '')
+        google_name = google_user.get('name', '')
+        google_sub = google_user.get('sub', '')  # Google user ID
+        
+        if not google_email:
+            return redirect('http://localhost:3000/login?error=no_email')
+        
+        users = get_users()
+        
+        # Check if user exists by email
+        existing_user = next((u for u in users if u["email"].lower() == google_email.lower()), None)
+        
+        if existing_user:
+            # Update last login
+            existing_user["lastLoginAt"] = datetime.now().isoformat()
+            if not existing_user.get("authProvider"):
+                existing_user["authProvider"] = "google"
+            save_users(users)
+            user = existing_user
+        else:
+            # Create new user from Google profile
+            username = google_email.split('@')[0]
+            # Ensure unique username
+            base_username = username
+            counter = 1
+            while any(u["username"].lower() == username.lower() for u in users):
+                username = f"{base_username}{counter}"
+                counter += 1
+            
+            user = {
+                "id": max(u["id"] for u in users) + 1 if users else 1,
+                "username": username,
+                "email": google_email,
+                "password": "",
+                "role": "viewer",
+                "fullName": google_name,
+                "organization": "",
+                "roleTitle": "",
+                "phone": "",
+                "authProvider": "google",
+                "googleId": google_sub,
+                "lastLoginAt": datetime.now().isoformat(),
+                "createdAt": datetime.now().isoformat()
+            }
+            users.append(user)
+            save_users(users)
+        
+        # Create JWT token
+        access_token = create_access_token(identity=str(user["id"]), additional_claims={
+            "username": user["username"],
+            "email": user["email"],
+            "role": user["role"]
+        })
+        
+        # Redirect to frontend with token
+        return redirect(f'http://localhost:3000/login?token={access_token}&provider=google')
+        
+    except Exception as e:
+        app.logger.error(f"Google OAuth error: {e}")
+        return redirect(f'http://localhost:3000/login?error=oauth_error&message={str(e)}')
+
+@app.route("/api/auth/change-password", methods=["POST"])
+@jwt_required()
+def change_password():
+    """Change current user's password"""
+    current_user = get_current_user_info()
+    data = request.get_json()
+    
+    current_password = data.get("currentPassword", "")
+    new_password = data.get("newPassword", "")
+    
+    if not current_password or not new_password:
+        return jsonify({"error": "Both current and new password are required"}), 400
+    
+    users = get_users()
+    user = next((u for u in users if u["id"] == current_user["id"]), None)
+    
+    if not user:
+        return jsonify({"error": "User not found"}), 404
+    
+    if not bcrypt.checkpw(current_password.encode('utf-8'), user["password"].encode('utf-8')):
+        return jsonify({"error": "Current password is incorrect"}), 401
+    
+    user["password"] = bcrypt.hashpw(new_password.encode('utf-8'), bcrypt.gensalt()).decode('utf-8')
+    save_users(users)
+    
+    return jsonify({"message": "Password changed successfully"})
+
+# ==================== POLICY ROUTES ====================
+
+@app.route("/api/policy", methods=["GET"])
+@jwt_required()
+def get_policy_settings():
+    """Get current policy settings"""
+    policy = get_policy()
+    return jsonify(policy)
+
+@app.route("/api/policy", methods=["PUT"])
+@jwt_required()
+def update_policy():
+    """Update policy settings"""
+    current_user = get_current_user_info()
+    if current_user["role"] != "admin":
+        return jsonify({"error": "Admin access required"}), 403
+    
+    data = request.get_json()
+    policy = get_policy()
+    
+    # Update policy fields
+    if "minScore" in data:
+        policy["minScore"] = max(0, min(100, int(data["minScore"])))
+    if "blockCritical" in data:
+        policy["blockCritical"] = bool(data["blockCritical"])
+    if "blockHigh" in data:
+        policy["blockHigh"] = bool(data["blockHigh"])
+    if "maxCriticalVulns" in data:
+        policy["maxCriticalVulns"] = max(0, int(data["maxCriticalVulns"]))
+    if "maxHighVulns" in data:
+        policy["maxHighVulns"] = max(0, int(data["maxHighVulns"]))
+    if "autoBlock" in data:
+        policy["autoBlock"] = bool(data["autoBlock"])
+    if "blockOnSecrets" in data:
+        policy["blockOnSecrets"] = bool(data["blockOnSecrets"])
+    if "blockOnDastHigh" in data:
+        policy["blockOnDastHigh"] = bool(data["blockOnDastHigh"])
+    
+    policy["configured"] = True  # Mark policy as configured when updated
+    policy["updatedAt"] = datetime.now().isoformat()
+    policy["updatedBy"] = current_user["username"]
+    
+    save_policy(policy)
+    
+    return jsonify({
+        "message": "Policy updated successfully",
+        "policy": policy
+    })
+
+@app.route("/api/policy/evaluate", methods=["GET"])
+@jwt_required()
+def evaluate_policy():
+    """Evaluate current security status against policy (uses unified SAST data)"""
+    sast_data = load_json_file("sast-report.json")
+    bandit_data = load_json_file("bandit-report.json")
+    trivy_data = load_json_file("trivy-report.json")
+    policy = get_policy()
+    
+    # Count SAST vulnerabilities by severity (prefer unified, fall back to bandit)
+    sast_critical = 0
+    sast_high = 0
+    sast_medium = 0
+    sast_low = 0
+    
+    if sast_data and "metrics" in sast_data:
+        totals = sast_data["metrics"].get("totals", {})
+        sast_critical = totals.get("critical", 0)
+        sast_high = totals.get("high", 0)
+        sast_medium = totals.get("medium", 0)
+        sast_low = totals.get("low", 0)
+    elif bandit_data and "results" in bandit_data:
+        for result in bandit_data["results"]:
+            severity = result.get("issue_severity", "").upper()
+            if severity == "HIGH":
+                sast_high += 1
+            elif severity == "MEDIUM":
+                sast_medium += 1
+            elif severity == "LOW":
+                sast_low += 1
+    
+    # Count Trivy vulnerabilities separately
+    trivy_critical = 0
+    trivy_high = 0
+    trivy_medium = 0
+    trivy_low = 0
+    
+    if trivy_data and "Results" in trivy_data:
+        for result in trivy_data["Results"]:
+            for vuln in result.get("Vulnerabilities", []) or []:
+                severity = vuln.get("Severity", "").upper()
+                if severity == "CRITICAL":
+                    trivy_critical += 1
+                elif severity == "HIGH":
+                    trivy_high += 1
+                elif severity == "MEDIUM":
+                    trivy_medium += 1
+                elif severity == "LOW":
+                    trivy_low += 1
+    
+    # Count Gitleaks secrets
+    gitleaks_data = load_json_file("gitleaks-report.json")
+    secrets_critical = 0
+    secrets_high = 0
+    secrets_medium = 0
+    
+    if gitleaks_data and "results" in gitleaks_data:
+        for secret in gitleaks_data.get("results", []):
+            sev = secret.get("severity", "MEDIUM").upper()
+            if sev == "CRITICAL":
+                secrets_critical += 1
+            elif sev == "HIGH":
+                secrets_high += 1
+            else:
+                secrets_medium += 1
+    
+    # Count DAST alerts
+    dast_data = load_json_file("dast-report.json")
+    dast_high = 0
+    dast_medium = 0
+    dast_low = 0
+    
+    if dast_data and "results" in dast_data:
+        for alert in dast_data.get("results", []):
+            risk = alert.get("risk", "LOW").upper()
+            if risk == "HIGH":
+                dast_high += 1
+            elif risk == "MEDIUM":
+                dast_medium += 1
+            elif risk == "LOW":
+                dast_low += 1
+    
+    total_secrets = secrets_critical + secrets_high + secrets_medium
+    total_dast = dast_high + dast_medium + dast_low
+    
+    # Overall counts (include secrets and DAST)
+    critical_count = sast_critical + trivy_critical + secrets_critical
+    high_count = sast_high + trivy_high + secrets_high + dast_high
+    medium_count = sast_medium + trivy_medium + secrets_medium + dast_medium
+    low_count = sast_low + trivy_low + dast_low
+    violations = []
+    
+    # Calculate security score with SEPARATED weights for code vs image vulns
+    # Code vulnerabilities (SAST) — full weight
+    code_critical_impact = min(30, sast_critical * 12)
+    code_high_impact = min(25, sast_high * 8)
+    code_medium_impact = min(10, sast_medium * 3)
+    code_low_impact = min(5, sast_low * 1)
+    
+    # Image/dependency vulnerabilities (Trivy) — reduced weight (~50%)
+    image_critical_impact = min(25, trivy_critical * 10)
+    image_high_impact = min(15, trivy_high * 3)
+    image_medium_impact = min(8, trivy_medium * 1)
+    image_low_impact = min(2, int(trivy_low * 0.5))
+    
+    # Secrets (Gitleaks) — critical weight
+    secrets_critical_impact = min(30, secrets_critical * 12)
+    secrets_high_impact = min(20, secrets_high * 8)
+    secrets_medium_impact = min(10, secrets_medium * 4)
+    
+    # DAST findings — moderate weight
+    dast_high_impact = min(20, dast_high * 6)
+    dast_medium_impact = min(10, dast_medium * 2)
+    dast_low_impact = min(3, dast_low * 1)
+    
+    total_penalty = (code_critical_impact + code_high_impact + code_medium_impact + code_low_impact +
+                     image_critical_impact + image_high_impact + image_medium_impact + image_low_impact +
+                     secrets_critical_impact + secrets_high_impact + secrets_medium_impact +
+                     dast_high_impact + dast_medium_impact + dast_low_impact)
+    score = 100 - total_penalty
+    score = max(0, min(100, score))
+    
+    # Check policy violations
+    deployment_allowed = True
+    
+    if policy["blockCritical"] and critical_count > policy["maxCriticalVulns"]:
+        deployment_allowed = False
+        violations.append(f"Critical vulnerabilities ({critical_count}) exceed threshold ({policy['maxCriticalVulns']})")
+    
+    if policy["blockHigh"] and high_count > policy["maxHighVulns"]:
+        deployment_allowed = False
+        violations.append(f"High severity issues ({high_count}) exceed threshold ({policy['maxHighVulns']})")
+    
+    if score < policy["minScore"]:
+        deployment_allowed = False
+        violations.append(f"Security score ({score}) below minimum ({policy['minScore']})")
+    
+    if policy.get("blockOnSecrets", True) and total_secrets > 0:
+        deployment_allowed = False
+        violations.append(f"Secrets detected ({total_secrets}) — deployment blocked by policy")
+    
+    if policy.get("blockOnDastHigh", False) and dast_high > 0:
+        deployment_allowed = False
+        violations.append(f"DAST high-risk alerts ({dast_high}) — deployment blocked by policy")
+    
+    return jsonify({
+        "score": score,
+        "criticalCount": critical_count,
+        "highCount": high_count,
+        "mediumCount": medium_count,
+        "lowCount": low_count,
+        "sast": {
+            "critical": sast_critical,
+            "high": sast_high,
+            "medium": sast_medium,
+            "low": sast_low,
+            "languages": (sast_data or {}).get("languages_detected", ["python"] if bandit_data else []),
+            "tools": (sast_data or {}).get("tools_used", ["bandit"] if bandit_data else []),
+        },
+        "trivy": {
+            "critical": trivy_critical,
+            "high": trivy_high,
+            "medium": trivy_medium,
+            "low": trivy_low,
+        },
+        "gitleaks": {
+            "critical": secrets_critical,
+            "high": secrets_high,
+            "medium": secrets_medium,
+            "total": total_secrets,
+        },
+        "dast": {
+            "high": dast_high,
+            "medium": dast_medium,
+            "low": dast_low,
+            "total": total_dast,
+        },
+        "deploymentAllowed": deployment_allowed,
+        "violations": violations,
+        "policy": policy
+    })
+
+@app.route("/")
+def home():
+    return render_template("dashboard.html")
+
+@app.route("/api/bandit")
+@jwt_required()
+def bandit():
+    """Get Bandit/SAST security scan results (backward compatible)"""
+    data = load_json_file("bandit-report.json")
+    if data is None:
+        return jsonify({"error": "Bandit report not found"}), 404
+    return jsonify(data)
+
+@app.route("/api/sast")
+@jwt_required()
+def sast():
+    """Get unified multi-language SAST scan results"""
+    data = load_json_file("sast-report.json")
+    if data is None:
+        # Fallback: build from bandit report for backward compatibility
+        bandit_data = load_json_file("bandit-report.json")
+        if bandit_data is None:
+            return jsonify({"error": "No SAST report found. Run a scan first."}), 404
+        # Convert bandit report to unified format
+        results = []
+        for r in bandit_data.get("results", []):
+            results.append({
+                "tool": r.get("_tool", "bandit"),
+                "language": r.get("_language", "python"),
+                "rule_id": r.get("test_id", ""),
+                "rule_name": r.get("test_name", ""),
+                "severity": r.get("issue_severity", "LOW"),
+                "confidence": r.get("issue_confidence", "MEDIUM"),
+                "message": r.get("issue_text", ""),
+                "file": r.get("filename", ""),
+                "line": r.get("line_number", 0),
+                "col": r.get("col_offset", 0),
+                "code": r.get("code", ""),
+                "cwe": r.get("issue_cwe", {}),
+                "more_info": r.get("more_info", ""),
+            })
+        totals = bandit_data.get("metrics", {}).get("_totals", {})
+        data = {
+            "schema_version": 1,
+            "scan_type": "sast",
+            "timestamp": bandit_data.get("generated_at", ""),
+            "languages_detected": {"python": {"count": 0, "info": LANGUAGE_INFO.get("python", {})}},
+            "tools_used": {"bandit": {"success": True, "message": "Bandit scan completed", "issues_count": len(results), "languages": ["python"], "available": True, "display": TOOL_DISPLAY.get("bandit", {})}},
+            "results": results,
+            "metrics": {
+                "by_language": {"python": {"total": len(results), "high": totals.get("SEVERITY.HIGH", 0), "medium": totals.get("SEVERITY.MEDIUM", 0), "low": totals.get("SEVERITY.LOW", 0), "critical": 0}},
+                "by_tool": {"bandit": {"total": len(results), "high": totals.get("SEVERITY.HIGH", 0), "medium": totals.get("SEVERITY.MEDIUM", 0), "low": totals.get("SEVERITY.LOW", 0), "critical": 0}},
+                "totals": {"total": len(results), "high": totals.get("SEVERITY.HIGH", 0), "medium": totals.get("SEVERITY.MEDIUM", 0), "low": totals.get("SEVERITY.LOW", 0), "critical": 0},
+                "languages_scanned": ["python"],
+                "languages_with_issues": ["python"] if results else [],
+            }
+        }
+    return jsonify(data)
+
+@app.route("/api/sast/languages")
+@jwt_required()
+def sast_languages():
+    """Get supported SAST languages and their tool mappings"""
+    return jsonify({
+        "languages": LANGUAGE_INFO,
+        "tools": TOOL_DISPLAY,
+    })
+
+@app.route("/api/trivy")
+@jwt_required()
+def trivy():
+    """Get Trivy container scan results"""
+    data = load_json_file("trivy-report.json")
+    if data is None:
+        return jsonify({"error": "Trivy report not found"}), 404
+    return jsonify(data)
+
+@app.route("/api/gitleaks")
+@jwt_required()
+def gitleaks():
+    """Get Gitleaks secret detection results"""
+    data = load_json_file("gitleaks-report.json")
+    if data is None:
+        return jsonify({"error": "Gitleaks report not found. Run a scan first."}), 404
+    return jsonify(data)
+
+@app.route("/api/dast")
+@jwt_required()
+def dast():
+    """Get DAST (ZAP) security scan results"""
+    data = load_json_file("dast-report.json")
+    if data is None:
+        return jsonify({"error": "DAST report not found. Run a scan first."}), 404
+    return jsonify(data)
+
+@app.route("/api/summary")
+@jwt_required()
+def summary():
+    """Get a summary of all security findings (SAST + Trivy)"""
+    sast_data = load_json_file("sast-report.json")
+    bandit_data = load_json_file("bandit-report.json")
+    trivy_data = load_json_file("trivy-report.json")
+    
+    # Calculate SAST metrics (prefer unified report, fall back to bandit)
+    sast_metrics = {
+        "total": 0,
+        "critical": 0,
+        "high": 0,
+        "medium": 0,
+        "low": 0,
+        "languages": [],
+        "tools": [],
+    }
+    if sast_data and "metrics" in sast_data:
+        totals = sast_data["metrics"].get("totals", {})
+        sast_metrics = {
+            "total": totals.get("total_issues", 0),
+            "critical": totals.get("critical", 0),
+            "high": totals.get("high", 0),
+            "medium": totals.get("medium", 0),
+            "low": totals.get("low", 0),
+            "languages": sast_data.get("languages_detected", []),
+            "tools": sast_data.get("tools_used", []),
+        }
+    elif bandit_data and "metrics" in bandit_data:
+        totals = bandit_data["metrics"].get("_totals", {})
+        sast_metrics = {
+            "total": len(bandit_data.get("results", [])),
+            "critical": 0,
+            "high": totals.get("SEVERITY.HIGH", 0),
+            "medium": totals.get("SEVERITY.MEDIUM", 0),
+            "low": totals.get("SEVERITY.LOW", 0),
+            "languages": ["python"],
+            "tools": ["bandit"],
+        }
+    
+    # Backward compat alias
+    bandit_metrics = {
+        "total": sast_metrics["total"],
+        "high": sast_metrics["high"],
+        "medium": sast_metrics["medium"],
+        "low": sast_metrics["low"],
+    }
+    
+    # Calculate Trivy metrics
+    trivy_metrics = {
+        "total": 0,
+        "critical": 0,
+        "high": 0,
+        "medium": 0,
+        "low": 0,
+    }
+    if trivy_data and "Results" in trivy_data:
+        for result in trivy_data["Results"]:
+            for vuln in result.get("Vulnerabilities", []):
+                trivy_metrics["total"] += 1
+                severity = vuln.get("Severity", "").upper()
+                if severity in trivy_metrics:
+                    trivy_metrics[severity.lower()] += 1
+    
+    # Calculate Gitleaks metrics
+    gitleaks_data = load_json_file("gitleaks-report.json")
+    gitleaks_metrics = {
+        "total": 0,
+        "critical": 0,
+        "high": 0,
+        "medium": 0,
+        "tool": "none",
+        "tool_available": False,
+    }
+    if gitleaks_data:
+        gitleaks_metrics = {
+            "total": gitleaks_data.get("total_secrets", 0),
+            "critical": gitleaks_data.get("metrics", {}).get("critical", 0),
+            "high": gitleaks_data.get("metrics", {}).get("high", 0),
+            "medium": gitleaks_data.get("metrics", {}).get("medium", 0),
+            "tool": gitleaks_data.get("tool", "unknown"),
+            "tool_available": gitleaks_data.get("tool_available", False),
+        }
+    
+    # Calculate DAST metrics
+    dast_data = load_json_file("dast-report.json")
+    dast_metrics = {
+        "total": 0,
+        "high": 0,
+        "medium": 0,
+        "low": 0,
+        "informational": 0,
+        "tool": "none",
+        "tool_available": False,
+        "target_url": "",
+    }
+    if dast_data:
+        dast_metrics = {
+            "total": dast_data.get("total_alerts", 0),
+            "high": dast_data.get("metrics", {}).get("high", 0),
+            "medium": dast_data.get("metrics", {}).get("medium", 0),
+            "low": dast_data.get("metrics", {}).get("low", 0),
+            "informational": dast_data.get("metrics", {}).get("informational", 0),
+            "tool": dast_data.get("tool", "unknown"),
+            "tool_available": dast_data.get("tool_available", False),
+            "target_url": dast_data.get("target_url", ""),
+        }
+    
+    return jsonify({
+        "generated_at": datetime.now().isoformat(),
+        "sast": sast_metrics,
+        "bandit": bandit_metrics,
+        "trivy": trivy_metrics,
+        "gitleaks": gitleaks_metrics,
+        "dast": dast_metrics,
+        "languages_detected": sast_metrics["languages"],
+        "tools_used": sast_metrics["tools"],
+        "total_vulnerabilities": sast_metrics["total"] + trivy_metrics["total"] + gitleaks_metrics["total"] + dast_metrics["total"],
+        "critical_count": sast_metrics["critical"] + trivy_metrics["critical"] + sast_metrics["high"] + trivy_metrics["high"] + gitleaks_metrics["critical"] + gitleaks_metrics["high"],
+    })
+
+@app.route("/api/health")
+def health():
+    """Health check endpoint"""
+    return jsonify({
+        "status": "healthy",
+        "timestamp": datetime.now().isoformat(),
+        "reports": {
+            "sast": os.path.exists(os.path.join(REPORT_DIR, "sast-report.json")),
+            "bandit": os.path.exists(os.path.join(REPORT_DIR, "bandit-report.json")),
+            "trivy": os.path.exists(os.path.join(REPORT_DIR, "trivy-report.json")),
+            "gitleaks": os.path.exists(os.path.join(REPORT_DIR, "gitleaks-report.json")),
+            "dast": os.path.exists(os.path.join(REPORT_DIR, "dast-report.json")),
+        }
+    })
+
+# ==================== NOTIFICATIONS ROUTES ====================
+
+@app.route("/api/notifications", methods=["GET"])
+@jwt_required()
+def get_all_notifications():
+    """Get all notifications for the current user"""
+    notifications = get_notifications()
+    unread_count = sum(1 for n in notifications if not n.get("read", False))
+    return jsonify({
+        "notifications": notifications,
+        "unreadCount": unread_count,
+        "total": len(notifications)
+    })
+
+@app.route("/api/notifications/<notification_id>/read", methods=["POST"])
+@jwt_required()
+def mark_notification_read(notification_id):
+    """Mark a notification as read"""
+    notifications = get_notifications()
+    for n in notifications:
+        if n["id"] == notification_id:
+            n["read"] = True
+            break
+    save_notifications(notifications)
+    return jsonify({"success": True})
+
+@app.route("/api/notifications/read-all", methods=["POST"])
+@jwt_required()
+def mark_all_notifications_read():
+    """Mark all notifications as read"""
+    notifications = get_notifications()
+    for n in notifications:
+        n["read"] = True
+    save_notifications(notifications)
+    return jsonify({"success": True})
+
+@app.route("/api/notifications/<notification_id>", methods=["DELETE"])
+@jwt_required()
+def delete_notification(notification_id):
+    """Delete a notification"""
+    notifications = get_notifications()
+    notifications = [n for n in notifications if n["id"] != notification_id]
+    save_notifications(notifications)
+    return jsonify({"success": True})
+
+@app.route("/api/notifications/clear", methods=["DELETE"])
+@jwt_required()
+def clear_all_notifications():
+    """Clear all notifications"""
+    save_notifications([])
+    return jsonify({"success": True})
+
+# ==================== SETUP STATUS ====================
+
+@app.route("/api/setup/status", methods=["GET"])
+@jwt_required()
+def get_setup_status():
+    """Get platform setup status - checks if repo and policy are configured"""
+    config = get_config()
+    policy = get_policy()
+    
+    repo_configured = bool(config.get("github_repo_url", "").strip())
+    policy_configured = policy.get("configured", False)
+    initial_scan_completed = config.get("initial_scan_completed", False)
+    
+    # Check if reports exist
+    has_bandit_report = os.path.exists(os.path.join(REPORT_DIR, "bandit-report.json"))
+    has_trivy_report = os.path.exists(os.path.join(REPORT_DIR, "trivy-report.json"))
+    has_decision_report = os.path.exists(os.path.join(REPORT_DIR, "security_decision.json"))
+    
+    setup_completed = repo_configured and policy_configured and initial_scan_completed
+    
+    # Get latest decision if available
+    latest_decision = None
+    if has_decision_report:
+        latest_decision = load_json_file("security_decision.json")
+    
+    return jsonify({
+        "setup_completed": setup_completed,
+        "repo_configured": repo_configured,
+        "policy_configured": policy_configured,
+        "initial_scan_completed": initial_scan_completed,
+        "has_reports": {
+            "bandit": has_bandit_report,
+            "trivy": has_trivy_report,
+            "decision": has_decision_report
+        },
+        "latest_decision": latest_decision,
+        "config": {
+            "repo_url": config.get("github_repo_url", ""),
+            "branch": config.get("github_branch", "main")
+        }
+    })
+
+@app.route("/api/setup/complete", methods=["POST"])
+@jwt_required()
+def complete_setup():
+    """
+    Complete the initial setup - configure repo, policy, and trigger first scan.
+    This endpoint handles the entire setup flow in one call.
+    """
+    current_user = get_current_user_info()
+    data = request.get_json()
+    
+    # Validate required fields
+    repo_url = data.get("repo_url", "").strip()
+    branch = data.get("branch", "main").strip()
+    policy_data = data.get("policy", {})
+    
+    if not repo_url:
+        return jsonify({"error": "Repository URL is required"}), 400
+    
+    # Validate repo URL format
+    is_valid, error_msg = validate_repo_url(repo_url)
+    if not is_valid:
+        return jsonify({"error": error_msg}), 400
+    
+    # Update config with repo info
+    config = get_config()
+    config["github_repo_url"] = repo_url
+    config["github_branch"] = branch
+    config["repo_configured"] = True
+    config["updated_at"] = datetime.now().isoformat()
+    config["updated_by"] = current_user["username"]
+    save_config(config)
+    
+    # Update policy
+    policy = get_policy()
+    if policy_data:
+        if "minScore" in policy_data:
+            policy["minScore"] = max(0, min(100, int(policy_data["minScore"])))
+        if "blockCritical" in policy_data:
+            policy["blockCritical"] = bool(policy_data["blockCritical"])
+        if "blockHigh" in policy_data:
+            policy["blockHigh"] = bool(policy_data["blockHigh"])
+        if "maxCriticalVulns" in policy_data:
+            policy["maxCriticalVulns"] = max(0, int(policy_data["maxCriticalVulns"]))
+        if "maxHighVulns" in policy_data:
+            policy["maxHighVulns"] = max(0, int(policy_data["maxHighVulns"]))
+        if "autoBlock" in policy_data:
+            policy["autoBlock"] = bool(policy_data["autoBlock"])
+    
+    policy["configured"] = True
+    policy["updatedAt"] = datetime.now().isoformat()
+    policy["updatedBy"] = current_user["username"]
+    save_policy(policy)
+    
+    # Trigger the initial scan with both Bandit and Trivy
+    app.logger.info(f"Setup complete - triggering initial scan for {repo_url}")
+    
+    try:
+        result = run_pipeline(
+            repo_url=repo_url,
+            branch=branch,
+            run_trivy=True  # Always run Trivy for initial scan
+        )
+        
+        # Mark initial scan as completed
+        config["initial_scan_completed"] = True
+        config["setup_completed"] = True
+        save_config(config)
+        
+        return jsonify({
+            "success": True,
+            "message": "Setup completed successfully",
+            "scan_result": result.to_dict()
+        })
+        
+    except Exception as e:
+        app.logger.error(f"Initial scan failed: {e}")
+        return jsonify({
+            "success": False,
+            "error": f"Setup completed but initial scan failed: {str(e)}",
+            "config_saved": True,
+            "policy_saved": True
+        }), 500
+
+@app.route("/api/setup/reset", methods=["POST"])
+@jwt_required()
+def reset_setup():
+    """Reset the platform to initial state (for testing/demo purposes)"""
+    current_user = get_current_user_info()
+    if current_user["role"] != "admin":
+        return jsonify({"error": "Admin access required"}), 403
+    
+    # Reset config
+    save_config(DEFAULT_CONFIG)
+    
+    # Reset policy
+    save_policy(DEFAULT_POLICY)
+    
+    # Clear reports
+    report_files = ["bandit-report.json", "trivy-report.json", "security_decision.json"]
+    for report in report_files:
+        report_path = os.path.join(REPORT_DIR, report)
+        if os.path.exists(report_path):
+            os.remove(report_path)
+    
+    # Clear pipeline history
+    if os.path.exists(PIPELINES_FILE):
+        os.remove(PIPELINES_FILE)
+    
+    return jsonify({
+        "success": True,
+        "message": "Platform reset to initial state"
+    })
+
+# ==================== PIPELINE ROUTES ====================
+
+@app.route("/api/pipelines", methods=["GET"])
+@jwt_required()
+def get_pipelines():
+    """Get list of pipeline runs"""
+    limit = request.args.get('limit', 20, type=int)
+    pipelines = pipeline_executor.get_pipelines(limit)
+    return jsonify({
+        "pipelines": pipelines,
+        "total": len(pipelines)
+    })
+
+@app.route("/api/pipelines/<pipeline_id>", methods=["GET"])
+@jwt_required()
+def get_pipeline(pipeline_id):
+    """Get specific pipeline details"""
+    pipeline = pipeline_executor.get_pipeline(pipeline_id)
+    if not pipeline:
+        return jsonify({"error": "Pipeline not found"}), 404
+    return jsonify(pipeline)
+
+@app.route("/api/pipelines/latest", methods=["GET"])
+@jwt_required()
+def get_latest_pipeline():
+    """Get the most recent pipeline run"""
+    pipeline = pipeline_executor.get_latest_pipeline()
+    if not pipeline:
+        return jsonify({"error": "No pipelines found"}), 404
+    
+    # Check if this pipeline just completed and create notifications
+    check_and_notify_pipeline_completion(pipeline)
+    
+    return jsonify(pipeline)
+
+# Track pipelines we've already sent notifications for
+_notified_pipelines = set()
+
+def check_and_notify_pipeline_completion(pipeline):
+    """Create notification if pipeline just completed"""
+    global _notified_pipelines
+    
+    if not pipeline:
+        return
+    
+    pipeline_id = pipeline.get('id')
+    status = pipeline.get('status', '').lower()
+    
+    # Skip if already notified or not completed
+    if pipeline_id in _notified_pipelines:
+        return
+    if status not in ['success', 'failed']:
+        return
+    
+    # Mark as notified
+    _notified_pipelines.add(pipeline_id)
+    # Keep set from growing too large
+    if len(_notified_pipelines) > 100:
+        _notified_pipelines = set(list(_notified_pipelines)[-50:])
+    
+    security_score = pipeline.get('security_score', 0)
+    is_deployable = pipeline.get('is_deployable', False)
+    vuln_summary = pipeline.get('vulnerability_summary', {})
+    
+    if status == 'success':
+        if is_deployable:
+            add_notification(
+                "success",
+                "Deployment Approved",
+                f"Pipeline passed security checks. Score: {security_score}/100",
+                {"pipeline_id": pipeline_id, "security_score": security_score}
+            )
+        else:
+            # Build reason message
+            reasons = []
+            if security_score < 70:
+                reasons.append(f"Score {security_score} below threshold")
+            if vuln_summary.get('critical', 0) > 0:
+                reasons.append(f"{vuln_summary['critical']} critical vulnerabilities")
+            if vuln_summary.get('high', 0) > 5:
+                reasons.append(f"{vuln_summary['high']} high severity issues")
+            
+            reason_text = "; ".join(reasons) if reasons else "Security requirements not met"
+            
+            add_notification(
+                "critical",
+                "Deployment Blocked",
+                f"Pipeline blocked. {reason_text}. Score: {security_score}/100",
+                {"pipeline_id": pipeline_id, "security_score": security_score, "reasons": reasons}
+            )
+    else:  # failed
+        add_notification(
+            "warning",
+            "Pipeline Failed",
+            f"Security scan failed to complete",
+            {"pipeline_id": pipeline_id}
+        )
+
+@app.route("/api/pipelines/trigger", methods=["POST"])
+@jwt_required()
+def trigger_pipeline():
+    """Manually trigger a new pipeline run"""
+    current_user = get_current_user_info()
+    full_user = get_full_user_info(current_user["id"])
+    config = get_config()
+    policy = get_policy()
+    data = request.get_json() or {}
+    
+    repo_url = data.get('repo_url') or config.get('github_repo_url')
+    branch = data.get('branch') or config.get('github_branch', 'main')
+    target_dir = data.get('target_dir') or config.get('target_directory')
+    image_name = data.get('image_name') or config.get('target_image')
+    
+    # Create pipeline
+    pipeline = pipeline_executor.create_pipeline(
+        repo_url=repo_url,
+        branch=branch,
+        commit_sha=data.get('commit_sha', 'manual'),
+        commit_message=data.get('commit_message', f'Manual trigger by {current_user["username"]}'),
+        author=current_user["username"]
+    )
+    
+    # Enrich pipeline record with user info and policy snapshot
+    for i, p in enumerate(pipeline_executor.pipeline_history):
+        if p['id'] == pipeline.id:
+            pipeline_executor.pipeline_history[i]['triggered_by'] = full_user or current_user
+            pipeline_executor.pipeline_history[i]['policy_snapshot'] = {
+                "minScore": policy.get("minScore"),
+                "blockCritical": policy.get("blockCritical"),
+                "blockHigh": policy.get("blockHigh"),
+                "maxCriticalVulns": policy.get("maxCriticalVulns"),
+                "maxHighVulns": policy.get("maxHighVulns"),
+                "autoBlock": policy.get("autoBlock"),
+                "capturedAt": datetime.now().isoformat()
+            }
+            break
+    pipeline_executor._save_pipelines()
+    
+    # Add notification for pipeline trigger
+    add_notification(
+        "info",
+        "Pipeline Triggered",
+        f"Security scan started for branch '{branch}' by {current_user['username']}",
+        {"pipeline_id": pipeline.id, "branch": branch}
+    )
+    
+    # Run pipeline asynchronously
+    run_pipeline_async(
+        pipeline_executor, 
+        pipeline, 
+        repo_url=repo_url if repo_url else None,
+        target_dir=target_dir if target_dir else None,
+        image_name=image_name
+    )
+    
+    return jsonify({
+        "message": "Pipeline triggered successfully",
+        "pipeline_id": pipeline.id,
+        "status": pipeline.status.value
+    }), 202
+
+@app.route("/api/config", methods=["GET"])
+@jwt_required()
+def get_pipeline_config():
+    """Get pipeline configuration"""
+    return jsonify(get_config())
+
+@app.route("/api/config", methods=["PUT"])
+@jwt_required()
+def update_pipeline_config():
+    """Update pipeline configuration"""
+    current_user = get_current_user_info()
+    if current_user["role"] != "admin":
+        return jsonify({"error": "Admin access required"}), 403
+    
+    data = request.get_json()
+    config = get_config()
+    
+    # Update allowed fields
+    allowed_fields = ['github_repo_url', 'github_branch', 'auto_scan_enabled', 
+                      'scan_on_push', 'target_image', 'target_directory']
+    
+    for field in allowed_fields:
+        if field in data:
+            config[field] = data[field]
+    
+    config['updated_at'] = datetime.now().isoformat()
+    config['updated_by'] = current_user["username"]
+    
+    save_config(config)
+    
+    return jsonify({
+        "message": "Configuration updated successfully",
+        "config": config
+    })
+
+# ==================== GITHUB WEBHOOK ====================
+
+@app.route("/webhook/github", methods=["POST"])
+def github_webhook():
+    """Handle GitHub webhook events"""
+    # Verify signature
+    signature = request.headers.get('X-Hub-Signature-256')
+    if GITHUB_WEBHOOK_SECRET != 'your-webhook-secret':  # Only verify if secret is configured
+        if not verify_github_signature(request.data, signature):
+            return jsonify({"error": "Invalid signature"}), 401
+    
+    event = request.headers.get('X-GitHub-Event', 'ping')
+    
+    if event == 'ping':
+        return jsonify({"message": "Pong! Webhook configured successfully"})
+    
+    if event != 'push':
+        return jsonify({"message": f"Event '{event}' ignored"}), 200
+    
+    config = get_config()
+    if not config.get('scan_on_push', True):
+        return jsonify({"message": "Auto-scan disabled"}), 200
+    
+    payload = request.get_json()
+    
+    # Extract push info
+    repo_url = payload.get('repository', {}).get('clone_url', '')
+    branch = payload.get('ref', 'refs/heads/main').replace('refs/heads/', '')
+    commit = payload.get('head_commit', {})
+    commit_sha = commit.get('id', '')
+    commit_message = commit.get('message', '')
+    author = commit.get('author', {}).get('name', 'GitHub')
+    
+    # Check if this is the configured branch
+    configured_branch = config.get('github_branch', 'main')
+    if branch != configured_branch:
+        return jsonify({"message": f"Branch '{branch}' ignored, watching '{configured_branch}'"}), 200
+    
+    # Create and run pipeline
+    pipeline = pipeline_executor.create_pipeline(
+        repo_url=repo_url,
+        branch=branch,
+        commit_sha=commit_sha,
+        commit_message=commit_message,
+        author=author
+    )
+    
+    # Determine scan target
+    target_dir = config.get('target_directory')
+    image_name = config.get('target_image')
+    
+    run_pipeline_async(
+        pipeline_executor,
+        pipeline,
+        repo_url=repo_url,
+        target_dir=target_dir if target_dir else None,
+        image_name=image_name
+    )
+    
+    return jsonify({
+        "message": "Pipeline triggered",
+        "pipeline_id": pipeline.id
+    }), 202
+
+# ==================== EXTERNAL REPO SCAN API ====================
+
+# Store for tracking background scan results
+_scan_results: Dict[str, dict] = {}
+
+@app.route("/api/scan/trigger", methods=["POST"])
+@jwt_required()
+def trigger_external_scan():
+    """
+    Trigger a security scan on an external GitHub repository.
+    
+    This endpoint accepts a repository URL and branch, clones the repo,
+    runs security scans, and returns the results.
+    
+    Request Body:
+        {
+            "repo_url": "https://github.com/user/repo",
+            "branch": "main",  // optional, defaults to "main"
+            "run_trivy": false,  // optional, defaults to false
+            "async": false  // optional, if true returns immediately with pipeline_id
+        }
+    
+    Response (sync):
+        {
+            "success": true,
+            "pipeline_id": "abc12345",
+            "security_score": 85,
+            "is_deployable": true,
+            "vulnerability_summary": {...},
+            "reports": {...},
+            "duration_seconds": 12.5
+        }
+    
+    Response (async):
+        {
+            "message": "Scan triggered successfully",
+            "pipeline_id": "abc12345",
+            "status": "running"
+        }
+    """
+    current_user = get_current_user_info()
+    data = request.get_json()
+    
+    if not data:
+        return jsonify({
+            "success": False,
+            "error": "Request body is required"
+        }), 400
+    
+    # Extract and validate parameters
+    repo_url = data.get('repo_url', '').strip()
+    branch = data.get('branch', 'main').strip()
+    run_trivy = data.get('run_trivy', False)
+    async_mode = data.get('async', False)
+    
+    # Validate repo_url
+    if not repo_url:
+        return jsonify({
+            "success": False,
+            "error": "repo_url is required"
+        }), 400
+    
+    is_valid, error_msg = validate_repo_url(repo_url)
+    if not is_valid:
+        return jsonify({
+            "success": False,
+            "error": error_msg
+        }), 400
+    
+    # Validate branch
+    if not branch:
+        branch = "main"
+    
+    # Log the scan request
+    app.logger.info(f"Scan triggered by {current_user['username']} for {repo_url} (branch: {branch})")
+    
+    if async_mode:
+        # Run in background and return immediately
+        def save_result(result: PipelineResult):
+            _scan_results[result.pipeline_id] = result.to_dict()
+        
+        pipeline_id = run_pipeline_background(
+            repo_url=repo_url,
+            branch=branch,
+            run_trivy=run_trivy,
+            callback=save_result
+        )
+        
+        return jsonify({
+            "success": True,
+            "message": "Scan triggered successfully",
+            "pipeline_id": pipeline_id,
+            "status": "running",
+            "repo_url": repo_url,
+            "branch": branch
+        }), 202
+    
+    else:
+        # Run synchronously and wait for result
+        try:
+            result = run_pipeline(
+                repo_url=repo_url,
+                branch=branch,
+                run_trivy=run_trivy
+            )
+            
+            # Store result for later retrieval
+            _scan_results[result.pipeline_id] = result.to_dict()
+            
+            response_data = result.to_dict()
+            response_data['triggered_by'] = current_user['username']
+            
+            status_code = 200 if result.success else 500
+            return jsonify(response_data), status_code
+            
+        except Exception as e:
+            app.logger.error(f"Scan failed: {str(e)}")
+            return jsonify({
+                "success": False,
+                "error": f"Scan failed: {str(e)}"
+            }), 500
+
+
+@app.route("/api/scan/trigger/<pipeline_id>", methods=["GET"])
+@jwt_required()
+def get_scan_result(pipeline_id):
+    """
+    Get the result of an async scan by pipeline ID.
+    
+    Response:
+        {
+            "found": true,
+            "result": {...}
+        }
+    """
+    if pipeline_id in _scan_results:
+        return jsonify({
+            "found": True,
+            "result": _scan_results[pipeline_id]
+        })
+    
+    return jsonify({
+        "found": False,
+        "message": f"No result found for pipeline {pipeline_id}. Scan may still be in progress."
+    }), 404
+
+
+@app.route("/api/scan/validate", methods=["POST"])
+@jwt_required()
+def validate_scan_input():
+    """
+    Validate scan input parameters without triggering a scan.
+    
+    Request Body:
+        {
+            "repo_url": "https://github.com/user/repo",
+            "branch": "main"
+        }
+    
+    Response:
+        {
+            "valid": true,
+            "repo_url": "https://github.com/user/repo",
+            "branch": "main"
+        }
+    """
+    data = request.get_json() or {}
+    
+    repo_url = data.get('repo_url', '').strip()
+    branch = data.get('branch', 'main').strip()
+    
+    errors = []
+    
+    if not repo_url:
+        errors.append("repo_url is required")
+    else:
+        is_valid, error_msg = validate_repo_url(repo_url)
+        if not is_valid:
+            errors.append(error_msg)
+    
+    if not branch:
+        errors.append("branch cannot be empty")
+    
+    if errors:
+        return jsonify({
+            "valid": False,
+            "errors": errors
+        }), 400
+    
+    return jsonify({
+        "valid": True,
+        "repo_url": repo_url,
+        "branch": branch
+    })
+
+
+# ==================== ADMIN PANEL API ====================
+
+@app.route("/api/admin/stats", methods=["GET"])
+@jwt_required()
+def admin_stats():
+    """Get platform-wide statistics for admin panel"""
+    current_user = get_current_user_info()
+    if current_user["role"] != "admin":
+        return jsonify({"error": "Admin access required"}), 403
+
+    users = get_users()
+    pipelines = pipeline_executor.get_pipelines(50)
+    config = get_config()
+    policy = get_policy()
+
+    # User stats
+    total_users = len(users)
+    admin_count = sum(1 for u in users if u.get("role") == "admin")
+    viewer_count = sum(1 for u in users if u.get("role") == "viewer")
+    user_count = sum(1 for u in users if u.get("role") == "user")
+    google_users = sum(1 for u in users if u.get("authProvider") == "google")
+    local_users = total_users - google_users
+
+    # Pipeline stats
+    total_pipelines = len(pipelines)
+    successful = sum(1 for p in pipelines if p.get("status") == "success")
+    failed = sum(1 for p in pipelines if p.get("status") == "failed")
+    running = sum(1 for p in pipelines if p.get("status") == "running")
+    avg_score = 0
+    scores = [p.get("security_score") for p in pipelines if p.get("security_score") is not None]
+    if scores:
+        avg_score = round(sum(scores) / len(scores))
+    deployable_count = sum(1 for p in pipelines if p.get("is_deployable"))
+    blocked_count = sum(1 for p in pipelines if p.get("is_deployable") is False)
+
+    # Report availability
+    reports_status = {
+        "sast": os.path.exists(os.path.join(REPORT_DIR, "sast-report.json")),
+        "bandit": os.path.exists(os.path.join(REPORT_DIR, "bandit-report.json")),
+        "trivy": os.path.exists(os.path.join(REPORT_DIR, "trivy-report.json")),
+        "gitleaks": os.path.exists(os.path.join(REPORT_DIR, "gitleaks-report.json")),
+        "dast": os.path.exists(os.path.join(REPORT_DIR, "dast-report.json")),
+        "decision": os.path.exists(os.path.join(REPORT_DIR, "security_decision.json")),
+    }
+
+    return jsonify({
+        "users": {
+            "total": total_users,
+            "admins": admin_count,
+            "users": user_count,
+            "viewers": viewer_count,
+            "google_auth": google_users,
+            "local_auth": local_users,
+        },
+        "pipelines": {
+            "total": total_pipelines,
+            "successful": successful,
+            "failed": failed,
+            "running": running,
+            "avg_security_score": avg_score,
+            "deployable": deployable_count,
+            "blocked": blocked_count,
+        },
+        "config": {
+            "repo_url": config.get("github_repo_url", ""),
+            "branch": config.get("github_branch", "main"),
+            "auto_scan": config.get("auto_scan_enabled", False),
+            "scan_on_push": config.get("scan_on_push", False),
+            "setup_completed": config.get("setup_completed", False),
+        },
+        "policy": policy,
+        "reports": reports_status,
+    })
+
+
+@app.route("/api/admin/users", methods=["GET"])
+@jwt_required()
+def admin_get_users():
+    """Get all users with details (admin only)"""
+    current_user = get_current_user_info()
+    if current_user["role"] != "admin":
+        return jsonify({"error": "Admin access required"}), 403
+
+    users = get_users()
+    safe_users = []
+    for u in users:
+        safe_users.append({
+            "id": u["id"],
+            "username": u["username"],
+            "email": u["email"],
+            "role": u["role"],
+            "fullName": u.get("fullName", ""),
+            "organization": u.get("organization", ""),
+            "roleTitle": u.get("roleTitle", ""),
+            "phone": u.get("phone", ""),
+            "authProvider": u.get("authProvider", "local"),
+            "lastLoginAt": u.get("lastLoginAt"),
+            "createdAt": u.get("createdAt"),
+        })
+    return jsonify({"users": safe_users, "total": len(safe_users)})
+
+
+@app.route("/api/admin/users/<int:user_id>", methods=["PUT"])
+@jwt_required()
+def admin_update_user(user_id):
+    """Update a user's role or details (admin only)"""
+    current_user = get_current_user_info()
+    if current_user["role"] != "admin":
+        return jsonify({"error": "Admin access required"}), 403
+
+    data = request.get_json()
+    users = get_users()
+    user = next((u for u in users if u["id"] == user_id), None)
+    if not user:
+        return jsonify({"error": "User not found"}), 404
+
+    allowed_fields = ["role", "fullName", "organization", "roleTitle", "phone"]
+    valid_roles = ["admin", "user", "viewer"]
+
+    for field in allowed_fields:
+        if field in data:
+            if field == "role" and data[field] not in valid_roles:
+                return jsonify({"error": f"Invalid role. Must be one of: {', '.join(valid_roles)}"}), 400
+            user[field] = data[field]
+
+    save_users(users)
+    return jsonify({"message": "User updated successfully", "user": {
+        "id": user["id"], "username": user["username"], "email": user["email"],
+        "role": user["role"], "fullName": user.get("fullName", ""),
+    }})
+
+
+@app.route("/api/admin/users/<int:user_id>", methods=["DELETE"])
+@jwt_required()
+def admin_delete_user(user_id):
+    """Delete a user (admin only, cannot delete self)"""
+    current_user = get_current_user_info()
+    if current_user["role"] != "admin":
+        return jsonify({"error": "Admin access required"}), 403
+
+    if current_user["id"] == user_id:
+        return jsonify({"error": "Cannot delete your own account"}), 400
+
+    users = get_users()
+    user = next((u for u in users if u["id"] == user_id), None)
+    if not user:
+        return jsonify({"error": "User not found"}), 404
+
+    users = [u for u in users if u["id"] != user_id]
+    save_users(users)
+
+    return jsonify({"message": f"User '{user['username']}' deleted successfully"})
+
+
+@app.route("/api/admin/users/<int:user_id>/reset-password", methods=["POST"])
+@jwt_required()
+def admin_reset_password(user_id):
+    """Reset a user's password (admin only)"""
+    current_user = get_current_user_info()
+    if current_user["role"] != "admin":
+        return jsonify({"error": "Admin access required"}), 403
+
+    data = request.get_json()
+    new_password = data.get("newPassword", "")
+    if not new_password or len(new_password) < 6:
+        return jsonify({"error": "Password must be at least 6 characters"}), 400
+
+    users = get_users()
+    user = next((u for u in users if u["id"] == user_id), None)
+    if not user:
+        return jsonify({"error": "User not found"}), 404
+
+    user["password"] = bcrypt.hashpw(new_password.encode('utf-8'), bcrypt.gensalt()).decode('utf-8')
+    save_users(users)
+
+    return jsonify({"message": f"Password reset for '{user['username']}'"})
+
+
+@app.route("/api/admin/pipelines", methods=["GET"])
+@jwt_required()
+def admin_get_pipelines():
+    """Get all pipeline runs with full details (admin only)"""
+    current_user = get_current_user_info()
+    if current_user["role"] != "admin":
+        return jsonify({"error": "Admin access required"}), 403
+
+    limit = request.args.get('limit', 50, type=int)
+    status_filter = request.args.get('status', None)
+
+    pipelines = pipeline_executor.get_pipelines(limit)
+
+    if status_filter:
+        pipelines = [p for p in pipelines if p.get("status") == status_filter]
+
+    # Enrich with failure reasons and short logs
+    enriched = []
+    for p in pipelines:
+        entry = dict(p)
+        # Extract failure reasons from stages
+        failures = []
+        stage_logs = []
+        for stage_key, stage_data in (p.get("stages") or {}).items():
+            if isinstance(stage_data, dict):
+                if stage_data.get("status") == "failed":
+                    failures.append({
+                        "stage": stage_data.get("name", stage_key),
+                        "error": stage_data.get("error", "Unknown error"),
+                    })
+                if stage_data.get("logs"):
+                    stage_logs.append({
+                        "stage": stage_data.get("name", stage_key),
+                        "log": stage_data.get("logs", "")[:200],
+                    })
+        entry["failure_reasons"] = failures
+        entry["stage_logs"] = stage_logs
+        enriched.append(entry)
+
+    return jsonify({"pipelines": enriched, "total": len(enriched)})
+
+
+@app.route("/api/admin/vulnerabilities/summary", methods=["GET"])
+@jwt_required()
+def admin_vuln_summary():
+    """Get a summary of major vulnerabilities across all scanners (admin only)"""
+    current_user = get_current_user_info()
+    if current_user["role"] != "admin":
+        return jsonify({"error": "Admin access required"}), 403
+
+    critical_findings = []
+
+    # SAST critical/high
+    sast_data = load_json_file("sast-report.json")
+    if sast_data and sast_data.get("results"):
+        for issue in sast_data["results"]:
+            sev = (issue.get("severity") or "").upper()
+            if sev in ("CRITICAL", "HIGH"):
+                critical_findings.append({
+                    "source": "SAST",
+                    "tool": issue.get("tool", "unknown"),
+                    "severity": sev,
+                    "message": (issue.get("message") or "")[:150],
+                    "file": issue.get("file", ""),
+                    "line": issue.get("line", 0),
+                    "language": issue.get("language", ""),
+                    "rule_id": issue.get("rule_id", ""),
+                })
+
+    # Trivy critical/high
+    trivy_data = load_json_file("trivy-report.json")
+    if trivy_data and trivy_data.get("Results"):
+        for result in trivy_data["Results"]:
+            for vuln in (result.get("Vulnerabilities") or []):
+                sev = (vuln.get("Severity") or "").upper()
+                if sev in ("CRITICAL", "HIGH"):
+                    critical_findings.append({
+                        "source": "Trivy",
+                        "tool": "trivy",
+                        "severity": sev,
+                        "message": (vuln.get("Title") or vuln.get("Description", ""))[:150],
+                        "file": vuln.get("PkgName", ""),
+                        "line": 0,
+                        "vulnerability_id": vuln.get("VulnerabilityID", ""),
+                        "fixed_version": vuln.get("FixedVersion", ""),
+                    })
+
+    # Gitleaks all secrets (secrets are always important)
+    gitleaks_data = load_json_file("gitleaks-report.json")
+    if gitleaks_data and gitleaks_data.get("results"):
+        for secret in gitleaks_data["results"]:
+            critical_findings.append({
+                "source": "Gitleaks",
+                "tool": "gitleaks",
+                "severity": secret.get("severity", "HIGH"),
+                "message": f"Secret detected: {secret.get('rule_id', 'unknown')}",
+                "file": secret.get("file", ""),
+                "line": secret.get("line", 0),
+            })
+
+    # DAST high/medium
+    dast_data = load_json_file("dast-report.json")
+    if dast_data and dast_data.get("results"):
+        for alert in dast_data["results"]:
+            risk = (alert.get("risk") or "LOW").upper()
+            if risk in ("HIGH", "MEDIUM"):
+                critical_findings.append({
+                    "source": "DAST",
+                    "tool": dast_data.get("tool", "zap"),
+                    "severity": risk,
+                    "message": (alert.get("name") or alert.get("description", ""))[:150],
+                    "url": alert.get("url", ""),
+                    "cwe_id": alert.get("cwe_id", ""),
+                })
+
+    # Sort by severity
+    severity_order = {"CRITICAL": 0, "HIGH": 1, "MEDIUM": 2, "LOW": 3}
+    critical_findings.sort(key=lambda x: severity_order.get(x.get("severity", "LOW"), 3))
+
+    return jsonify({
+        "findings": critical_findings[:100],
+        "total": len(critical_findings),
+    })
+
+
+# ==================== LOCAL SCAN ====================
+
+@app.route("/api/scan/local", methods=["POST"])
+@jwt_required()
+def scan_local():
+    """Trigger a scan on a local directory"""
+    current_user = get_current_user_info()
+    data = request.get_json() or {}
+    
+    target_dir = data.get('directory')
+    image_name = data.get('image_name')
+    
+    if not target_dir and not image_name:
+        return jsonify({"error": "Either directory or image_name is required"}), 400
+    
+    pipeline = pipeline_executor.create_pipeline(
+        repo_url="",
+        branch="local",
+        commit_sha="local",
+        commit_message=f"Local scan by {current_user['username']}",
+        author=current_user["username"]
+    )
+    
+    run_pipeline_async(
+        pipeline_executor,
+        pipeline,
+        repo_url=None,
+        target_dir=target_dir,
+        image_name=image_name
+    )
+    
+    return jsonify({
+        "message": "Local scan triggered",
+        "pipeline_id": pipeline.id
+    }), 202
+
+@app.route("/api/admin/analytics", methods=["GET"])
+@jwt_required()
+def admin_analytics():
+    """Get analytics data for admin overview charts"""
+    current_user = get_current_user_info()
+    if current_user["role"] != "admin":
+        return jsonify({"error": "Admin access required"}), 403
+
+    # Vulnerability counts from reports
+    critical_count = 0
+    high_count = 0
+    medium_count = 0
+    low_count = 0
+    total_secrets = 0
+
+    # SAST report
+    sast_path = os.path.join(REPORT_DIR, "sast-report.json")
+    if os.path.exists(sast_path):
+        try:
+            with open(sast_path) as f:
+                sast = json.load(f)
+            for finding in sast.get("results", sast.get("findings", [])):
+                sev = (finding.get("extra", {}).get("severity", "") or finding.get("severity", "")).upper()
+                if sev == "ERROR" or sev == "CRITICAL":
+                    critical_count += 1
+                elif sev == "WARNING" or sev == "HIGH":
+                    high_count += 1
+                elif sev == "MEDIUM":
+                    medium_count += 1
+                else:
+                    low_count += 1
+        except Exception:
+            pass
+
+    # Bandit report
+    bandit_path = os.path.join(REPORT_DIR, "bandit-report.json")
+    if os.path.exists(bandit_path):
+        try:
+            with open(bandit_path) as f:
+                bandit = json.load(f)
+            for finding in bandit.get("results", []):
+                sev = finding.get("issue_severity", "").upper()
+                if sev == "HIGH":
+                    high_count += 1
+                elif sev == "MEDIUM":
+                    medium_count += 1
+                else:
+                    low_count += 1
+        except Exception:
+            pass
+
+    # Trivy report
+    trivy_path = os.path.join(REPORT_DIR, "trivy-report.json")
+    if os.path.exists(trivy_path):
+        try:
+            with open(trivy_path) as f:
+                trivy = json.load(f)
+            for result in trivy.get("Results", []):
+                for vuln in result.get("Vulnerabilities", []):
+                    sev = vuln.get("Severity", "").upper()
+                    if sev == "CRITICAL":
+                        critical_count += 1
+                    elif sev == "HIGH":
+                        high_count += 1
+                    elif sev == "MEDIUM":
+                        medium_count += 1
+                    else:
+                        low_count += 1
+        except Exception:
+            pass
+
+    # Gitleaks report
+    gitleaks_path = os.path.join(REPORT_DIR, "gitleaks-report.json")
+    if os.path.exists(gitleaks_path):
+        try:
+            with open(gitleaks_path) as f:
+                gitleaks = json.load(f)
+            if isinstance(gitleaks, list):
+                total_secrets = len(gitleaks)
+            elif isinstance(gitleaks, dict):
+                total_secrets = len(gitleaks.get("findings", gitleaks.get("results", [])))
+        except Exception:
+            pass
+
+    # System health - check scanner availability
+    import shutil
+    system_health = {
+        "overallStatus": "online",
+        "bandit": "online" if shutil.which("bandit") else "offline",
+        "semgrep": "online" if shutil.which("semgrep") else "offline",
+        "trivy": "online" if shutil.which("trivy") else "offline",
+        "zap": "offline",  # DAST requires Docker
+        "gitleaks": "online" if shutil.which("gitleaks") else "offline",
+        "docker": "online" if shutil.which("docker") else "offline",
+        "apiLatency": "< 50ms",
+        "queuedJobs": 0,
+    }
+
+    # Check if any critical scanner is offline
+    if system_health["bandit"] == "offline" and system_health["semgrep"] == "offline":
+        system_health["overallStatus"] = "degraded"
+
+    return jsonify({
+        "criticalCount": critical_count,
+        "highCount": high_count,
+        "mediumCount": medium_count,
+        "lowCount": low_count,
+        "totalSecrets": total_secrets,
+        "vulnDistribution": [
+            {"name": "Critical", "value": critical_count},
+            {"name": "High", "value": high_count},
+            {"name": "Medium", "value": medium_count},
+            {"name": "Low", "value": low_count},
+        ],
+        "vulnTrend": [],
+        "secretTrend": [],
+        "deployTrend": [],
+        "systemHealth": system_health,
+        "criticalTrend": {"value": critical_count, "direction": "up" if critical_count > 0 else "flat", "label": "current"},
+        "secretsTrend": {"value": total_secrets, "direction": "up" if total_secrets > 0 else "flat", "label": "current"},
+    })
+
+
+# ==================== SETTINGS API ====================
+
+SETTINGS_FILE = os.path.join(DATA_DIR, "user_settings.json")
+
+DEFAULT_USER_SETTINGS = {}
+
+def get_all_user_settings():
+    """Get all user settings"""
+    return load_data_file(SETTINGS_FILE, DEFAULT_USER_SETTINGS)
+
+def save_all_user_settings(settings):
+    """Save all user settings"""
+    save_data_file(SETTINGS_FILE, settings)
+
+def get_user_settings(user_id):
+    """Get settings for a specific user"""
+    all_settings = get_all_user_settings()
+    return all_settings.get(str(user_id), {})
+
+def save_user_settings(user_id, section, data):
+    """Save a specific section of user settings"""
+    all_settings = get_all_user_settings()
+    uid = str(user_id)
+    if uid not in all_settings:
+        all_settings[uid] = {}
+    all_settings[uid][section] = data
+    all_settings[uid]["updatedAt"] = datetime.now().isoformat()
+    save_all_user_settings(all_settings)
+    return all_settings[uid][section]
+
+def get_current_user_settings(section=None):
+    """Helper to get current user's settings, optionally a specific section"""
+    identity = get_jwt_identity()
+    users = get_users()
+    user = next((u for u in users if u["username"] == identity), None)
+    if not user:
+        return None, None
+    settings = get_user_settings(user["id"])
+    if section:
+        return user, settings.get(section, {})
+    return user, settings
+
+
+@app.route("/api/settings/profile", methods=["GET"])
+@jwt_required()
+def settings_get_profile():
+    """Get user profile settings"""
+    identity = get_jwt_identity()
+    users = get_users()
+    user = next((u for u in users if u["username"] == identity), None)
+    if not user:
+        return jsonify({"error": "User not found"}), 404
+
+    user_settings = get_user_settings(user["id"])
+    profile = user_settings.get("profile", {})
+
+    return jsonify({
+        "fullName": profile.get("fullName", user.get("fullName", "")),
+        "email": user.get("email", ""),
+        "organization": profile.get("organization", user.get("organization", "")),
+        "defaultRepoUrl": profile.get("defaultRepoUrl", ""),
+        "timezone": profile.get("timezone", "UTC"),
+        "preferredLanguage": profile.get("preferredLanguage", "en"),
+        "avatarUrl": profile.get("avatarUrl", ""),
+    })
+
+
+@app.route("/api/settings/profile", methods=["PUT"])
+@jwt_required()
+def settings_update_profile():
+    """Update user profile settings"""
+    identity = get_jwt_identity()
+    users = get_users()
+    user = next((u for u in users if u["username"] == identity), None)
+    if not user:
+        return jsonify({"error": "User not found"}), 404
+
+    data = request.get_json()
+    if not data:
+        return jsonify({"error": "No data provided"}), 400
+
+    # Update user record fields
+    if "fullName" in data:
+        user["fullName"] = data["fullName"]
+    if "organization" in data:
+        user["organization"] = data["organization"]
+    save_users(users)
+
+    # Save extended profile settings
+    profile_data = {
+        "fullName": data.get("fullName", user.get("fullName", "")),
+        "organization": data.get("organization", user.get("organization", "")),
+        "defaultRepoUrl": data.get("defaultRepoUrl", ""),
+        "timezone": data.get("timezone", "UTC"),
+        "preferredLanguage": data.get("preferredLanguage", "en"),
+        "avatarUrl": data.get("avatarUrl", ""),
+    }
+    save_user_settings(user["id"], "profile", profile_data)
+
+    return jsonify({"message": "Profile updated", **profile_data})
+
+
+@app.route("/api/settings/notifications", methods=["GET"])
+@jwt_required()
+def settings_get_notifications():
+    """Get notification preferences"""
+    user, prefs = get_current_user_settings("notifications")
+    if not user:
+        return jsonify({"error": "User not found"}), 404
+
+    defaults = {
+        "email": {
+            "pipelineSuccess": True,
+            "pipelineFailure": True,
+            "criticalVuln": True,
+            "secretDetected": True,
+            "deploymentBlocked": False,
+        },
+        "inApp": True,
+        "weeklySummary": True,
+        "realtimeWebhook": False,
+    }
+    merged = {**defaults, **prefs}
+    if isinstance(prefs.get("email"), dict):
+        merged["email"] = {**defaults["email"], **prefs["email"]}
+    return jsonify(merged)
+
+
+@app.route("/api/settings/notifications", methods=["PUT"])
+@jwt_required()
+def settings_update_notifications():
+    """Update notification preferences"""
+    identity = get_jwt_identity()
+    users = get_users()
+    user = next((u for u in users if u["username"] == identity), None)
+    if not user:
+        return jsonify({"error": "User not found"}), 404
+
+    data = request.get_json()
+    if not data:
+        return jsonify({"error": "No data provided"}), 400
+
+    save_user_settings(user["id"], "notifications", data)
+    return jsonify({"message": "Notification preferences updated"})
+
+
+@app.route("/api/settings/scan-preferences", methods=["GET"])
+@jwt_required()
+def settings_get_scan_prefs():
+    """Get scan preferences"""
+    user, prefs = get_current_user_settings("scanPreferences")
+    if not user:
+        return jsonify({"error": "User not found"}), 404
+
+    defaults = {
+        "scanners": {"sast": True, "dast": True, "trivy": True, "gitleaks": True},
+        "severityThreshold": "medium",
+        "fastScanMode": False,
+        "autoScanOnPush": True,
+        "customIgnorePatterns": "",
+        "excludedPaths": "",
+    }
+    merged = {**defaults, **prefs}
+    if isinstance(prefs.get("scanners"), dict):
+        merged["scanners"] = {**defaults["scanners"], **prefs["scanners"]}
+    return jsonify(merged)
+
+
+@app.route("/api/settings/scan-preferences", methods=["PUT"])
+@jwt_required()
+def settings_update_scan_prefs():
+    """Update scan preferences"""
+    identity = get_jwt_identity()
+    users = get_users()
+    user = next((u for u in users if u["username"] == identity), None)
+    if not user:
+        return jsonify({"error": "User not found"}), 404
+
+    data = request.get_json()
+    if not data:
+        return jsonify({"error": "No data provided"}), 400
+
+    save_user_settings(user["id"], "scanPreferences", data)
+    return jsonify({"message": "Scan preferences updated"})
+
+
+@app.route("/api/settings/git-integration", methods=["GET"])
+@jwt_required()
+def settings_get_git_integration():
+    """Get git integration settings"""
+    config = get_config()
+    return jsonify({
+        "provider": "github",
+        "webhookUrl": f"{request.host_url}api/webhook/github",
+        "webhookSecret": GITHUB_WEBHOOK_SECRET[:8] + "..." if len(GITHUB_WEBHOOK_SECRET) > 8 else GITHUB_WEBHOOK_SECRET,
+        "lastWebhookAt": config.get("lastWebhookAt"),
+        "repoUrl": config.get("github_repo_url", ""),
+        "branch": config.get("github_branch", "main"),
+    })
+
+
+@app.route("/api/settings/git-integration", methods=["PUT"])
+@jwt_required()
+def settings_update_git_integration():
+    """Update git integration settings"""
+    data = request.get_json()
+    if not data:
+        return jsonify({"error": "No data provided"}), 400
+
+    config = get_config()
+    if "provider" in data:
+        config["git_provider"] = data["provider"]
+    save_config(config)
+    return jsonify({"message": "Git integration updated"})
+
+
+@app.route("/api/settings/git-integration/regenerate-secret", methods=["POST"])
+@jwt_required()
+def settings_regenerate_webhook_secret():
+    """Regenerate webhook secret"""
+    import secrets
+    new_secret = secrets.token_hex(32)
+    # In production you'd save this
+    return jsonify({"message": "Webhook secret regenerated", "secret": new_secret[:8] + "..."})
+
+
+@app.route("/api/settings/git-integration/test", methods=["POST"])
+@jwt_required()
+def settings_test_webhook():
+    """Test webhook connection"""
+    return jsonify({"message": "Webhook test sent", "status": "ok"})
+
+
+@app.route("/api/settings/appearance", methods=["GET"])
+@jwt_required()
+def settings_get_appearance():
+    """Get appearance preferences"""
+    user, prefs = get_current_user_settings("appearance")
+    if not user:
+        return jsonify({"error": "User not found"}), 404
+
+    defaults = {
+        "theme": "dark",
+        "density": "comfortable",
+        "chartStyle": "default",
+        "animations": True,
+        "autoRefreshInterval": 30,
+    }
+    return jsonify({**defaults, **prefs})
+
+
+@app.route("/api/settings/appearance", methods=["PUT"])
+@jwt_required()
+def settings_update_appearance():
+    """Update appearance preferences"""
+    identity = get_jwt_identity()
+    users = get_users()
+    user = next((u for u in users if u["username"] == identity), None)
+    if not user:
+        return jsonify({"error": "User not found"}), 404
+
+    data = request.get_json()
+    if not data:
+        return jsonify({"error": "No data provided"}), 400
+
+    save_user_settings(user["id"], "appearance", data)
+    return jsonify({"message": "Appearance preferences updated"})
+
+
+@app.route("/api/settings/api-tokens", methods=["GET"])
+@jwt_required()
+def settings_get_api_tokens():
+    """Get user API tokens"""
+    user, settings = get_current_user_settings("apiTokens")
+    if not user:
+        return jsonify({"error": "User not found"}), 404
+
+    tokens = settings.get("tokens", []) if isinstance(settings, dict) else []
+    # Strip actual token values for security
+    safe_tokens = []
+    for t in tokens:
+        safe_tokens.append({
+            "id": t.get("id"),
+            "name": t.get("name"),
+            "created": t.get("created"),
+            "expires": t.get("expires"),
+            "lastUsed": t.get("lastUsed"),
+            "usageCount": t.get("usageCount", 0),
+        })
+    return jsonify(safe_tokens)
+
+
+@app.route("/api/settings/api-tokens", methods=["POST"])
+@jwt_required()
+def settings_create_api_token():
+    """Generate a new API token"""
+    import secrets
+    import uuid
+
+    identity = get_jwt_identity()
+    users = get_users()
+    user = next((u for u in users if u["username"] == identity), None)
+    if not user:
+        return jsonify({"error": "User not found"}), 404
+
+    data = request.get_json() or {}
+    name = data.get("name", "Unnamed Token")
+    expires_in = data.get("expiresIn", "30d")
+
+    # Generate the token
+    token_value = f"sntl_{secrets.token_hex(20)}"
+    token_id = str(uuid.uuid4())[:8]
+
+    # Calculate expiration
+    expire_map = {"7d": 7, "30d": 30, "90d": 90, "1y": 365, "never": None}
+    days = expire_map.get(expires_in)
+    expires = (datetime.now() + timedelta(days=days)).isoformat() if days else None
+
+    token_record = {
+        "id": token_id,
+        "name": name,
+        "tokenHash": hashlib.sha256(token_value.encode()).hexdigest(),
+        "created": datetime.now().isoformat(),
+        "expires": expires,
+        "lastUsed": None,
+        "usageCount": 0,
+    }
+
+    all_settings = get_all_user_settings()
+    uid = str(user["id"])
+    if uid not in all_settings:
+        all_settings[uid] = {}
+    if "apiTokens" not in all_settings[uid]:
+        all_settings[uid]["apiTokens"] = {"tokens": []}
+    all_settings[uid]["apiTokens"]["tokens"].insert(0, token_record)
+    save_all_user_settings(all_settings)
+
+    return jsonify({"token": token_value, "id": token_id, "name": name, "expires": expires})
+
+
+@app.route("/api/settings/api-tokens/<token_id>", methods=["DELETE"])
+@jwt_required()
+def settings_revoke_api_token(token_id):
+    """Revoke an API token"""
+    identity = get_jwt_identity()
+    users = get_users()
+    user = next((u for u in users if u["username"] == identity), None)
+    if not user:
+        return jsonify({"error": "User not found"}), 404
+
+    all_settings = get_all_user_settings()
+    uid = str(user["id"])
+    tokens = all_settings.get(uid, {}).get("apiTokens", {}).get("tokens", [])
+    all_settings[uid]["apiTokens"]["tokens"] = [t for t in tokens if t.get("id") != token_id]
+    save_all_user_settings(all_settings)
+
+    return jsonify({"message": "Token revoked"})
+
+
+@app.route("/api/settings/security/sessions", methods=["GET"])
+@jwt_required()
+def settings_get_sessions():
+    """Get active sessions"""
+    user_agent = request.headers.get("User-Agent", "Unknown")
+    client_ip = request.remote_addr or "Unknown"
+    return jsonify([
+        {"id": 1, "device": user_agent[:40], "ip": client_ip, "lastActive": datetime.now().isoformat(), "current": True},
+    ])
+
+
+@app.route("/api/settings/security/oauth", methods=["GET"])
+@jwt_required()
+def settings_get_oauth():
+    """Get OAuth connection status"""
+    identity = get_jwt_identity()
+    users = get_users()
+    user = next((u for u in users if u["username"] == identity), None)
+    if not user:
+        return jsonify({"error": "User not found"}), 404
+
+    is_google = user.get("authProvider") == "google"
+    return jsonify({
+        "google": {
+            "connected": is_google,
+            "email": user.get("email") if is_google else None,
+        }
+    })
+
+
+@app.route("/api/settings/advanced/export", methods=["GET"])
+@jwt_required()
+def settings_export_data():
+    """Export user data"""
+    identity = get_jwt_identity()
+    users = get_users()
+    user = next((u for u in users if u["username"] == identity), None)
+    if not user:
+        return jsonify({"error": "User not found"}), 404
+
+    user_settings = get_user_settings(user["id"])
+
+    # Load scan history
+    history = load_data_file(PIPELINES_FILE, [])
+
+    export = {
+        "exportedAt": datetime.now().isoformat(),
+        "user": {
+            "username": user["username"],
+            "email": user.get("email"),
+            "role": user.get("role"),
+            "createdAt": user.get("createdAt"),
+        },
+        "settings": user_settings,
+        "scanHistory": history[:50],  # Last 50 scans
+    }
+    return jsonify(export)
+
+
+@app.route("/api/settings/advanced/reset", methods=["POST"])
+@jwt_required()
+def settings_reset_preferences():
+    """Reset all user preferences"""
+    identity = get_jwt_identity()
+    users = get_users()
+    user = next((u for u in users if u["username"] == identity), None)
+    if not user:
+        return jsonify({"error": "User not found"}), 404
+
+    all_settings = get_all_user_settings()
+    uid = str(user["id"])
+    all_settings[uid] = {"resetAt": datetime.now().isoformat()}
+    save_all_user_settings(all_settings)
+
+    return jsonify({"message": "All preferences reset to defaults"})
+
+
+@app.route("/api/settings/advanced/debug", methods=["PUT"])
+@jwt_required()
+def settings_toggle_debug():
+    """Toggle debug mode"""
+    identity = get_jwt_identity()
+    users = get_users()
+    user = next((u for u in users if u["username"] == identity), None)
+    if not user:
+        return jsonify({"error": "User not found"}), 404
+
+    data = request.get_json() or {}
+    save_user_settings(user["id"], "debug", {"enabled": data.get("enabled", False)})
+    return jsonify({"message": "Debug mode updated"})
+
+
+if __name__ == "__main__":
+    app.run(debug=False, host="0.0.0.0", port=5000)

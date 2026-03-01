@@ -29,6 +29,7 @@ export function AuthProvider({ children }) {
         }
       })
       setUser(response.data)
+      return response.data
     } catch (error) {
       console.error('Failed to fetch user:', error)
       // Clear invalid token
@@ -51,7 +52,7 @@ export function AuthProvider({ children }) {
       setUser(userData)
       setLoading(false)
 
-      return { success: true }
+      return { success: true, user: userData }
     } catch (error) {
       const message = error.response?.data?.error || 'Login failed'
       return { success: false, error: message }
@@ -72,8 +73,8 @@ export function AuthProvider({ children }) {
   const loginWithToken = async (authToken) => {
     localStorage.setItem('token', authToken)
     setToken(authToken)
-    await fetchUser(authToken)
-    return { success: true }
+    const userData = await fetchUser(authToken)
+    return { success: true, user: userData }
   }
 
   const logout = () => {

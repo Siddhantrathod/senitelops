@@ -279,6 +279,16 @@ export const getGoogleAuthUrl = () => {
 
 // ==================== ADMIN API ====================
 
+export const fetchAdminOverviewAnalytics = async () => {
+  try {
+    const response = await api.get('/admin/analytics')
+    return response.data
+  } catch (error) {
+    console.error('Error fetching admin analytics:', error)
+    throw error
+  }
+}
+
 export const fetchAdminStats = async () => {
   try {
     const response = await api.get('/admin/stats')
@@ -292,7 +302,7 @@ export const fetchAdminStats = async () => {
 export const fetchAdminUsers = async () => {
   try {
     const response = await api.get('/admin/users')
-    return response.data
+    return response.data.users || response.data
   } catch (error) {
     console.error('Error fetching admin users:', error)
     throw error

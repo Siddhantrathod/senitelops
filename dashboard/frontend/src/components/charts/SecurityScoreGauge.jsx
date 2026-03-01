@@ -42,7 +42,7 @@ export default function SecurityScoreGauge({ score, size = 200 }) {
         <path
           d={`M 10, ${size / 2} A ${radius}, ${radius} 0 0 1 ${size - 10}, ${size / 2}`}
           fill="none"
-          stroke="rgba(255,255,255,0.06)"
+          stroke="var(--chart-grid)"
           strokeWidth="12"
           strokeLinecap="round"
         />
@@ -66,7 +66,7 @@ export default function SecurityScoreGauge({ score, size = 200 }) {
           y={size / 2 - 10}
           textAnchor="middle"
           className="text-4xl font-bold"
-          fill="white"
+          fill="var(--text-heading)"
         >
           {score}%
         </text>

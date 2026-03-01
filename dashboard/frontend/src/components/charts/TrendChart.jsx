@@ -13,7 +13,7 @@ const CustomTooltip = ({ active, payload, label }) => {
   if (active && payload && payload.length) {
     return (
       <div className="glass-card p-3 shadow-2xl">
-        <p className="text-white font-medium mb-2">{label}</p>
+        <p className="text-steel-50 font-medium mb-2">{label}</p>
         {payload.map((entry, index) => (
           <div key={index} className="flex items-center gap-2">
             <div
@@ -21,7 +21,7 @@ const CustomTooltip = ({ active, payload, label }) => {
               style={{ backgroundColor: entry.color }}
             />
             <span className="text-steel-400 text-sm font-mono">
-              {entry.name}: <span className="text-white font-semibold">{entry.value}</span>
+              {entry.name}: <span className="text-steel-50 font-semibold">{entry.value}</span>
             </span>
           </div>
         ))}
@@ -37,7 +37,7 @@ export default function TrendChart({ data, title, height = 300, dataKeys = ['vul
   return (
     <div className="glass-card p-6">
       {title && (
-        <h3 className="text-lg font-semibold text-white mb-4">{title}</h3>
+        <h3 className="text-lg font-semibold text-steel-50 mb-4">{title}</h3>
       )}
       <ResponsiveContainer width="100%" height={height}>
         <AreaChart data={data} margin={{ top: 20, right: 30, left: 20, bottom: 5 }}>
@@ -49,17 +49,17 @@ export default function TrendChart({ data, title, height = 300, dataKeys = ['vul
               </linearGradient>
             ))}
           </defs>
-          <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.04)" vertical={false} />
+          <CartesianGrid strokeDasharray="3 3" stroke="var(--chart-grid)" vertical={false} />
           <XAxis
             dataKey="date"
             axisLine={false}
             tickLine={false}
-            tick={{ fill: '#64748b', fontSize: 11, fontFamily: 'JetBrains Mono' }}
+            tick={{ fill: 'var(--chart-text)', fontSize: 11, fontFamily: 'JetBrains Mono' }}
           />
           <YAxis
             axisLine={false}
             tickLine={false}
-            tick={{ fill: '#64748b', fontSize: 11, fontFamily: 'JetBrains Mono' }}
+            tick={{ fill: 'var(--chart-text)', fontSize: 11, fontFamily: 'JetBrains Mono' }}
           />
           <Tooltip content={<CustomTooltip />} />
           {dataKeys.map((key, index) => (

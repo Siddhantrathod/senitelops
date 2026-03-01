@@ -282,7 +282,7 @@ function StageLogCard({ stageKey, stage, isOpen, onToggle }) {
       >
         <div className={cn('w-2 h-2 rounded-full flex-shrink-0', sc.dot)} />
         <Icon className={cn('w-4 h-4 flex-shrink-0', sc.text)} />
-        <span className="text-sm font-semibold text-white flex-1 truncate">
+        <span className="text-sm font-semibold text-steel-50 flex-1 truncate">
           {stageDisplayNames[stageKey] || (stage.name || stageKey).replace(/_/g, ' ')}
         </span>
         {stage.duration_seconds && (
@@ -316,7 +316,7 @@ function StageLogCard({ stageKey, stage, isOpen, onToggle }) {
         )}
       >
         {hasContent && (
-          <div className="border-t border-white/[0.04] bg-[#080a0d] px-4 py-3">
+          <div className="border-t border-white/[0.04] bg-surface-code px-4 py-3">
             {stage.error && (
               <div className="flex items-start gap-2 mb-3">
                 <AlertTriangle className="w-3.5 h-3.5 text-red-400 mt-0.5 flex-shrink-0" />
@@ -358,7 +358,7 @@ function PipelineCard({ pipeline, isSelected, onClick }) {
         <div className="flex items-center justify-between mb-2.5">
           <div className="flex items-center gap-2 min-w-0">
             <GitBranch className="w-3.5 h-3.5 text-violet-400 flex-shrink-0" />
-            <span className="text-sm font-bold text-white truncate">{pipeline.branch}</span>
+            <span className="text-sm font-bold text-steel-50 truncate">{pipeline.branch}</span>
           </div>
           <StatusBadge status={pipeline.status} size="sm" />
         </div>
@@ -470,7 +470,7 @@ function PipelineDetails({ pipeline, onBack }) {
         <div className="w-20 h-20 rounded-2xl bg-white/[0.03] border border-white/[0.06] flex items-center justify-center mb-5">
           <Layers className="w-10 h-10 text-steel-700" />
         </div>
-        <h3 className="text-lg font-bold text-white mb-2">Select a Pipeline</h3>
+        <h3 className="text-lg font-bold text-steel-50 mb-2">Select a Pipeline</h3>
         <p className="text-steel-500 text-sm text-center max-w-xs leading-relaxed">
           Choose a pipeline run from the list to inspect its stages, execution logs, and security results.
         </p>
@@ -511,7 +511,7 @@ function PipelineDetails({ pipeline, onBack }) {
           <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-4">
             <div className="min-w-0 flex-1">
               <div className="flex items-center gap-3 mb-2">
-                <h3 className="text-xl font-bold text-white truncate">
+                <h3 className="text-xl font-bold text-steel-50 truncate">
                   {pipeline.repo_name || 'Pipeline Run'}
                 </h3>
                 <StatusBadge status={pipeline.status} />
@@ -623,11 +623,11 @@ function PipelineDetails({ pipeline, onBack }) {
           </div>
           <div className="flex flex-wrap gap-2 text-xs font-mono text-steel-400">
             {[
-              { label: 'Min Score', value: policySnapshot.minScore, highlight: 'text-white' },
+              { label: 'Min Score', value: policySnapshot.minScore, highlight: 'text-steel-50' },
               { label: 'Block Critical', value: policySnapshot.blockCritical ? 'Yes' : 'No', highlight: policySnapshot.blockCritical ? 'text-red-400' : 'text-steel-500' },
               { label: 'Block High', value: policySnapshot.blockHigh ? 'Yes' : 'No', highlight: policySnapshot.blockHigh ? 'text-orange-400' : 'text-steel-500' },
-              { label: 'Max Critical', value: policySnapshot.maxCriticalVulns, highlight: 'text-white' },
-              { label: 'Max High', value: policySnapshot.maxHighVulns, highlight: 'text-white' },
+              { label: 'Max Critical', value: policySnapshot.maxCriticalVulns, highlight: 'text-steel-50' },
+              { label: 'Max High', value: policySnapshot.maxHighVulns, highlight: 'text-steel-50' },
               { label: 'Block Secrets', value: policySnapshot.blockOnSecrets !== false ? 'Yes' : 'No', highlight: policySnapshot.blockOnSecrets !== false ? 'text-red-400' : 'text-steel-500' },
               { label: 'Block DAST High', value: policySnapshot.blockOnDastHigh ? 'Yes' : 'No', highlight: policySnapshot.blockOnDastHigh ? 'text-orange-400' : 'text-steel-500' },
             ].map(p => (
@@ -681,9 +681,9 @@ function PipelineDetails({ pipeline, onBack }) {
             <div className="rounded-xl bg-white/[0.02] border border-white/[0.06] p-4 hover:bg-white/[0.03] transition-colors">
               <div className="flex items-center gap-2 mb-3">
                 <FileCode className="w-4 h-4 text-purple-400" />
-                <span className="text-xs font-semibold text-white">Code Analysis (SAST)</span>
+                <span className="text-xs font-semibold text-steel-50">Code Analysis (SAST)</span>
               </div>
-              <div className="text-2xl font-black font-mono text-white mb-1">{summary.sast_issues || 0}</div>
+              <div className="text-2xl font-black font-mono text-steel-50 mb-1">{summary.sast_issues || 0}</div>
               <div className="flex gap-2 text-[10px] font-mono flex-wrap">
                 {summary.sast_high > 0 && <span className="text-orange-400 bg-orange-500/10 px-1.5 py-0.5 rounded">{summary.sast_high} high</span>}
                 {summary.sast_medium > 0 && <span className="text-amber-400 bg-amber-500/10 px-1.5 py-0.5 rounded">{summary.sast_medium} med</span>}
@@ -703,9 +703,9 @@ function PipelineDetails({ pipeline, onBack }) {
             <div className="rounded-xl bg-white/[0.02] border border-white/[0.06] p-4 hover:bg-white/[0.03] transition-colors">
               <div className="flex items-center gap-2 mb-3">
                 <Container className="w-4 h-4 text-cyan-400" />
-                <span className="text-xs font-semibold text-white">Container / Dependencies (Trivy)</span>
+                <span className="text-xs font-semibold text-steel-50">Container / Dependencies (Trivy)</span>
               </div>
-              <div className="text-2xl font-black font-mono text-white mb-1">{summary.trivy_vulns || 0}</div>
+              <div className="text-2xl font-black font-mono text-steel-50 mb-1">{summary.trivy_vulns || 0}</div>
               <div className="flex gap-2 text-[10px] font-mono flex-wrap">
                 {summary.trivy_critical > 0 && <span className="text-red-400 bg-red-500/10 px-1.5 py-0.5 rounded">{summary.trivy_critical} crit</span>}
                 {summary.trivy_high > 0 && <span className="text-orange-400 bg-orange-500/10 px-1.5 py-0.5 rounded">{summary.trivy_high} high</span>}
@@ -748,14 +748,14 @@ function RequirementsBanner() {
           <div className="flex items-start gap-2">
             <CheckCircle className="w-3.5 h-3.5 text-lime-400 mt-0.5 flex-shrink-0" />
             <div>
-              <span className="text-xs text-white font-medium">Public GitHub repo</span>
+              <span className="text-xs text-steel-50 font-medium">Public GitHub repo</span>
               <p className="text-[10px] text-steel-600">Must be accessible without authentication</p>
             </div>
           </div>
           <div className="flex items-start gap-2">
             <CheckCircle className="w-3.5 h-3.5 text-lime-400 mt-0.5 flex-shrink-0" />
             <div>
-              <span className="text-xs text-white font-medium">Source code files</span>
+              <span className="text-xs text-steel-50 font-medium">Source code files</span>
               <p className="text-[10px] text-steel-600">JS, Python, Go, Java, etc. for SAST analysis</p>
             </div>
           </div>
@@ -764,7 +764,7 @@ function RequirementsBanner() {
               <span className="text-[7px] text-steel-500 font-bold">?</span>
             </div>
             <div>
-              <span className="text-xs text-white font-medium">Dockerfile <span className="text-steel-500 font-normal">(optional)</span></span>
+              <span className="text-xs text-steel-50 font-medium">Dockerfile <span className="text-steel-500 font-normal">(optional)</span></span>
               <p className="text-[10px] text-steel-600">Enables Docker image build &amp; container scan</p>
             </div>
           </div>
@@ -773,7 +773,7 @@ function RequirementsBanner() {
               <span className="text-[7px] text-steel-500 font-bold">?</span>
             </div>
             <div>
-              <span className="text-xs text-white font-medium">Manifest files <span className="text-steel-500 font-normal">(optional)</span></span>
+              <span className="text-xs text-steel-50 font-medium">Manifest files <span className="text-steel-500 font-normal">(optional)</span></span>
               <p className="text-[10px] text-steel-600">package.json, requirements.txt, go.mod improve dependency detection</p>
             </div>
           </div>
@@ -918,7 +918,7 @@ export default function Pipeline() {
               <GitBranch className="w-5 h-5 text-white" />
             </div>
             <div>
-              <h1 className="text-2xl font-bold text-white">Security Pipeline</h1>
+              <h1 className="text-2xl font-bold text-steel-50">Security Pipeline</h1>
               <p className="text-steel-500 text-sm">Automated vulnerability scanning & deployment gating</p>
             </div>
           </div>
@@ -967,12 +967,12 @@ export default function Pipeline() {
                 placeholder="Search branch, author, commit..."
                 value={searchQuery}
                 onChange={e => setSearchQuery(e.target.value)}
-                className="w-full pl-10 pr-4 py-2.5 bg-white/[0.03] border border-white/[0.08] rounded-xl text-sm text-white placeholder-steel-500 focus:outline-none focus:border-violet-500/40 focus:ring-1 focus:ring-violet-500/20 transition-all font-mono"
+                className="w-full pl-10 pr-4 py-2.5 bg-white/[0.03] border border-white/[0.08] rounded-xl text-sm text-steel-50 placeholder-steel-500 focus:outline-none focus:border-violet-500/40 focus:ring-1 focus:ring-violet-500/20 transition-all font-mono"
               />
               {searchQuery && (
                 <button
                   onClick={() => setSearchQuery('')}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 text-steel-600 hover:text-white transition-colors"
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-steel-600 hover:text-steel-50 transition-colors"
                 >
                   <XCircle className="w-3.5 h-3.5" />
                 </button>

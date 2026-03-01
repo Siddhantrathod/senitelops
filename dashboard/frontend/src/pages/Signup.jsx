@@ -13,7 +13,7 @@ const GoogleIcon = () => (
   </svg>
 )
 
-const inputClass = 'w-full py-2.5 bg-white/[0.04] text-white rounded-xl border border-white/[0.08] focus:border-violet-500/50 focus:ring-1 focus:ring-violet-500/30 outline-none transition-all placeholder-steel-600 font-mono text-sm'
+const inputClass = 'w-full py-2.5 bg-theme-input text-steel-50 rounded-xl border border-theme-strong focus:border-violet-500/50 focus:ring-1 focus:ring-violet-500/30 outline-none transition-all placeholder-theme font-mono text-sm'
 
 export default function Signup() {
   const { isAuthenticated, loading, signup } = useAuth()
@@ -29,7 +29,7 @@ export default function Signup() {
 
   if (loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-[#0B0E11]">
+      <div className="min-h-screen flex items-center justify-center bg-surface">
         <div className="animate-spin w-8 h-8 border-2 border-violet-500 border-t-transparent rounded-full" />
       </div>
     )
@@ -68,7 +68,7 @@ export default function Signup() {
   const handleGoogleSignup = () => { window.location.href = getGoogleAuthUrl() }
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-[#0B0E11] px-4 py-12 relative">
+    <div className="min-h-screen flex items-center justify-center bg-surface px-4 py-12 relative">
       {/* Background decoration */}
       <div className="absolute inset-0 overflow-hidden">
         <div className="absolute -top-40 -right-40 w-80 h-80 bg-violet-500/10 rounded-full blur-3xl" />
@@ -84,7 +84,7 @@ export default function Signup() {
               <Shield className="w-8 h-8 text-white" />
             </div>
           </Link>
-          <h1 className="text-3xl font-bold text-white">Create Account</h1>
+          <h1 className="text-3xl font-bold text-steel-50">Create Account</h1>
           <p className="text-steel-500 mt-2">Get started with SentinelOps</p>
         </div>
 
@@ -93,7 +93,7 @@ export default function Signup() {
           {/* Google Sign Up */}
           <button
             onClick={handleGoogleSignup}
-            className="w-full flex items-center justify-center gap-3 px-4 py-3 bg-white/[0.04] border border-white/[0.08] rounded-xl font-medium text-steel-200 hover:bg-white/[0.06] hover:border-white/[0.12] transition-all"
+            className="w-full flex items-center justify-center gap-3 px-4 py-3 bg-theme-input border border-theme-strong rounded-xl font-medium text-steel-200 hover:bg-theme-hover hover:border-theme-strong transition-all"
           >
             <GoogleIcon />
             Continue with Google
@@ -101,10 +101,10 @@ export default function Signup() {
 
           <div className="relative my-6">
             <div className="absolute inset-0 flex items-center">
-              <div className="w-full border-t border-white/[0.06]" />
+              <div className="w-full border-t border-theme" />
             </div>
             <div className="relative flex justify-center text-sm">
-              <span className="px-4 bg-[#161b22] text-steel-600">or sign up with email</span>
+              <span className="px-4 bg-surface-secondary text-steel-500">or sign up with email</span>
             </div>
           </div>
 
@@ -214,7 +214,7 @@ export default function Signup() {
             </button>
           </form>
 
-          <div className="mt-6 pt-6 border-t border-white/[0.06] text-center">
+          <div className="mt-6 pt-6 border-t border-theme text-center">
             <p className="text-steel-500 text-sm">
               Already have an account?{' '}
               <Link to="/login" className="font-semibold text-violet-400 hover:text-violet-300">Sign in</Link>

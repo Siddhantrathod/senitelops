@@ -13,9 +13,9 @@ const CustomTooltip = ({ active, payload }) => {
   if (active && payload && payload.length) {
     return (
       <div className="glass-card p-3 shadow-2xl">
-        <p className="text-white font-medium">{payload[0].payload.category}</p>
+        <p className="text-steel-50 font-medium">{payload[0].payload.category}</p>
         <p className="text-steel-400 text-sm font-mono">
-          Score: <span className="text-white font-semibold">{payload[0].value}</span>
+          Score: <span className="text-steel-50 font-semibold">{payload[0].value}</span>
         </p>
       </div>
     )
@@ -27,19 +27,19 @@ export default function SecurityRadarChart({ data, title, height = 350 }) {
   return (
     <div className="glass-card p-6">
       {title && (
-        <h3 className="text-lg font-semibold text-white mb-4">{title}</h3>
+        <h3 className="text-lg font-semibold text-steel-50 mb-4">{title}</h3>
       )}
       <ResponsiveContainer width="100%" height={height}>
         <RadarChart data={data} margin={{ top: 20, right: 30, bottom: 20, left: 30 }}>
-          <PolarGrid stroke="rgba(255,255,255,0.06)" />
+          <PolarGrid stroke="var(--chart-grid)" />
           <PolarAngleAxis
             dataKey="category"
-            tick={{ fill: '#8b95a5', fontSize: 11, fontFamily: 'JetBrains Mono' }}
+            tick={{ fill: 'rgb(var(--steel-300))', fontSize: 11, fontFamily: 'JetBrains Mono' }}
           />
           <PolarRadiusAxis
             angle={90}
             domain={[0, 100]}
-            tick={{ fill: '#475569', fontSize: 10, fontFamily: 'JetBrains Mono' }}
+            tick={{ fill: 'rgb(var(--steel-500))', fontSize: 10, fontFamily: 'JetBrains Mono' }}
             axisLine={false}
           />
           <Radar

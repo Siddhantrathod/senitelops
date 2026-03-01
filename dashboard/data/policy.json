@@ -1,11 +1,11 @@
 {
-  "minScore": 70,
+  "minScore": 59,
   "blockCritical": false,
   "blockHigh": false,
   "maxCriticalVulns": 1,
   "maxHighVulns": 4,
   "autoBlock": true,
   "configured": true,
-  "updatedAt": "2026-02-19T23:25:36.122318",
+  "updatedAt": "2026-02-24T01:21:29.360040",
   "updatedBy": "admin"
 }

@@ -14,7 +14,7 @@ const GoogleIcon = () => (
 )
 
 export default function Login() {
-  const { login, loginWithToken, isAuthenticated, loading } = useAuth()
+  const { login, loginWithToken, isAuthenticated, isAdmin, loading } = useAuth()
   const navigate = useNavigate()
   const location = useLocation()
   const [searchParams] = useSearchParams()
@@ -33,7 +33,10 @@ export default function Login() {
         oauthError === 'no_email' ? 'No email returned from Google' :
           searchParams.get('message') || 'Authentication error')
     } else if (token && provider === 'google') {
-      loginWithToken(token).then(() => navigate('/dashboard', { replace: true }))
+      loginWithToken(token).then((result) => {
+        const dest = result.user?.role === 'admin' ? '/admin' : '/dashboard'
+        navigate(dest, { replace: true })
+      })
     }
   }, [searchParams])
 
@@ -41,13 +44,13 @@ export default function Login() {
 
   if (loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-[#0B0E11]">
+      <div className="min-h-screen flex items-center justify-center bg-surface">
         <div className="animate-spin w-8 h-8 border-2 border-violet-500 border-t-transparent rounded-full" />
       </div>
     )
   }
 
-  if (isAuthenticated) return <Navigate to="/dashboard" replace />
+  if (isAuthenticated) return <Navigate to={isAdmin() ? '/admin' : '/dashboard'} replace />
 
   const handleSubmit = async (e) => {
     e.preventDefault()
@@ -55,7 +58,8 @@ export default function Login() {
     setIsLoading(true)
     const result = await login(username, password)
     if (result.success) {
-      navigate('/dashboard', { replace: true })
+      const dest = result.user?.role === 'admin' ? '/admin' : '/dashboard'
+      navigate(dest, { replace: true })
     } else {
       setError(result.error)
     }
@@ -66,10 +70,10 @@ export default function Login() {
     window.location.href = getGoogleAuthUrl()
   }
 
-  const inputClass = 'w-full py-3 bg-white/[0.04] text-white rounded-xl border border-white/[0.08] focus:border-violet-500/50 focus:ring-1 focus:ring-violet-500/30 outline-none transition-all placeholder-steel-600 font-mono text-sm'
+  const inputClass = 'w-full py-3 bg-theme-input text-steel-50 rounded-xl border border-theme-strong focus:border-violet-500/50 focus:ring-1 focus:ring-violet-500/30 outline-none transition-all placeholder-theme font-mono text-sm'
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-[#0B0E11] px-4 relative">
+    <div className="min-h-screen flex items-center justify-center bg-surface px-4 relative">
       {/* Background decoration */}
       <div className="absolute inset-0 overflow-hidden">
         <div className="absolute -top-40 -right-40 w-80 h-80 bg-violet-500/10 rounded-full blur-3xl" />
@@ -85,7 +89,7 @@ export default function Login() {
               <Shield className="w-8 h-8 text-white" />
             </div>
           </Link>
-          <h1 className="text-3xl font-bold text-white">SentinelOps</h1>
+          <h1 className="text-3xl font-bold text-steel-50">SentinelOps</h1>
           <p className="text-steel-500 mt-2">Security Dashboard Login</p>
         </div>
 
@@ -102,18 +106,18 @@ export default function Login() {
           {/* Google Sign In */}
           <button
             onClick={handleGoogleLogin}
-            className="w-full flex items-center justify-center gap-3 px-4 py-3 bg-white/[0.04] border border-white/[0.08] rounded-xl font-medium text-steel-200 hover:bg-white/[0.06] hover:border-white/[0.12] transition-all"
+            className="w-full flex items-center justify-center gap-3 px-4 py-3 bg-theme-input border border-theme-strong rounded-xl font-medium text-steel-200 hover:bg-theme-hover hover:border-theme-strong transition-all"
           >
             <GoogleIcon />
             Continue with Google
           </button>
 
-          <div className="relative my-6">
+            <div className="relative my-6">
             <div className="absolute inset-0 flex items-center">
-              <div className="w-full border-t border-white/[0.06]" />
+              <div className="w-full border-t border-theme" />
             </div>
             <div className="relative flex justify-center text-sm">
-              <span className="px-4 bg-[#161b22] text-steel-600">or sign in with username</span>
+              <span className="px-4 bg-surface-secondary text-steel-500">or sign in with username</span>
             </div>
           </div>
 
@@ -178,7 +182,7 @@ export default function Login() {
             </button>
           </form>
 
-          <div className="mt-6 pt-6 border-t border-white/[0.06]">
+          <div className="mt-6 pt-6 border-t border-theme">
             <p className="text-steel-500 text-sm text-center">
               Don't have an account?{' '}
               <Link to="/signup" className="font-semibold text-violet-400 hover:text-violet-300">

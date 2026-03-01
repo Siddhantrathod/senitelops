@@ -6,6 +6,21 @@
     "password": "$2b$12$3s8rcFyJhCNNRFpskrHdEOne.2c3gwNBp6upzdokdAlmthPwD73b.",
     "role": "admin",
     "createdAt": "2026-02-03T23:57:00.493499",
-    "lastLoginAt": "2026-02-24T00:08:50.330382"
+    "lastLoginAt": "2026-02-28T09:14:32.787827"
+  },
+  {
+    "id": 2,
+    "username": "siddhantrathod.2022",
+    "email": "siddhantrathod.2022@gmail.com",
+    "password": "",
+    "role": "viewer",
+    "fullName": "Siddhant",
+    "organization": "",
+    "roleTitle": "",
+    "phone": "",
+    "authProvider": "google",
+    "googleId": "110978326569139430354",
+    "lastLoginAt": "2026-02-28T09:17:36.230859",
+    "createdAt": "2026-02-24T23:16:44.135665"
   }
 ]

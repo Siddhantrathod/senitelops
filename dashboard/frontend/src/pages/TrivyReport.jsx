@@ -161,7 +161,7 @@ export default function TrivyReport() {
             <Container className="w-8 h-8 text-cyan-400" />
           </div>
           <div>
-            <h1 className="text-3xl font-bold text-white">Trivy Container Scan</h1>
+            <h1 className="text-3xl font-bold text-steel-50">Trivy Container Scan</h1>
             <p className="text-steel-500">Container vulnerability scanning</p>
           </div>
         </div>
@@ -201,7 +201,7 @@ export default function TrivyReport() {
             <Container className="w-8 h-8 text-cyan-400" />
           </div>
           <div>
-            <h1 className="text-3xl font-bold text-white">Trivy Container Scan</h1>
+            <h1 className="text-3xl font-bold text-steel-50">Trivy Container Scan</h1>
             <p className="text-steel-500 flex items-center gap-2 mt-1 font-mono text-sm">
               <Clock className="w-4 h-4" />
               Scanned: {formatDate(data?.CreatedAt)}
@@ -228,7 +228,7 @@ export default function TrivyReport() {
 
       {/* Image Info Card */}
       <div className="glass-card p-6">
-        <h3 className="text-lg font-semibold text-white mb-4">Container Image Information</h3>
+        <h3 className="text-lg font-semibold text-steel-50 mb-4">Container Image Information</h3>
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
           <div className="flex items-center gap-3">
             <div className="p-2 rounded-lg bg-violet-500/10 text-violet-400 border border-violet-500/20">
@@ -236,7 +236,7 @@ export default function TrivyReport() {
             </div>
             <div>
               <p className="text-steel-500 text-[10px] uppercase tracking-[0.15em] font-mono">Image Name</p>
-              <p className="text-white font-medium">{artifactName}</p>
+              <p className="text-steel-50 font-medium">{artifactName}</p>
             </div>
           </div>
           <div className="flex items-center gap-3">
@@ -245,7 +245,7 @@ export default function TrivyReport() {
             </div>
             <div>
               <p className="text-steel-500 text-[10px] uppercase tracking-[0.15em] font-mono">Size</p>
-              <p className="text-white font-medium font-mono">{imageSize}</p>
+              <p className="text-steel-50 font-medium font-mono">{imageSize}</p>
             </div>
           </div>
           <div className="flex items-center gap-3">
@@ -254,7 +254,7 @@ export default function TrivyReport() {
             </div>
             <div>
               <p className="text-steel-500 text-[10px] uppercase tracking-[0.15em] font-mono">OS</p>
-              <p className="text-white font-medium">
+              <p className="text-steel-50 font-medium">
                 {metadata.OS?.Family} {metadata.OS?.Name}
               </p>
             </div>
@@ -265,7 +265,7 @@ export default function TrivyReport() {
             </div>
             <div>
               <p className="text-steel-500 text-[10px] uppercase tracking-[0.15em] font-mono">Type</p>
-              <p className="text-white font-medium">{data?.ArtifactType?.replace('_', ' ')}</p>
+              <p className="text-steel-50 font-medium">{data?.ArtifactType?.replace('_', ' ')}</p>
             </div>
           </div>
         </div>
@@ -333,7 +333,7 @@ export default function TrivyReport() {
               placeholder="Search CVE, package..."
               value={filters.search}
               onChange={(e) => setFilters({ ...filters, search: e.target.value })}
-              className="bg-transparent text-white placeholder-steel-600 outline-none w-full text-sm"
+              className="bg-transparent text-steel-50 placeholder-steel-600 outline-none w-full text-sm"
             />
           </div>
 
@@ -363,7 +363,7 @@ export default function TrivyReport() {
 
           {/* Results count */}
           <div className="ml-auto text-steel-500 text-sm font-mono">
-            Showing <span className="font-medium text-white">{filteredVulnerabilities.length}</span> of {vulnerabilities.length} vulnerabilities
+            Showing <span className="font-medium text-steel-50">{filteredVulnerabilities.length}</span> of {vulnerabilities.length} vulnerabilities
           </div>
         </div>
       </div>

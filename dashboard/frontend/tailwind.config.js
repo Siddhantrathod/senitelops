@@ -4,6 +4,7 @@ export default {
     "./index.html",
     "./src/**/*.{js,ts,jsx,tsx}",
   ],
+  darkMode: 'class',
   theme: {
     extend: {
       fontFamily: {
@@ -51,14 +52,14 @@ export default {
           800: '#010202',
           900: '#000000',
         },
-        // Deep Obsidian
+        // Deep Obsidian — now CSS-variable-driven for theme support
         obsidian: {
-          DEFAULT: '#0B0E11',
-          50: '#1a1f27',
-          100: '#161b22',
-          200: '#12161c',
-          300: '#0f1318',
-          400: '#0B0E11',
+          DEFAULT: 'rgb(var(--obsidian-default) / <alpha-value>)',
+          50: 'rgb(var(--obsidian-50) / <alpha-value>)',
+          100: 'rgb(var(--obsidian-100) / <alpha-value>)',
+          200: 'rgb(var(--obsidian-200) / <alpha-value>)',
+          300: 'rgb(var(--obsidian-300) / <alpha-value>)',
+          400: 'rgb(var(--obsidian-400) / <alpha-value>)',
         },
         // Electric Cobalt
         violet: {
@@ -94,16 +95,23 @@ export default {
           red: '#ff3b5c',
           green: '#00ff88',
         },
-        // Steel grayscale for text
+        // Steel grayscale for text — CSS-variable-driven for theme support
         steel: {
-          50: '#f8fafc',
-          100: '#e2e8f0',
-          200: '#cbd5e1',
-          300: '#8b95a5',
-          400: '#64748b',
-          500: '#475569',
-          600: '#334155',
-          700: '#1e293b',
+          50: 'rgb(var(--steel-50) / <alpha-value>)',
+          100: 'rgb(var(--steel-100) / <alpha-value>)',
+          200: 'rgb(var(--steel-200) / <alpha-value>)',
+          300: 'rgb(var(--steel-300) / <alpha-value>)',
+          400: 'rgb(var(--steel-400) / <alpha-value>)',
+          500: 'rgb(var(--steel-500) / <alpha-value>)',
+          600: 'rgb(var(--steel-600) / <alpha-value>)',
+          700: 'rgb(var(--steel-700) / <alpha-value>)',
+        },
+        // Theme-aware surface colors
+        surface: {
+          DEFAULT: 'rgb(var(--surface-primary) / <alpha-value>)',
+          secondary: 'rgb(var(--surface-secondary) / <alpha-value>)',
+          tertiary: 'rgb(var(--surface-tertiary) / <alpha-value>)',
+          code: 'rgb(var(--surface-code) / <alpha-value>)',
         },
       },
       animation: {

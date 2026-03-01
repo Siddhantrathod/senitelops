@@ -1,5 +1,5 @@
 {
-  "github_repo_url": "https://github.com/digininja/DVWA",
+  "github_repo_url": "https://github.com/tegal1337/0l4bs",
   "github_branch": "master",
   "auto_scan_enabled": true,
   "scan_on_push": true,
@@ -9,6 +9,6 @@
   "repo_configured": true,
   "policy_configured": false,
   "initial_scan_completed": true,
-  "updated_at": "2026-02-24T00:11:39.199652",
+  "updated_at": "2026-02-24T01:24:05.841793",
   "updated_by": "admin"
 }

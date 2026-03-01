@@ -132,7 +132,13 @@ export default function SASTReport() {
       if (reportResult.status === 'fulfilled') {
         setData(reportResult.value)
       } else {
-        setError('Failed to load SAST report. Run a pipeline scan first.')
+        // Check if It's a 404 (no report yet) vs actual connection error
+        const status = reportResult.reason?.response?.status
+        if (status === 404) {
+          setError('no-report')
+        } else {
+          setError('Failed to load SAST report. Please ensure the backend is running.')
+        }
       }
 
       if (langResult.status === 'fulfilled') {
@@ -142,12 +148,43 @@ export default function SASTReport() {
       setLoading(false)
     } catch (err) {
       console.error('SASTReport error:', err)
-      setError('Failed to load SAST report. Please ensure the backend is running.')
+      if (err.response?.status === 404) {
+        setError('no-report')
+      } else {
+        setError('Failed to load SAST report. Please ensure the backend is running.')
+      }
       setLoading(false)
     }
   }
 
   if (authLoading || loading || redirecting) return <PageLoader />
+
+  if (error === 'no-report') {
+    return (
+      <div className="space-y-6 animate-fade-in">
+        <div className="flex items-center gap-4">
+          <div className="p-3 rounded-xl bg-violet-500/10 border border-violet-500/20">
+            <Code2 className="w-8 h-8 text-violet-400" />
+          </div>
+          <div>
+            <h1 className="text-3xl font-bold text-steel-50">Code Analysis (SAST)</h1>
+            <p className="text-steel-500">Static Application Security Testing</p>
+          </div>
+        </div>
+        <Alert variant="warning" title="No SAST Report Available">
+          <p className="mb-4">
+            No static analysis scan has been performed yet. SAST scans analyze your source code for security vulnerabilities.
+          </p>
+          <p className="text-sm text-steel-400">
+            Run a pipeline scan to generate a SAST report with tools like Semgrep and Bandit.
+          </p>
+          <button onClick={() => navigate('/dashboard/pipeline')} className="btn-primary mt-4 text-sm">
+            Go to Pipeline
+          </button>
+        </Alert>
+      </div>
+    )
+  }
 
   if (error) {
     return (
@@ -210,7 +247,7 @@ export default function SASTReport() {
             <Code2 className="w-8 h-8 text-purple-400" />
           </div>
           <div>
-            <h1 className="text-3xl font-bold text-white">Code Analysis (SAST)</h1>
+            <h1 className="text-3xl font-bold text-steel-50">Code Analysis (SAST)</h1>
             <p className="text-steel-500 flex items-center gap-2 mt-1 font-mono text-sm">
               <Clock className="w-4 h-4" />
               Generated: {formatDate(data?.generated_at)}
@@ -323,7 +360,7 @@ export default function SASTReport() {
       {/* Language Breakdown Cards */}
       {Object.keys(byLanguage).length > 0 && (
         <div>
-          <h2 className="text-lg font-semibold text-white mb-3">Per-Language Breakdown</h2>
+          <h2 className="text-lg font-semibold text-steel-50 mb-3">Per-Language Breakdown</h2>
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
             {Object.entries(byLanguage).map(([lang, counts]) => {
               const c = getLangColor(lang)
@@ -331,7 +368,7 @@ export default function SASTReport() {
                 <div key={lang} className={cn('glass-card p-4 border', c.border)}>
                   <div className="flex items-center justify-between mb-2">
                     <span className={cn('text-sm font-semibold', c.text)}>{getLangDisplayName(lang)}</span>
-                    <span className="text-lg font-bold text-white font-mono">{counts.total || 0}</span>
+                    <span className="text-lg font-bold text-steel-50 font-mono">{counts.total || 0}</span>
                   </div>
                   <div className="flex gap-2 flex-wrap">
                     {(counts.critical || 0) > 0 && <span className="badge badge-critical text-xs">{counts.critical} Crit</span>}
@@ -363,7 +400,7 @@ export default function SASTReport() {
               placeholder="Search issues..."
               value={filters.search}
               onChange={(e) => setFilters({ ...filters, search: e.target.value })}
-              className="bg-transparent text-white placeholder-steel-600 outline-none w-full text-sm"
+              className="bg-transparent text-steel-50 placeholder-steel-600 outline-none w-full text-sm"
             />
           </div>
 
@@ -406,7 +443,7 @@ export default function SASTReport() {
 
           {/* Results count */}
           <div className="ml-auto text-steel-500 text-sm font-mono">
-            Showing <span className="font-medium text-white">{filteredResults.length}</span> of {results.length} issues
+            Showing <span className="font-medium text-steel-50">{filteredResults.length}</span> of {results.length} issues
           </div>
         </div>
       </div>
