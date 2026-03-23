@@ -1038,10 +1038,18 @@ def google_login():
     if not GOOGLE_CLIENT_ID or GOOGLE_CLIENT_ID == "your-google-client-id":
         return jsonify({"error": "Google OAuth not configured. Set GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET in .env"}), 503
 
+    # Use BACKEND_URL env var so the redirect URI is always the correct public HTTPS URL.
+    # On Railway, request.url_root can return http:// or an internal hostname.
+    # Set BACKEND_URL=https://senitelops-production.up.railway.app in Railway variables.
+    _backend_url = os.environ.get("BACKEND_URL", "").rstrip("/")
+    if not _backend_url:
+        _backend_url = request.url_root.rstrip("/")
+    _redirect_uri = _backend_url + "/api/auth/google/callback"
+
     oauth_client = OAuth2Session(
         client_id=GOOGLE_CLIENT_ID,
         client_secret=GOOGLE_CLIENT_SECRET,
-        redirect_uri=request.url_root.rstrip("/") + "/api/auth/google/callback",
+        redirect_uri=_redirect_uri,
         scope=" ".join(GOOGLE_SCOPES),
     )
     authorization_url, state = oauth_client.create_authorization_url(GOOGLE_AUTH_URI)
@@ -1060,10 +1068,15 @@ def google_callback():
         return redirect(f"{FRONTEND_URL}/login?error=google_auth_failed")
 
     try:
+        _backend_url = os.environ.get("BACKEND_URL", "").rstrip("/")
+        if not _backend_url:
+            _backend_url = request.url_root.rstrip("/")
+        _redirect_uri = _backend_url + "/api/auth/google/callback"
+
         oauth_client = OAuth2Session(
             client_id=GOOGLE_CLIENT_ID,
             client_secret=GOOGLE_CLIENT_SECRET,
-            redirect_uri=request.url_root.rstrip("/") + "/api/auth/google/callback",
+            redirect_uri=_redirect_uri,
             state=session.get("oauth_state"),
         )
         oauth_client.fetch_token(GOOGLE_TOKEN_URI, code=code)
