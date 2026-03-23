@@ -74,14 +74,19 @@ app.secret_key = os.environ.get(
 )
 
 # CORS: restrict to allowed origins read from env (comma-separated list)
-_raw_origins = os.environ.get(
-    "ALLOWED_ORIGINS", "http://localhost:3000,http://localhost:5173"
-)
-_allowed_origins = [o.strip() for o in _raw_origins.split(",") if o.strip()]
-CORS(app, origins=_allowed_origins, supports_credentials=True)
+# Set ALLOWED_ORIGINS on Railway to your Vercel URL, e.g.:
+#   ALLOWED_ORIGINS=https://senitelops.vercel.app
+# Until that is set, all origins are allowed so the deploy can be tested.
+_raw_origins = os.environ.get("ALLOWED_ORIGINS", "*")
+if _raw_origins.strip() == "*":
+    CORS(app, origins="*", supports_credentials=False)
+else:
+    _allowed_origins = [o.strip() for o in _raw_origins.split(",") if o.strip()]
+    CORS(app, origins=_allowed_origins, supports_credentials=True)
 
 # Frontend base URL (used for OAuth redirects)
 FRONTEND_URL = os.environ.get("FRONTEND_URL", "http://localhost:3000")
+
 
 # Email / OTP settings
 SMTP_HOST = os.environ.get("SMTP_HOST", "")
