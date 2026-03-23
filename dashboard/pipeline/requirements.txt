@@ -1,0 +1,16 @@
+# Pipeline Engine Dependencies
+# These are installed on the dedicated VM that runs security scans
+
+# Web framework (if running pipeline as a microservice)
+flask>=2.3.0
+gunicorn>=21.0.0
+flask-cors>=4.0.0
+python-dotenv>=1.0.0
+requests>=2.31.0
+
+# SAST scanning tools
+bandit>=1.7.0
+semgrep>=1.50.0
+
+# Utilities
+pathlib2>=2.3.0
