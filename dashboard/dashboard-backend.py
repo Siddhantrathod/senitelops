@@ -97,21 +97,21 @@ EMAIL_OTP_COOLDOWN_SECONDS = int(os.environ.get("EMAIL_OTP_COOLDOWN_SECONDS", "6
 # ---------------------------------------------------------------------------
 # Database (SQLAlchemy + Flask-Migrate)
 # ---------------------------------------------------------------------------
-DATABASE_URL = os.environ.get("DATABASE_URL")
-if not DATABASE_URL:
-    raise RuntimeError(
-        "DATABASE_URL environment variable is not set. "
-        "Set it in your .env file or Railway environment variables."
-    )
-# Railway (and some other providers) give postgres:// but SQLAlchemy requires postgresql://
+DATABASE_URL = os.getenv("DATABASE_URL")
+
+# Debug (remove later)
+print("DATABASE_URL DEBUG:", DATABASE_URL)
+
+# Fix for Railway (postgres:// → postgresql://)
 if DATABASE_URL.startswith("postgres://"):
     DATABASE_URL = DATABASE_URL.replace("postgres://", "postgresql://", 1)
 
+# Apply config
 app.config["SQLALCHEMY_DATABASE_URI"] = DATABASE_URL
 app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
 app.config["SQLALCHEMY_ENGINE_OPTIONS"] = {
-    "pool_size": int(os.environ.get("DB_POOL_SIZE", 10)),
-    "max_overflow": int(os.environ.get("DB_MAX_OVERFLOW", 20)),
+    "pool_size": int(os.getenv("DB_POOL_SIZE", 10)),
+    "max_overflow": int(os.getenv("DB_MAX_OVERFLOW", 20)),
     "pool_pre_ping": True,
 }
 
