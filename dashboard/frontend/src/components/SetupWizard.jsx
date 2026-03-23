@@ -4,7 +4,7 @@ import {
   Loader2, ArrowRight, ArrowLeft, Settings, Link as LinkIcon,
 } from 'lucide-react'
 
-const inputClass = 'w-full py-2.5 px-4 bg-white/[0.04] text-steel-50 rounded-xl border border-white/[0.08] focus:border-violet-500/50 focus:ring-1 focus:ring-violet-500/30 outline-none transition-all placeholder-steel-600 font-mono text-sm'
+const inputClass = 'w-full py-2.5 px-4 bg-white/[0.04] text-steel-50 rounded-xl border border-white/[0.08] focus:border-emerald-500/50 focus:ring-1 focus:ring-emerald-500/30 outline-none transition-all placeholder-steel-600 font-mono text-sm'
 
 export default function SetupWizard({ onComplete, onCancel }) {
   const [step, setStep] = useState(1)
@@ -67,8 +67,8 @@ export default function SetupWizard({ onComplete, onCancel }) {
       <div className="w-full max-w-2xl">
         {/* Header */}
         <div className="text-center mb-8">
-          <div className="inline-flex items-center justify-center w-16 h-16 rounded-full bg-violet-500/10 border border-violet-500/20 mb-4">
-            <Shield className="w-8 h-8 text-violet-400" />
+          <div className="inline-flex items-center justify-center w-16 h-16 rounded-full bg-emerald-500/10 border border-emerald-500/20 mb-4">
+            <Shield className="w-8 h-8 text-emerald-400" />
           </div>
           <h1 className="text-3xl font-bold text-steel-50 mb-2">Welcome to SentinelOps</h1>
           <p className="text-steel-500">Let's set up your security scanning platform</p>
@@ -80,13 +80,13 @@ export default function SetupWizard({ onComplete, onCancel }) {
             <div key={s} className="flex items-center">
               <div className={`w-10 h-10 rounded-full flex items-center justify-center font-semibold font-mono text-sm transition-all ${
                 step >= s
-                  ? 'bg-violet-500 text-white shadow-glow-sm'
+                  ? 'bg-emerald-500 text-white shadow-glow-sm'
                   : 'bg-white/[0.04] border border-white/[0.08] text-steel-600'
               }`}>
                 {step > s ? <CheckCircle className="w-5 h-5" /> : s}
               </div>
               {s < 3 && (
-                <div className={`w-20 h-1 mx-2 rounded-full transition-all ${step > s ? 'bg-violet-500' : 'bg-white/[0.06]'}`} />
+                <div className={`w-20 h-1 mx-2 rounded-full transition-all ${step > s ? 'bg-emerald-500' : 'bg-white/[0.06]'}`} />
               )}
             </div>
           ))}
@@ -98,7 +98,7 @@ export default function SetupWizard({ onComplete, onCancel }) {
           {step === 1 && (
             <div className="space-y-6">
               <div className="flex items-center gap-3 mb-6">
-                <GitBranch className="w-6 h-6 text-violet-400" />
+                <GitBranch className="w-6 h-6 text-emerald-400" />
                 <h2 className="text-xl font-semibold text-steel-50">Connect Your Repository</h2>
               </div>
               <p className="text-steel-400 mb-6">
@@ -129,7 +129,7 @@ export default function SetupWizard({ onComplete, onCancel }) {
           {step === 2 && (
             <div className="space-y-6">
               <div className="flex items-center gap-3 mb-6">
-                <Settings className="w-6 h-6 text-violet-400" />
+                <Settings className="w-6 h-6 text-emerald-400" />
                 <h2 className="text-xl font-semibold text-steel-50">Configure Security Policy</h2>
               </div>
               <p className="text-steel-400 mb-6">
@@ -163,7 +163,7 @@ export default function SetupWizard({ onComplete, onCancel }) {
                     <label key={field} className="flex items-center gap-3 cursor-pointer group">
                       <input type="checkbox" checked={formData.policy[field]}
                         onChange={(e) => handlePolicyChange(field, e.target.checked)}
-                        className="w-5 h-5 rounded bg-white/[0.04] border-white/[0.12] text-violet-500 focus:ring-violet-500/30" />
+                        className="w-5 h-5 rounded bg-white/[0.04] border-white/[0.12] text-emerald-500 focus:ring-emerald-500/30" />
                       <span className="text-steel-200 group-hover:text-steel-50 transition-colors">{label}</span>
                     </label>
                   ))}
@@ -176,7 +176,7 @@ export default function SetupWizard({ onComplete, onCancel }) {
           {step === 3 && (
             <div className="space-y-6">
               <div className="flex items-center gap-3 mb-6">
-                <Rocket className="w-6 h-6 text-violet-400" />
+                <Rocket className="w-6 h-6 text-emerald-400" />
                 <h2 className="text-xl font-semibold text-steel-50">Review & Launch</h2>
               </div>
               <p className="text-steel-400 mb-6">Review your configuration and launch the initial security scan.</p>
@@ -206,12 +206,12 @@ export default function SetupWizard({ onComplete, onCancel }) {
                   </div>
                 </div>
 
-                <div className="bg-violet-500/10 border border-violet-500/20 rounded-xl p-4">
+                <div className="bg-emerald-500/10 border border-emerald-500/20 rounded-xl p-4">
                   <div className="flex items-start gap-3">
-                    <AlertCircle className="w-5 h-5 text-violet-400 mt-0.5" />
+                    <AlertCircle className="w-5 h-5 text-emerald-400 mt-0.5" />
                     <div>
-                      <p className="text-violet-300 font-medium">Initial Scan</p>
-                      <p className="text-violet-400/80 text-sm mt-1">
+                      <p className="text-emerald-300 font-medium">Initial Scan</p>
+                      <p className="text-emerald-400/80 text-sm mt-1">
                         Clicking "Launch" will trigger a full security scan using both Bandit (code analysis)
                         and Trivy (container scanning). This may take a few minutes.
                       </p>

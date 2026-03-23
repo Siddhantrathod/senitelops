@@ -72,8 +72,8 @@ export default function NotificationsTab({ showToast }) {
         <div className="space-y-3">
           <div className="flex items-center justify-between p-4 rounded-xl bg-theme-base border border-theme-subtle">
             <div className="flex items-center gap-3">
-              <div className="p-2 rounded-lg bg-violet-500/10">
-                <Bell className="w-4 h-4 text-violet-400" />
+              <div className="p-2 rounded-lg bg-emerald-500/10">
+                <Bell className="w-4 h-4 text-emerald-400" />
               </div>
               <div>
                 <p className="text-sm font-medium text-steel-100">In-App Notifications</p>

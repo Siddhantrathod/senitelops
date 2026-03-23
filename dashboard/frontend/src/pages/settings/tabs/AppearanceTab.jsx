@@ -5,6 +5,7 @@ import { Select } from '../components/FormInputs'
 import { useSettings } from '../hooks/useSettings'
 import { fetchAppearancePrefs, updateAppearancePrefs } from '../services/settingsApi'
 import { cn } from '../../../utils/helpers'
+import { applyAppearancePrefs } from '../../../utils/appearance'
 
 const DEFAULTS = {
   theme: 'dark',
@@ -39,26 +40,25 @@ const REFRESH_OPTIONS = [
 ]
 
 export default function AppearanceTab({ showToast }) {
-  const { theme: currentTheme, toggleTheme, isDark } = useTheme()
+  const { theme: currentTheme, setThemeMode } = useTheme()
   const { data, loading, saving, dirty, update, save, reset } = useSettings(
     fetchAppearancePrefs, updateAppearancePrefs, { ...DEFAULTS, theme: currentTheme }
   )
 
   const handleThemeChange = (newTheme) => {
     update('theme', newTheme)
-    // Apply immediately for instant feedback
-    if (newTheme === 'system') {
-      const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches
-      document.documentElement.classList.toggle('dark', prefersDark)
-      localStorage.removeItem('sentinelops-theme')
-    } else {
-      document.documentElement.classList.toggle('dark', newTheme === 'dark')
-      localStorage.setItem('sentinelops-theme', newTheme)
-    }
+    setThemeMode(newTheme)
+    applyAppearancePrefs({ ...data, theme: newTheme })
+  }
+
+  const applyAndUpdate = (key, value) => {
+    update(key, value)
+    applyAppearancePrefs({ ...data, [key]: value })
   }
 
   const handleSave = async () => {
     const result = await save()
+    if (result.success) applyAppearancePrefs(data)
     showToast(result.success ? 'Appearance preferences saved' : result.error, result.success ? 'success' : 'error')
   }
 
@@ -78,18 +78,18 @@ export default function AppearanceTab({ showToast }) {
                 className={cn(
                   'flex flex-col items-center gap-3 p-5 rounded-xl border transition-all text-center',
                   isActive
-                    ? 'bg-violet-500/10 border-violet-500/30 ring-1 ring-violet-500/20'
+                    ? 'bg-emerald-500/10 border-emerald-500/30 ring-1 ring-emerald-500/20'
                     : 'bg-theme-base border-theme-subtle hover:bg-theme-hover hover:border-theme'
                 )}
               >
                 <div className={cn(
                   'p-3 rounded-xl',
-                  isActive ? 'bg-violet-500/15' : 'bg-theme-accent'
+                  isActive ? 'bg-emerald-500/15' : 'bg-theme-accent'
                 )}>
-                  <opt.icon className={cn('w-6 h-6', isActive ? 'text-violet-400' : 'text-steel-400')} />
+                  <opt.icon className={cn('w-6 h-6', isActive ? 'text-emerald-400' : 'text-steel-400')} />
                 </div>
                 <div>
-                  <p className={cn('text-sm font-medium', isActive ? 'text-violet-400' : 'text-steel-200')}>{opt.label}</p>
+                  <p className={cn('text-sm font-medium', isActive ? 'text-emerald-400' : 'text-steel-200')}>{opt.label}</p>
                   <p className="text-xs text-steel-500 mt-0.5">{opt.desc}</p>
                 </div>
               </button>
@@ -104,7 +104,7 @@ export default function AppearanceTab({ showToast }) {
           <FormField label="Dashboard Density" hint="Controls spacing between UI elements">
             <Select
               value={data.density}
-              onChange={(e) => update('density', e.target.value)}
+              onChange={(e) => applyAndUpdate('density', e.target.value)}
               options={DENSITY_OPTIONS}
             />
           </FormField>
@@ -112,7 +112,7 @@ export default function AppearanceTab({ showToast }) {
           <FormField label="Chart Style" hint="Visual style for dashboard charts">
             <Select
               value={data.chartStyle}
-              onChange={(e) => update('chartStyle', e.target.value)}
+              onChange={(e) => applyAndUpdate('chartStyle', e.target.value)}
               options={CHART_STYLES}
             />
           </FormField>
@@ -127,7 +127,7 @@ export default function AppearanceTab({ showToast }) {
                 <p className="text-xs text-steel-500">Enable transition effects and micro-animations</p>
               </div>
             </div>
-            <ToggleSwitch checked={data.animations} onChange={(val) => update('animations', val)} />
+            <ToggleSwitch checked={data.animations} onChange={(val) => applyAndUpdate('animations', val)} />
           </div>
 
           <FormField label="Auto-Refresh Interval" hint="How often dashboard data refreshes automatically">
@@ -135,7 +135,7 @@ export default function AppearanceTab({ showToast }) {
               <RefreshCw className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-steel-500 z-10" />
               <Select
                 value={data.autoRefreshInterval}
-                onChange={(e) => update('autoRefreshInterval', Number(e.target.value))}
+                onChange={(e) => applyAndUpdate('autoRefreshInterval', Number(e.target.value))}
                 options={REFRESH_OPTIONS}
                 className="pl-10"
               />

@@ -108,10 +108,10 @@ export default function BanditReport() {
         </div>
         <Alert variant="warning" title="No Bandit Report Available">
           <p className="mb-4">
-            No Bandit scan has been performed yet. Bandit analyzes Python code for common security issues.
+            No Bandit report is available for your account yet.
           </p>
           <p className="text-sm text-steel-400">
-            Run a pipeline scan on a Python project to generate a Bandit report.
+            Run pipeline to see reports.
           </p>
           <button onClick={() => navigate('/dashboard/pipeline')} className="btn-primary mt-4 text-sm">
             Go to Pipeline

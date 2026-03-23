@@ -1,5 +1,6 @@
 import { X } from 'lucide-react'
 import { cn } from '../../utils/helpers'
+import { createPortal } from 'react-dom'
 
 export default function Modal({
   open,
@@ -21,8 +22,8 @@ export default function Modal({
     '2xl': 'max-w-2xl',
   }
 
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-fade-in" onClick={onClose}>
+  const content = (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-md animate-fade-in" onClick={onClose}>
       <div
         className={cn(
           'w-full bg-surface-secondary border rounded-2xl shadow-2xl',
@@ -66,4 +67,6 @@ export default function Modal({
       </div>
     </div>
   )
+
+  return createPortal(content, document.body)
 }

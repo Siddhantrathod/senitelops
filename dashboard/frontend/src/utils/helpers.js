@@ -29,7 +29,10 @@ export function getSeverityBadgeClass(severity) {
 export function formatDate(dateString) {
   if (!dateString) return 'N/A'
   try {
-    return new Date(dateString).toLocaleDateString('en-US', {
+    const tz = localStorage.getItem('user_tz') || undefined
+    const locale = localStorage.getItem('user_lang') || 'en-US'
+    return new Date(dateString).toLocaleDateString(locale, {
+      timeZone: tz === 'UTC' ? undefined : tz,
       year: 'numeric',
       month: 'short',
       day: 'numeric',

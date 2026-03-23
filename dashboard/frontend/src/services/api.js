@@ -1,6 +1,11 @@
 import axios from 'axios'
 
-const API_BASE_URL = '/api'
+// In production (Vercel), set VITE_API_URL to your Railway backend URL
+// e.g. https://api.senitelops.com
+// In local dev, Vite proxy forwards /api → http://localhost:5000
+const API_BASE_URL = import.meta.env.VITE_API_URL
+  ? `${import.meta.env.VITE_API_URL}/api`
+  : '/api'
 
 const api = axios.create({
   baseURL: API_BASE_URL,
@@ -8,6 +13,7 @@ const api = axios.create({
     'Content-Type': 'application/json',
   },
 })
+
 
 // Add token to requests if available
 api.interceptors.request.use(
@@ -33,7 +39,7 @@ api.interceptors.response.use(
       const currentPath = window.location.pathname
       if (currentPath !== '/login' && currentPath !== '/') {
         localStorage.removeItem('token')
-        window.location.href = '/'
+        window.location.href = '/login'
       }
     }
     return Promise.reject(error)
@@ -242,6 +248,16 @@ export const fetchSetupStatus = async () => {
   }
 }
 
+export const fetchProfile = async () => {
+  try {
+    const response = await api.get('/settings/profile')
+    return response.data
+  } catch (error) {
+    console.error('Error fetching profile:', error)
+    throw error
+  }
+}
+
 export const completeSetup = async (setupData) => {
   try {
     const response = await api.post('/setup/complete', setupData)
@@ -273,8 +289,33 @@ export const signupUser = async (userData) => {
   }
 }
 
+export const requestSignupOtp = async (email) => {
+  try {
+    const response = await api.post('/auth/signup/request-otp', { email })
+    return response.data
+  } catch (error) {
+    console.error('Error requesting signup OTP:', error)
+    throw error
+  }
+}
+
 export const getGoogleAuthUrl = () => {
-  return `${API_BASE_URL}/auth/google`
+  // Always needs an absolute URL for the OAuth redirect
+  const backendBase = import.meta.env.VITE_API_URL || ''
+  return `${backendBase}/api/auth/google`
+}
+
+
+// ==================== REPOSITORIES API ====================
+
+export const fetchRepositories = async () => {
+  try {
+    const response = await api.get('/repositories')
+    return response.data
+  } catch (error) {
+    console.error('Error fetching repositories:', error)
+    throw error
+  }
 }
 
 // ==================== ADMIN API ====================
@@ -319,6 +360,16 @@ export const updateAdminUser = async (userId, data) => {
   }
 }
 
+export const fetchAdminUserDetails = async (userId) => {
+  try {
+    const response = await api.get(`/admin/users/${userId}/details`)
+    return response.data
+  } catch (error) {
+    console.error('Error fetching user details:', error)
+    throw error
+  }
+}
+
 export const deleteAdminUser = async (userId) => {
   try {
     const response = await api.delete(`/admin/users/${userId}`)
@@ -359,6 +410,27 @@ export const fetchAdminVulnSummary = async () => {
     console.error('Error fetching admin vuln summary:', error)
     throw error
   }
+}
+
+// --- Feedback APIs ---
+export const submitFeedback = async (message) => {
+  const response = await api.post('/feedback', { message })
+  return response.data
+}
+
+export const fetchUserFeedback = async () => {
+  const response = await api.get('/feedback')
+  return response.data
+}
+
+export const fetchAdminFeedbacks = async () => {
+  const response = await api.get('/admin/feedback')
+  return response.data
+}
+
+export const replyAdminFeedback = async (id, reply) => {
+  const response = await api.post(`/admin/feedback/${id}/reply`, { reply })
+  return response.data
 }
 
 export default api

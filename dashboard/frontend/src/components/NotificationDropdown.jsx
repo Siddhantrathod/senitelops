@@ -11,6 +11,7 @@ import {
     Loader2,
 } from 'lucide-react'
 import { cn } from '../utils/helpers'
+import { getAutoRefreshInterval } from '../utils/appearance'
 
 const API_BASE = 'http://localhost:5000/api'
 
@@ -35,9 +36,9 @@ const typeConfig = {
     },
     info: {
         icon: Info,
-        color: 'text-violet-400',
-        bg: 'bg-violet-500/10',
-        border: 'border-violet-500/20',
+        color: 'text-emerald-400',
+        bg: 'bg-emerald-500/10',
+        border: 'border-emerald-500/20',
     },
 }
 
@@ -59,6 +60,7 @@ export default function NotificationDropdown() {
     const [notifications, setNotifications] = useState([])
     const [loading, setLoading] = useState(false)
     const [unreadCount, setUnreadCount] = useState(0)
+    const [refreshSeconds, setRefreshSeconds] = useState(getAutoRefreshInterval(30))
 
     const getAuthHeaders = () => {
         const token = localStorage.getItem('token')
@@ -69,6 +71,7 @@ export default function NotificationDropdown() {
     }
 
     const fetchNotifications = useCallback(async () => {
+        setLoading(true)
         try {
             const response = await fetch(`${API_BASE}/notifications`, {
                 headers: getAuthHeaders(),
@@ -77,18 +80,31 @@ export default function NotificationDropdown() {
                 const data = await response.json()
                 setNotifications(data.notifications || [])
                 setUnreadCount(data.unreadCount || 0)
+            } else {
+                setNotifications([])
+                setUnreadCount(0)
             }
         } catch (error) {
             console.error('Failed to fetch notifications:', error)
+            setNotifications([])
+            setUnreadCount(0)
+        } finally {
+            setLoading(false)
         }
     }, [])
 
     useEffect(() => {
+        const handler = () => setRefreshSeconds(getAutoRefreshInterval(30))
+        window.addEventListener('sentinelops:appearance-updated', handler)
+        return () => window.removeEventListener('sentinelops:appearance-updated', handler)
+    }, [])
+
+    useEffect(() => {
         fetchNotifications()
-        // Poll for new notifications every 30 seconds
-        const interval = setInterval(fetchNotifications, 30000)
+        if (refreshSeconds === 0) return undefined
+        const interval = setInterval(fetchNotifications, refreshSeconds * 1000)
         return () => clearInterval(interval)
-    }, [fetchNotifications])
+    }, [fetchNotifications, refreshSeconds])
 
     const markAsRead = async (id) => {
         try {
@@ -151,7 +167,7 @@ export default function NotificationDropdown() {
                     setIsOpen(!isOpen)
                     if (!isOpen) fetchNotifications()
                 }}
-                className="relative p-2 text-steel-400 hover:text-violet-400 hover:bg-violet-500/10 rounded-xl transition-colors"
+                className="relative p-2 text-steel-400 hover:text-emerald-400 hover:bg-emerald-500/10 rounded-xl transition-colors"
             >
                 <Bell className="w-5 h-5" />
                 {unreadCount > 0 && (
@@ -175,10 +191,10 @@ export default function NotificationDropdown() {
                         {/* Header */}
                         <div className="flex items-center justify-between px-4 py-3 border-b border-white/[0.06] bg-white/[0.02]">
                             <div className="flex items-center gap-2">
-                                <Shield className="w-5 h-5 text-violet-400" />
+                                <Shield className="w-5 h-5 text-emerald-400" />
                                 <h3 className="font-semibold text-steel-50">Notifications</h3>
                                 {unreadCount > 0 && (
-                                    <span className="px-2 py-0.5 text-xs font-medium bg-violet-500/10 text-violet-400 rounded-full border border-violet-500/20">
+                                    <span className="px-2 py-0.5 text-xs font-medium bg-emerald-500/10 text-emerald-400 rounded-full border border-emerald-500/20">
                                         {unreadCount} new
                                     </span>
                                 )}
@@ -195,7 +211,7 @@ export default function NotificationDropdown() {
                         <div className="max-h-96 overflow-y-auto">
                             {loading ? (
                                 <div className="py-12 text-center">
-                                    <Loader2 className="w-6 h-6 text-violet-400 mx-auto animate-spin" />
+                                    <Loader2 className="w-6 h-6 text-emerald-400 mx-auto animate-spin" />
                                 </div>
                             ) : notifications.length === 0 ? (
                                 <div className="py-12 text-center">
@@ -215,7 +231,7 @@ export default function NotificationDropdown() {
                                                 onClick={() => markAsRead(notification.id)}
                                                 className={cn(
                                                     'px-4 py-3 hover:bg-white/[0.03] cursor-pointer transition-colors relative group',
-                                                    !notification.read && 'bg-violet-500/5'
+                                                    !notification.read && 'bg-emerald-500/5'
                                                 )}
                                             >
                                                 <div className="flex gap-3">
@@ -237,7 +253,7 @@ export default function NotificationDropdown() {
                                                                 {notification.title}
                                                             </p>
                                                             {!notification.read && (
-                                                                <span className="flex-shrink-0 w-2 h-2 bg-violet-400 rounded-full mt-1.5" />
+                                                                <span className="flex-shrink-0 w-2 h-2 bg-emerald-400 rounded-full mt-1.5" />
                                                             )}
                                                         </div>
                                                         <p className="text-xs text-steel-500 mt-0.5 line-clamp-2">
@@ -246,7 +262,7 @@ export default function NotificationDropdown() {
                                                         <div className="flex items-center gap-2 mt-1.5">
                                                             <Clock className="w-3 h-3 text-steel-600" />
                                                             <span className="text-xs text-steel-600 font-mono">
-                                                                {formatTimeAgo(notification.time)}
+                                                                {formatTimeAgo(notification.created_at)}
                                                             </span>
                                                         </div>
                                                     </div>
@@ -272,7 +288,7 @@ export default function NotificationDropdown() {
                             <div className="flex items-center justify-between px-4 py-3 border-t border-white/[0.06] bg-white/[0.02]">
                                 <button
                                     onClick={markAllAsRead}
-                                    className="text-sm text-violet-400 hover:text-violet-300 font-medium"
+                                    className="text-sm text-emerald-400 hover:text-emerald-300 font-medium"
                                 >
                                     Mark all as read
                                 </button>

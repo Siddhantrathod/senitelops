@@ -15,6 +15,9 @@ from flask_jwt_extended import (
     get_jwt,
 )
 import json
+def utcnow():
+    return datetime.now(timezone.utc).replace(tzinfo=None)
+
 import os
 import sys
 import hmac
@@ -22,8 +25,13 @@ import hashlib
 import re
 import uuid
 import secrets as _secrets
-from datetime import datetime, timedelta
-from typing import Dict
+import smtplib
+import ssl
+from email.message import EmailMessage
+from datetime import datetime, timedelta, timezone
+from typing import Dict, Optional
+import threading
+import queue
 
 import bcrypt
 from dotenv import load_dotenv
@@ -64,7 +72,27 @@ app = Flask(__name__)
 app.secret_key = os.environ.get(
     "JWT_SECRET_KEY", "sentinelops-secret-key-change-in-production"
 )
-CORS(app, supports_credentials=True)
+
+# CORS: restrict to allowed origins read from env (comma-separated list)
+_raw_origins = os.environ.get(
+    "ALLOWED_ORIGINS", "http://localhost:3000,http://localhost:5173"
+)
+_allowed_origins = [o.strip() for o in _raw_origins.split(",") if o.strip()]
+CORS(app, origins=_allowed_origins, supports_credentials=True)
+
+# Frontend base URL (used for OAuth redirects)
+FRONTEND_URL = os.environ.get("FRONTEND_URL", "http://localhost:3000")
+
+# Email / OTP settings
+SMTP_HOST = os.environ.get("SMTP_HOST", "")
+SMTP_PORT = int(os.environ.get("SMTP_PORT", "587"))
+SMTP_USER = os.environ.get("SMTP_USER", "")
+SMTP_PASSWORD = os.environ.get("SMTP_PASSWORD", "")
+SMTP_FROM = os.environ.get("SMTP_FROM", SMTP_USER or "")
+SMTP_USE_TLS = os.environ.get("SMTP_USE_TLS", "true").lower() == "true"
+SMTP_USE_SSL = os.environ.get("SMTP_USE_SSL", "false").lower() == "true"
+EMAIL_OTP_EXPIRY_MINUTES = int(os.environ.get("EMAIL_OTP_EXPIRY_MINUTES", "10"))
+EMAIL_OTP_COOLDOWN_SECONDS = int(os.environ.get("EMAIL_OTP_COOLDOWN_SECONDS", "60"))
 
 # ---------------------------------------------------------------------------
 # Database (SQLAlchemy + Flask-Migrate)
@@ -86,18 +114,41 @@ init_db(app)
 
 from models import (  # noqa: E402
     User,
+    Feedback,
     Config,
     Policy,
     Notification,
     Pipeline,
+    UserRepository,
     ScanResult,
     Vulnerability,
     Secret,
     UserSettings,
+    EmailOTP,
     ApiToken,
     WebhookLog,
     SystemLog,
 )
+
+
+def _cleanup_orphan_notifications_once():
+    """Delete legacy notifications that are not owned by any user."""
+    try:
+        deleted = Notification.query.filter(Notification.user_id.is_(None)).delete(
+            synchronize_session=False
+        )
+        if deleted:
+            db.session.commit()
+            app.logger.warning(
+                "Removed %s orphan notification(s) with no user_id", deleted
+            )
+    except Exception as exc:
+        db.session.rollback()
+        app.logger.warning("Failed to cleanup orphan notifications: %s", exc)
+
+
+with app.app_context():
+    _cleanup_orphan_notifications_once()
 
 # ---------------------------------------------------------------------------
 # JWT Configuration
@@ -148,14 +199,118 @@ BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 REPORT_DIR = os.path.join(os.path.dirname(BASE_DIR), "runtime", "reports")
 os.makedirs(REPORT_DIR, exist_ok=True)
 
-# Pipeline executor still writes its own history JSON (independent module)
-PIPELINE_DIR = os.path.join(BASE_DIR, "data", "pipelines")
-os.makedirs(PIPELINE_DIR, exist_ok=True)
-PIPELINES_FILE = os.path.join(PIPELINE_DIR, "history.json")
-pipeline_executor = PipelineExecutor(REPORT_DIR, PIPELINES_FILE)
+# Pipeline executor
+def _persist_pipeline_state(pipeline):
+    with app.app_context():
+        db_pipeline = db.session.get(Pipeline, pipeline.id)
+        if not db_pipeline:
+            return
+        db_pipeline.status = _normalize_status(pipeline.status)
+        db_pipeline.stages = pipeline.stages or {}
+        if pipeline.started_at:
+            try:
+                db_pipeline.started_at = datetime.fromisoformat(pipeline.started_at)
+            except ValueError:
+                pass
+        if pipeline.finished_at:
+            try:
+                db_pipeline.completed_at = datetime.fromisoformat(pipeline.finished_at)
+            except ValueError:
+                pass
+        db_pipeline.duration_seconds = pipeline.duration_seconds
+        db_pipeline.security_score = pipeline.security_score
+        db_pipeline.is_deployable = pipeline.is_deployable
+        if pipeline.vulnerability_summary is not None:
+            db_pipeline.vulnerability_summary = pipeline.vulnerability_summary
+        db.session.commit()
+
+
+pipeline_executor = PipelineExecutor(REPORT_DIR, on_update=_persist_pipeline_state)
+
+# Serialized pipeline execution: exactly one running pipeline at a time.
+_pipeline_job_queue: "queue.Queue[dict]" = queue.Queue()
+_pipeline_worker_lock = threading.Lock()
+_pipeline_worker_started = False
+_pipeline_queue_state_lock = threading.Lock()
+_queued_pipeline_ids: set = set()
+_active_pipeline_id: str | None = None
+
+
+def _enqueue_pipeline_job(job: dict) -> bool:
+    pipeline_obj = job.get("pipeline")
+    pipeline_id = getattr(pipeline_obj, "id", None)
+    if not pipeline_id:
+        return False
+
+    global _active_pipeline_id
+    with _pipeline_queue_state_lock:
+        if pipeline_id == _active_pipeline_id or pipeline_id in _queued_pipeline_ids:
+            return False
+        _queued_pipeline_ids.add(pipeline_id)
+
+    _pipeline_job_queue.put(job)
+    return True
+
+
+def _recover_orphaned_queued_pipelines():
+    """Re-enqueue queued DB pipelines that were orphaned (e.g., backend restart)."""
+    with app.app_context():
+        queued_rows = (
+            Pipeline.query
+            .filter(Pipeline.status == "queued")
+            .order_by(Pipeline.created_at.asc())
+            .all()
+        )
+
+        for row in queued_rows:
+            with _pipeline_queue_state_lock:
+                if row.id == _active_pipeline_id or row.id in _queued_pipeline_ids:
+                    continue
+
+            pipeline = pipeline_executor.create_pipeline(
+                repo_url=row.repo_url or "",
+                branch=row.branch or "main",
+                commit_sha=row.commit_sha or "manual",
+                commit_message=row.commit_message or "Recovered queued pipeline",
+                author=row.author or "system",
+                pipeline_id=row.id,
+            )
+            if row.stages:
+                pipeline.stages = row.stages
+
+            scan_prefs = {}
+            if row.user_id:
+                user = db.session.get(User, row.user_id)
+                if user:
+                    settings = _get_or_create_settings(user)
+                    scan_prefs = settings.get_section("scanPreferences") or {}
+
+            _enqueue_pipeline_job(
+                {
+                    "executor": pipeline_executor,
+                    "pipeline": pipeline,
+                    "repo_url": row.repo_url or None,
+                    "target_dir": None,
+                    "image_name": None,
+                    "scan_prefs": scan_prefs,
+                }
+            )
 
 # GitHub webhook secret
 GITHUB_WEBHOOK_SECRET = os.environ.get("GITHUB_WEBHOOK_SECRET", "your-webhook-secret")
+ALLOW_UNVERIFIED_WEBHOOKS = os.environ.get("ALLOW_UNVERIFIED_WEBHOOKS", "false").lower() == "true"
+
+# Email / OTP configuration
+SMTP_HOST = os.environ.get("SMTP_HOST", "")
+SMTP_PORT = int(os.environ.get("SMTP_PORT", "587"))
+SMTP_USER = os.environ.get("SMTP_USER", "")
+SMTP_PASSWORD = os.environ.get("SMTP_PASSWORD", "")
+SMTP_FROM = os.environ.get("SMTP_FROM", SMTP_USER or "no-reply@sentinelops.local")
+SMTP_USE_TLS = os.environ.get("SMTP_USE_TLS", "true").lower() == "true"
+SMTP_USE_SSL = os.environ.get("SMTP_USE_SSL", "false").lower() == "true"
+
+EMAIL_OTP_EXPIRY_MINUTES = int(os.environ.get("EMAIL_OTP_EXPIRY_MINUTES", "10"))
+EMAIL_OTP_COOLDOWN_SECONDS = int(os.environ.get("EMAIL_OTP_COOLDOWN_SECONDS", "60"))
 
 
 # ====================================================================
@@ -170,6 +325,20 @@ def load_json_file(filename):
             return json.load(f)
     except (FileNotFoundError, json.JSONDecodeError):
         return None
+
+
+def _load_json_path(path: str):
+    try:
+        if not path or not os.path.exists(path):
+            return None
+        with open(path) as f:
+            return json.load(f)
+    except (FileNotFoundError, json.JSONDecodeError, TypeError):
+        return None
+
+
+def _normalize_status(status) -> str:
+    return status.value if hasattr(status, "value") else str(status)
 
 
 # ====================================================================
@@ -192,6 +361,8 @@ def get_full_user_info(user_id):
     """Fetch full user record from the database."""
     user = db.session.get(User, user_id)
     if user:
+        settings = _get_or_create_settings(user)
+        profile = settings.get_section("profile") or {}
         return {
             "id": user.id,
             "username": user.username,
@@ -200,6 +371,8 @@ def get_full_user_info(user_id):
             "fullName": user.full_name or "",
             "organization": user.organization or "",
             "roleTitle": user.role_title or "",
+            "language": profile.get("preferredLanguage", "en"),
+            "timezone": profile.get("timezone", "UTC"),
         }
     return None
 
@@ -208,41 +381,391 @@ def get_full_user_info(user_id):
 # HELPER: notifications
 # ====================================================================
 
-def add_notification(notification_type: str, title: str, message: str, metadata: dict = None):
-    """Create a new system notification and persist it in the database."""
-    notif = Notification(
-        id=str(uuid.uuid4())[:8],
-        type=notification_type,
-        title=title,
-        message=message,
-        read=False,
-    )
-    notif.extra_data = metadata or {}
-    db.session.add(notif)
+def _email_enabled() -> bool:
+    return bool(SMTP_HOST and SMTP_FROM)
+
+
+def _send_email(to_email: str, subject: str, body_text: str) -> bool:
+    if not _email_enabled() or not to_email:
+        return False
+    try:
+        message = EmailMessage()
+        message["Subject"] = subject
+        message["From"] = SMTP_FROM
+        message["To"] = to_email
+        message.set_content(body_text)
+
+        if SMTP_USE_SSL:
+            with smtplib.SMTP_SSL(SMTP_HOST, SMTP_PORT, timeout=15) as server:
+                if SMTP_USER and SMTP_PASSWORD:
+                    server.login(SMTP_USER, SMTP_PASSWORD)
+                server.send_message(message)
+        else:
+            with smtplib.SMTP(SMTP_HOST, SMTP_PORT, timeout=15) as server:
+                if SMTP_USE_TLS:
+                    server.starttls(context=ssl.create_default_context())
+                if SMTP_USER and SMTP_PASSWORD:
+                    server.login(SMTP_USER, SMTP_PASSWORD)
+                server.send_message(message)
+        return True
+    except Exception as exc:
+        app.logger.warning(f"Email delivery failed to {to_email}: {exc}")
+        return False
+
+
+def _get_user_notification_prefs(user: User) -> dict:
+    defaults = {
+        "email": {
+            "pipelineSuccess": True,
+            "pipelineFailure": True,
+            "criticalVuln": True,
+            "secretDetected": True,
+            "deploymentBlocked": False,
+        },
+        "inApp": True,
+        "weeklySummary": True,
+        "realtimeWebhook": False,
+    }
+    settings = _get_or_create_settings(user)
+    prefs = settings.get_section("notifications") or {}
+    merged = {**defaults, **prefs}
+    if isinstance(prefs.get("email"), dict):
+        merged["email"] = {**defaults["email"], **prefs["email"]}
+    return merged
+
+
+def _should_send_email_for_event(prefs: dict, event_key: Optional[str]) -> bool:
+    if not event_key:
+        return False
+    event_pref_map = {
+        "pipeline_success": "pipelineSuccess",
+        "pipeline_failure": "pipelineFailure",
+        "critical_vuln": "criticalVuln",
+        "secret_detected": "secretDetected",
+        "deployment_blocked": "deploymentBlocked",
+    }
+    email_key = event_pref_map.get(event_key)
+    if not email_key:
+        return False
+    email_prefs = prefs.get("email") or {}
+    return bool(email_prefs.get(email_key, False))
+
+
+def add_notification(
+    notification_type: str,
+    title: str,
+    message: str,
+    metadata: dict = None,
+    user_id: Optional[int] = None,
+    event_key: Optional[str] = None,
+):
+    """Create in-app notifications (scoped by user preferences) and send email if enabled."""
+    targets = []
+    if user_id is None:
+        app.logger.warning(
+            "Skipped notification '%s' because user_id is required for scoped delivery",
+            title,
+        )
+        return []
+
+    user = db.session.get(User, int(user_id))
+    if user and user.is_active:
+        targets = [user]
+
+    created = []
+    for user in targets:
+        prefs = _get_user_notification_prefs(user)
+
+        if bool(prefs.get("inApp", True)):
+            notif = Notification(
+                id=str(uuid.uuid4())[:8],
+                user_id=user.id,
+                type=notification_type,
+                title=title,
+                message=message,
+                read=False,
+            )
+            tagged_meta = {
+                **(metadata or {}),
+                "owner_user_id": user.id,
+                "owner_username": user.username,
+            }
+            notif.extra_data = tagged_meta
+            db.session.add(notif)
+            created.append(notif)
+
+        if _should_send_email_for_event(prefs, event_key):
+            _send_email(
+                user.email,
+                f"[SentinelOps] {title}",
+                f"{message}\n\nTimestamp: {utcnow().isoformat()}\n",
+            )
+
     db.session.commit()
 
-    # Prune old notifications (keep last 100)
-    count = Notification.query.count()
-    if count > 100:
-        oldest = (
-            Notification.query
-            .order_by(Notification.created_at.asc())
-            .limit(count - 100)
-            .all()
-        )
-        for o in oldest:
-            db.session.delete(o)
+    # Prune old notifications per-user (keep last 100)
+    target_ids = [u.id for u in targets]
+    if target_ids:
+        for uid in target_ids:
+            count = Notification.query.filter_by(user_id=uid).count()
+            if count > 100:
+                oldest = (
+                    Notification.query
+                    .filter_by(user_id=uid)
+                    .order_by(Notification.created_at.asc())
+                    .limit(count - 100)
+                    .all()
+                )
+                for row in oldest:
+                    db.session.delete(row)
         db.session.commit()
 
-    return notif
+    return created
 
 
-def verify_github_signature(payload_body, signature_header):
+def _otp_hash(email: str, code: str) -> str:
+    seed = f"{email.lower()}:{code}:{app.config['JWT_SECRET_KEY']}"
+    return hashlib.sha256(seed.encode("utf-8")).hexdigest()
+
+
+def _issue_signup_otp(email: str) -> tuple[bool, str]:
+    normalized = (email or "").strip().lower()
+    if not normalized:
+        return False, "Email is required"
+
+    recent = (
+        EmailOTP.query
+        .filter_by(email=normalized, purpose="signup")
+        .order_by(EmailOTP.created_at.desc())
+        .first()
+    )
+    if recent:
+        elapsed = (utcnow() - recent.created_at).total_seconds()
+        if elapsed < EMAIL_OTP_COOLDOWN_SECONDS:
+            wait_for = max(1, EMAIL_OTP_COOLDOWN_SECONDS - int(elapsed))
+            return False, f"Please wait {wait_for}s before requesting another OTP"
+
+    code = f"{_secrets.randbelow(1000000):06d}"
+    expires_at = utcnow() + timedelta(minutes=EMAIL_OTP_EXPIRY_MINUTES)
+    otp_row = EmailOTP(
+        email=normalized,
+        purpose="signup",
+        otp_hash=_otp_hash(normalized, code),
+        expires_at=expires_at,
+        used=False,
+        attempts=0,
+    )
+    db.session.add(otp_row)
+    db.session.commit()
+
+    sent = _send_email(
+        normalized,
+        "Your SentinelOps signup verification code",
+        (
+            f"Your OTP code is: {code}\n"
+            f"This code expires in {EMAIL_OTP_EXPIRY_MINUTES} minutes.\n"
+            "If you did not request this code, you can ignore this email."
+        ),
+    )
+
+    if not sent:
+        return False, "OTP could not be delivered. Configure SMTP settings and try again."
+    return True, "OTP sent successfully"
+
+
+def _verify_signup_otp(email: str, otp_code: str) -> tuple[bool, str]:
+    normalized = (email or "").strip().lower()
+    otp_code = (otp_code or "").strip()
+    if not normalized or not otp_code:
+        return False, "Email and OTP are required"
+
+    otp_row = (
+        EmailOTP.query
+        .filter_by(email=normalized, purpose="signup", used=False)
+        .order_by(EmailOTP.created_at.desc())
+        .first()
+    )
+    if not otp_row:
+        return False, "No OTP found. Please request a new OTP."
+    if otp_row.expires_at < utcnow():
+        return False, "OTP expired. Please request a new OTP."
+
+    otp_row.attempts = int(otp_row.attempts or 0) + 1
+    is_valid = otp_row.otp_hash == _otp_hash(normalized, otp_code)
+    if not is_valid:
+        db.session.commit()
+        return False, "Invalid OTP"
+
+    otp_row.used = True
+    db.session.commit()
+    return True, "OTP verified"
+
+
+def _severity_counts(items, key: str) -> Dict[str, int]:
+    counts = {"CRITICAL": 0, "HIGH": 0, "MEDIUM": 0, "LOW": 0, "INFO": 0}
+    for item in items or []:
+        sev = (item.get(key) or "LOW").upper()
+        if sev in counts:
+            counts[sev] += 1
+        else:
+            counts["LOW"] += 1
+    return counts
+
+
+def _store_scan_results_from_reports(pipeline_id: str, reports_dir: str) -> None:
+    # Clear any previous scan rows for this pipeline
+    existing = ScanResult.query.filter_by(pipeline_id=pipeline_id).all()
+    for sr in existing:
+        db.session.delete(sr)
+    db.session.commit()
+
+    def add_scan_result(scanner_type: str, counts: Dict[str, int], total: int, raw_path: str):
+        sr = ScanResult(
+            pipeline_id=pipeline_id,
+            scanner_type=scanner_type,
+            total_findings=total,
+            critical_count=counts.get("CRITICAL", 0),
+            high_count=counts.get("HIGH", 0),
+            medium_count=counts.get("MEDIUM", 0),
+            low_count=counts.get("LOW", 0),
+            info_count=counts.get("INFO", 0),
+            raw_report_path=raw_path,
+        )
+        db.session.add(sr)
+        db.session.commit()
+        return sr
+
+    # SAST (unified) or Bandit fallback
+    sast_path = os.path.join(reports_dir, "sast-report.json")
+    bandit_path = os.path.join(reports_dir, "bandit-report.json")
+    sast_data = _load_json_path(sast_path) or _load_json_path(bandit_path) or {}
+    sast_results = sast_data.get("results", []) or []
+    totals = (sast_data.get("metrics", {}) or {}).get("totals", {})
+    if totals:
+        counts = {
+            "CRITICAL": totals.get("critical", 0),
+            "HIGH": totals.get("high", 0),
+            "MEDIUM": totals.get("medium", 0),
+            "LOW": totals.get("low", 0),
+            "INFO": totals.get("info", 0),
+        }
+        total = totals.get("total", sum(counts.values()))
+    else:
+        counts = _severity_counts(sast_results, "severity")
+        total = len(sast_results)
+    sr_sast = add_scan_result("SAST", counts, total, sast_path if os.path.exists(sast_path) else bandit_path)
+    for item in sast_results:
+        sev = (item.get("severity") or item.get("issue_severity") or "LOW").upper()
+        title = item.get("rule_name") or item.get("message") or item.get("issue_text") or ""
+        message = item.get("message") or item.get("issue_text") or item.get("code") or ""
+        file_path = item.get("file") or item.get("filename") or item.get("path") or ""
+        line = item.get("line") or item.get("line_number") or 0
+        rule_id = item.get("rule_id") or item.get("test_id") or ""
+        language = item.get("language") or ""
+        tool = item.get("tool") or ""
+        url = item.get("more_info") or item.get("url") or ""
+        cwe = item.get("cwe") or item.get("issue_cwe") or {}
+        cwe_id = cwe.get("id") if isinstance(cwe, dict) else ""
+        vuln = Vulnerability(
+            scan_result_id=sr_sast.id,
+            source="SAST",
+            tool=tool,
+            severity=sev,
+            title=title,
+            message=message,
+            file_path=file_path,
+            line_number=int(line or 0),
+            rule_id=rule_id,
+            language=language,
+            url=url,
+            cwe_id=cwe_id or "",
+        )
+        db.session.add(vuln)
+    db.session.commit()
+
+    # Trivy
+    trivy_path = os.path.join(reports_dir, "trivy-report.json")
+    trivy_data = _load_json_path(trivy_path) or {}
+    trivy_vulns = []
+    for result in trivy_data.get("Results", []) or []:
+        trivy_vulns.extend(result.get("Vulnerabilities", []) or [])
+    trivy_counts = _severity_counts(trivy_vulns, "Severity")
+    sr_trivy = add_scan_result("Trivy", trivy_counts, len(trivy_vulns), trivy_path)
+    for v in trivy_vulns:
+        vuln = Vulnerability(
+            scan_result_id=sr_trivy.id,
+            source="Trivy",
+            tool="trivy",
+            severity=(v.get("Severity") or "LOW").upper(),
+            title=v.get("Title") or v.get("VulnerabilityID") or "",
+            message=v.get("Description") or "",
+            file_path=v.get("PkgName") or v.get("Target") or "",
+            rule_id=v.get("VulnerabilityID") or "",
+            vulnerability_id=v.get("VulnerabilityID") or "",
+            fixed_version=v.get("FixedVersion") or "",
+            url=v.get("PrimaryURL") or "",
+        )
+        db.session.add(vuln)
+    db.session.commit()
+
+    # Gitleaks
+    gitleaks_path = os.path.join(reports_dir, "gitleaks-report.json")
+    gitleaks_data = _load_json_path(gitleaks_path) or {}
+    gitleaks_results = gitleaks_data.get("results", []) or []
+    gitleaks_counts = _severity_counts(gitleaks_results, "severity")
+    sr_gitleaks = add_scan_result("Gitleaks", gitleaks_counts, len(gitleaks_results), gitleaks_path)
+    for s in gitleaks_results:
+        secret = Secret(
+            scan_result_id=sr_gitleaks.id,
+            rule_id=s.get("rule_id") or "",
+            severity=(s.get("severity") or "HIGH").upper(),
+            file_path=s.get("file") or "",
+            line_number=int(s.get("line") or 0),
+            match=s.get("match") or "",
+            commit=s.get("commit") or "",
+            author=s.get("author") or "",
+        )
+        db.session.add(secret)
+    db.session.commit()
+
+    # DAST
+    dast_path = os.path.join(reports_dir, "dast-report.json")
+    dast_data = _load_json_path(dast_path) or {}
+    dast_results = dast_data.get("results", []) or []
+    dast_counts = _severity_counts(dast_results, "risk")
+    sr_dast = add_scan_result("DAST", dast_counts, len(dast_results), dast_path)
+    for a in dast_results:
+        vuln = Vulnerability(
+            scan_result_id=sr_dast.id,
+            source="DAST",
+            tool="zap",
+            severity=(a.get("risk") or "LOW").upper(),
+            title=a.get("name") or "",
+            message=a.get("desc") or a.get("description") or "",
+            file_path=a.get("url") or "",
+            url=a.get("reference") or "",
+            cwe_id=str(a.get("cweid") or ""),
+        )
+        db.session.add(vuln)
+    db.session.commit()
+
+
+def _normalize_repo_url(url: str) -> str:
+    raw = (url or "").strip().lower()
+    if raw.endswith(".git"):
+        raw = raw[:-4]
+    return raw.rstrip("/")
+
+
+def verify_github_signature(payload_body, signature_header, secret: Optional[str] = None):
     """Verify GitHub webhook HMAC-SHA256 signature."""
     if not signature_header:
         return False
+    secret_to_use = secret or GITHUB_WEBHOOK_SECRET
+    if not secret_to_use:
+        return False
     hash_object = hmac.new(
-        GITHUB_WEBHOOK_SECRET.encode("utf-8"),
+        secret_to_use.encode("utf-8"),
         msg=payload_body,
         digestmod=hashlib.sha256,
     )
@@ -275,7 +798,7 @@ def login():
     if not bcrypt.checkpw(password.encode("utf-8"), user.password_hash.encode("utf-8")):
         return jsonify({"error": "Invalid credentials"}), 401
 
-    user.last_login_at = datetime.now()
+    user.last_login_at = utcnow()
     db.session.commit()
 
     access_token = create_access_token(
@@ -314,15 +837,21 @@ def get_current_user():
 @app.route("/api/auth/signup", methods=["POST"])
 def signup():
     """Public self-service signup – creates a *viewer* account."""
-    data = request.get_json()
+    data = request.get_json() or {}
 
     username = data.get("username", "").strip()
-    email = data.get("email", "").strip()
+    email = data.get("email", "").strip().lower()
     password = data.get("password", "")
+    otp_code = data.get("otp", "").strip()
     full_name = data.get("fullName", "").strip()
     organization = data.get("organization", "").strip()
     role_title = data.get("roleTitle", "").strip()
     phone = data.get("phone", "").strip()
+    timezone_value = (data.get("timezone") or "UTC").strip() or "UTC"
+    preferred_language = (data.get("preferredLanguage") or "en").strip() or "en"
+    default_repo_url = (data.get("defaultRepoUrl") or "").strip()
+    default_branch = (data.get("defaultBranch") or "main").strip() or "main"
+    avatar_url = (data.get("avatarUrl") or "").strip()
 
     # --- Validation ---
     errors = []
@@ -342,6 +871,12 @@ def signup():
         errors.append("Password must be at least 6 characters")
     if not full_name:
         errors.append("Full name is required")
+    if not otp_code:
+        errors.append("OTP is required")
+    if default_repo_url:
+        is_valid_repo, repo_error = validate_repo_url(default_repo_url)
+        if not is_valid_repo:
+            errors.append(repo_error)
     if errors:
         return jsonify({"error": errors[0], "errors": errors}), 400
 
@@ -349,6 +884,10 @@ def signup():
         return jsonify({"error": "Username already exists"}), 409
     if User.query.filter(db.func.lower(User.email) == email.lower()).first():
         return jsonify({"error": "Email already exists"}), 409
+
+    valid_otp, otp_message = _verify_signup_otp(email, otp_code)
+    if not valid_otp:
+        return jsonify({"error": otp_message}), 400
 
     new_user = User(
         username=username,
@@ -364,6 +903,31 @@ def signup():
     db.session.add(new_user)
     db.session.commit()
 
+    settings = _get_or_create_settings(new_user)
+    settings.set_section("profile", {
+        "fullName": full_name,
+        "organization": organization,
+        "roleTitle": role_title,
+        "phone": phone,
+        "defaultRepoUrl": default_repo_url,
+        "defaultBranch": default_branch,
+        "timezone": timezone_value,
+        "preferredLanguage": preferred_language,
+        "avatarUrl": avatar_url,
+    })
+
+    if default_repo_url:
+        db.session.add(UserRepository(
+            user_id=new_user.id,
+            name=default_repo_url.rstrip("/").split("/")[-1],
+            url=default_repo_url,
+            branch=default_branch,
+            description="",
+            is_default=True,
+        ))
+
+    db.session.commit()
+
     return jsonify({
         "message": "Account created successfully! Please sign in.",
         "user": {
@@ -374,6 +938,24 @@ def signup():
             "fullName": new_user.full_name,
         },
     }), 201
+
+
+@app.route("/api/auth/signup/request-otp", methods=["POST"])
+def signup_request_otp():
+    data = request.get_json() or {}
+    email = (data.get("email") or "").strip().lower()
+
+    if not email:
+        return jsonify({"error": "Email is required"}), 400
+    if not re.match(r"^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$", email):
+        return jsonify({"error": "Invalid email format"}), 400
+    if User.query.filter(db.func.lower(User.email) == email.lower()).first():
+        return jsonify({"error": "Email already exists"}), 409
+
+    ok, message = _issue_signup_otp(email)
+    if not ok:
+        return jsonify({"error": message}), 400
+    return jsonify({"message": message})
 
 
 @app.route("/api/auth/register", methods=["POST"])
@@ -463,7 +1045,7 @@ def google_callback():
 
     code = request.args.get("code")
     if not code:
-        return redirect("http://localhost:3000/login?error=google_auth_failed")
+        return redirect(f"{FRONTEND_URL}/login?error=google_auth_failed")
 
     try:
         oauth_client = OAuth2Session(
@@ -481,12 +1063,12 @@ def google_callback():
         google_sub = google_user.get("sub", "")
 
         if not google_email:
-            return redirect("http://localhost:3000/login?error=no_email")
+            return redirect(f"{FRONTEND_URL}/login?error=no_email")
 
         existing = User.query.filter(db.func.lower(User.email) == google_email.lower()).first()
 
         if existing:
-            existing.last_login_at = datetime.now()
+            existing.last_login_at = utcnow()
             if not existing.auth_provider:
                 existing.auth_provider = "google"
             db.session.commit()
@@ -508,7 +1090,7 @@ def google_callback():
                 full_name=google_name,
                 auth_provider="google",
                 google_id=google_sub,
-                last_login_at=datetime.now(),
+                last_login_at=utcnow(),
             )
             db.session.add(user)
             db.session.commit()
@@ -521,11 +1103,11 @@ def google_callback():
                 "role": user.role,
             },
         )
-        return redirect(f"http://localhost:3000/login?token={access_token}&provider=google")
+        return redirect(f"{FRONTEND_URL}/login?token={access_token}&provider=google")
 
     except Exception as e:
         app.logger.error(f"Google OAuth error: {e}")
-        return redirect(f"http://localhost:3000/login?error=oauth_error&message={str(e)}")
+        return redirect(f"{FRONTEND_URL}/login?error=oauth_error&message={str(e)}")
 
 
 @app.route("/api/auth/change-password", methods=["POST"])
@@ -543,6 +1125,11 @@ def change_password():
     user = db.session.get(User, current["id"])
     if not user:
         return jsonify({"error": "User not found"}), 404
+
+    if user.auth_provider == "google" and not user.password_hash:
+        return jsonify({"error": "Google accounts do not have a local password"}), 400
+    if not user.password_hash:
+        return jsonify({"error": "Password not set for this account"}), 400
 
     if not bcrypt.checkpw(current_password.encode("utf-8"), user.password_hash.encode("utf-8")):
         return jsonify({"error": "Current password is incorrect"}), 401
@@ -592,7 +1179,7 @@ def update_policy_route():
     if "autoBlock" in data:
         policy.auto_block = bool(data["autoBlock"])
 
-    policy.updated_at = datetime.now()
+    policy.updated_at = utcnow()
     policy.updated_by = current_user["username"]
     db.session.commit()
 
@@ -728,34 +1315,64 @@ def evaluate_policy():
             "low": sast_low + trivy_low + dast_low,
         },
         "policy": policy.to_dict(),
-        "evaluated_at": datetime.now().isoformat(),
+        "evaluated_at": utcnow().isoformat(),
     })
 
 
 # ====================================================================
-# REPORT ROUTES (still file-based – scanner artefacts)
+# REPORT ROUTES (DB-backed scanner findings)
 # ====================================================================
+
+def _get_latest_pipeline_id_for_user(user_id):
+    """Helper to find the most recent pipeline ID for the current user."""
+    p = Pipeline.query.filter_by(user_id=user_id).order_by(Pipeline.created_at.desc()).first()
+    return p.id if p else None
+
+
+def _resolve_accessible_pipeline_id(current_user: dict, pipeline_id: Optional[str]) -> Optional[str]:
+    if pipeline_id:
+        pipeline = db.session.get(Pipeline, pipeline_id)
+        if not pipeline:
+            return None
+        if current_user["role"] != "admin" and pipeline.user_id != current_user["id"]:
+            return None
+        return pipeline.id
+    return _get_latest_pipeline_id_for_user(current_user["id"])
 
 @app.route("/api/bandit")
 @jwt_required()
 def bandit():
-    data = load_json_file("bandit-report.json")
-    if data is None:
-        return jsonify({"error": "Bandit report not found"}), 404
-    return jsonify(data)
-
+    # Backward compatibility: Redirect to SAST
+    return sast()
 
 @app.route("/api/sast")
 @jwt_required()
 def sast():
-    data = load_json_file("sast-report.json")
-    if data:
-        return jsonify(data)
-    data = load_json_file("bandit-report.json")
-    if data:
-        return jsonify(data)
-    return jsonify({"error": "SAST report not found. Run a scan first."}), 404
-
+    current_user = get_current_user_info()
+    pipeline_id = _resolve_accessible_pipeline_id(current_user, request.args.get("pipeline_id"))
+    if not pipeline_id:
+        return jsonify({"error": "No report found. Run pipeline to see reports."}), 404
+        
+    sr = ScanResult.query.filter_by(pipeline_id=pipeline_id, scanner_type="SAST").first()
+    if not sr:
+        return jsonify({"error": "SAST report not found for this pipeline."}), 404
+        
+    vulns = Vulnerability.query.filter_by(scan_result_id=sr.id).order_by(Vulnerability.severity).all()
+    results = [v.to_dict() for v in vulns]
+    
+    return jsonify({
+        "metrics": {
+            "totals": {
+                "critical": sr.critical_count,
+                "high": sr.high_count,
+                "medium": sr.medium_count,
+                "low": sr.low_count,
+                "info": sr.info_count,
+                "total": sr.total_findings
+            }
+        },
+        "results": results
+    })
 
 @app.route("/api/sast/languages")
 @jwt_required()
@@ -766,28 +1383,102 @@ def sast_languages():
 @app.route("/api/trivy")
 @jwt_required()
 def trivy():
-    data = load_json_file("trivy-report.json")
-    if data is None:
-        return jsonify({"error": "Trivy report not found"}), 404
-    return jsonify(data)
+    current_user = get_current_user_info()
+    pipeline_id = _resolve_accessible_pipeline_id(current_user, request.args.get("pipeline_id"))
+    if not pipeline_id:
+        return jsonify({"error": "No report found. Run pipeline to see reports."}), 404
+        
+    sr = ScanResult.query.filter_by(pipeline_id=pipeline_id, scanner_type="Trivy").first()
+    if not sr:
+        return jsonify({"error": "Trivy report not found for this pipeline."}), 404
+        
+    vulns = Vulnerability.query.filter_by(scan_result_id=sr.id).order_by(Vulnerability.severity).all()
+    
+    # Pack into legacy format for frontend compatibility if needed, else flat list
+    # The frontend expects {"Results": [{"Vulnerabilities": [...]}]}
+    packed_vulns = []
+    for v in vulns:
+        packed_vulns.append({
+            "VulnerabilityID": v.vulnerability_id or v.rule_id,
+            "PkgName": v.file_path,
+            "InstalledVersion": "unknown",
+            "FixedVersion": v.fixed_version,
+            "Title": v.title,
+            "Description": v.message,
+            "Severity": v.severity,
+            "Target": v.file_path,
+            "PrimaryURL": v.url
+        })
+        
+    return jsonify({
+        "Results": [{"Target": "Container", "Vulnerabilities": packed_vulns}],
+        "metrics": {
+            "critical": sr.critical_count,
+            "high": sr.high_count,
+            "medium": sr.medium_count,
+            "low": sr.low_count
+        }
+    })
 
 
 @app.route("/api/gitleaks")
 @jwt_required()
 def gitleaks():
-    data = load_json_file("gitleaks-report.json")
-    if data is None:
+    current_user = get_current_user_info()
+    pipeline_id = _resolve_accessible_pipeline_id(current_user, request.args.get("pipeline_id"))
+    if not pipeline_id:
+        return jsonify({"error": "No report found. Run pipeline to see reports."}), 404
+        
+    sr = ScanResult.query.filter_by(pipeline_id=pipeline_id, scanner_type="Gitleaks").first()
+    if not sr:
         return jsonify({"error": "Gitleaks report not found. Run a scan first."}), 404
-    return jsonify(data)
+        
+    secrets = Secret.query.filter_by(scan_result_id=sr.id).all()
+    results = [s.to_dict() for s in secrets]
+    
+    # Pack for legacy frontend format: list of secrets, or dict with "results"
+    return jsonify({
+        "results": results,
+        "total_secrets": sr.total_findings
+    })
 
 
 @app.route("/api/dast")
 @jwt_required()
 def dast():
-    data = load_json_file("dast-report.json")
-    if data is None:
+    current_user = get_current_user_info()
+    pipeline_id = _resolve_accessible_pipeline_id(current_user, request.args.get("pipeline_id"))
+    if not pipeline_id:
+        return jsonify({"error": "No report found. Run pipeline to see reports."}), 404
+        
+    sr = ScanResult.query.filter_by(pipeline_id=pipeline_id, scanner_type="DAST").first()
+    if not sr:
         return jsonify({"error": "DAST report not found. Run a scan first."}), 404
-    return jsonify(data)
+        
+    vulns = Vulnerability.query.filter_by(scan_result_id=sr.id).order_by(Vulnerability.severity).all()
+    results = [v.to_dict() for v in vulns]
+    
+    # Repack for frontend
+    alerts = []
+    for v in vulns:
+        alerts.append({
+            "name": v.title,
+            "risk": v.severity,
+            "desc": v.message,
+            "url": v.file_path,
+            "reference": v.url,
+            "cweid": v.cwe_id
+        })
+    
+    return jsonify({
+        "results": alerts,
+        "metrics": {
+            "high": sr.high_count,
+            "medium": sr.medium_count,
+            "low": sr.low_count,
+            "info": sr.info_count
+        }
+    })
 
 
 @app.route("/api/summary")
@@ -872,7 +1563,7 @@ def summary():
         }
 
     return jsonify({
-        "generated_at": datetime.now().isoformat(),
+        "generated_at": utcnow().isoformat(),
         "sast": sast_metrics,
         "bandit": bandit_metrics,
         "trivy": trivy_metrics,
@@ -893,7 +1584,7 @@ def summary():
 def health():
     return jsonify({
         "status": "healthy",
-        "timestamp": datetime.now().isoformat(),
+        "timestamp": utcnow().isoformat(),
         "reports": {
             "sast": os.path.exists(os.path.join(REPORT_DIR, "sast-report.json")),
             "bandit": os.path.exists(os.path.join(REPORT_DIR, "bandit-report.json")),
@@ -911,7 +1602,16 @@ def health():
 @app.route("/api/notifications", methods=["GET"])
 @jwt_required()
 def get_all_notifications():
-    notifications = Notification.query.order_by(Notification.created_at.desc()).all()
+    current_user = get_current_user_info()
+    notifications = (
+        Notification.query
+        .filter(
+            Notification.user_id == current_user["id"],
+            Notification.user_id.isnot(None),
+        )
+        .order_by(Notification.created_at.desc())
+        .all()
+    )
     unread_count = sum(1 for n in notifications if not n.read)
     return jsonify({
         "notifications": [n.to_dict() for n in notifications],
@@ -923,8 +1623,9 @@ def get_all_notifications():
 @app.route("/api/notifications/<notification_id>/read", methods=["POST"])
 @jwt_required()
 def mark_notification_read(notification_id):
+    current_user = get_current_user_info()
     notif = db.session.get(Notification, notification_id)
-    if notif:
+    if notif and notif.user_id == current_user["id"]:
         notif.read = True
         db.session.commit()
     return jsonify({"success": True})
@@ -933,7 +1634,8 @@ def mark_notification_read(notification_id):
 @app.route("/api/notifications/read-all", methods=["POST"])
 @jwt_required()
 def mark_all_notifications_read():
-    Notification.query.update({"read": True})
+    current_user = get_current_user_info()
+    Notification.query.filter_by(user_id=current_user["id"]).update({"read": True})
     db.session.commit()
     return jsonify({"success": True})
 
@@ -941,8 +1643,9 @@ def mark_all_notifications_read():
 @app.route("/api/notifications/<notification_id>", methods=["DELETE"])
 @jwt_required()
 def delete_notification(notification_id):
+    current_user = get_current_user_info()
     notif = db.session.get(Notification, notification_id)
-    if notif:
+    if notif and notif.user_id == current_user["id"]:
         db.session.delete(notif)
         db.session.commit()
     return jsonify({"success": True})
@@ -951,7 +1654,8 @@ def delete_notification(notification_id):
 @app.route("/api/notifications/clear", methods=["DELETE"])
 @jwt_required()
 def clear_all_notifications():
-    Notification.query.delete()
+    current_user = get_current_user_info()
+    Notification.query.filter_by(user_id=current_user["id"]).delete()
     db.session.commit()
     return jsonify({"success": True})
 
@@ -1015,7 +1719,7 @@ def complete_setup():
     config.github_repo_url = repo_url
     config.github_branch = branch
     config.repo_configured = True
-    config.updated_at = datetime.now()
+    config.updated_at = utcnow()
     config.updated_by = current_user["username"]
     db.session.commit()
 
@@ -1034,7 +1738,7 @@ def complete_setup():
         if "autoBlock" in policy_data:
             policy.auto_block = bool(policy_data["autoBlock"])
     policy.configured = True
-    policy.updated_at = datetime.now()
+    policy.updated_at = utcnow()
     policy.updated_by = current_user["username"]
     db.session.commit()
 
@@ -1075,7 +1779,7 @@ def reset_setup():
     config.repo_configured = False
     config.policy_configured = False
     config.initial_scan_completed = False
-    config.updated_at = datetime.now()
+    config.updated_at = utcnow()
     config.updated_by = current_user["username"]
 
     # Reset policy
@@ -1087,7 +1791,7 @@ def reset_setup():
     policy.max_high_vulns = 5
     policy.auto_block = True
     policy.configured = False
-    policy.updated_at = datetime.now()
+    policy.updated_at = utcnow()
     policy.updated_by = current_user["username"]
 
     db.session.commit()
@@ -1102,34 +1806,170 @@ def reset_setup():
 
 
 # ====================================================================
-# PIPELINE ROUTES
+# PIPELINE ROUTES  (user-scoped — each user sees only their own data)
 # ====================================================================
+
+def _pipeline_worker_loop():
+    global _active_pipeline_id
+    while True:
+        job = _pipeline_job_queue.get()
+        pipeline = job.get("pipeline") if isinstance(job, dict) else None
+        pipeline_id = getattr(pipeline, "id", None)
+
+        if job is None or pipeline is None or not pipeline_id:
+            _pipeline_job_queue.task_done()
+            continue
+
+        with _pipeline_queue_state_lock:
+            _active_pipeline_id = pipeline_id
+
+        executor = job["executor"]
+        repo_url = job.get("repo_url")
+        target_dir = job.get("target_dir")
+        image_name = job.get("image_name")
+        scan_prefs = job.get("scan_prefs")
+
+        try:
+            with app.app_context():
+                db_pipeline = db.session.get(Pipeline, pipeline.id)
+                if db_pipeline:
+                    db_pipeline.status = "running"
+                    db_pipeline.started_at = utcnow()
+                    db_pipeline.stages = pipeline.stages
+                    db.session.commit()
+
+                try:
+                    result = executor.run_pipeline(
+                        pipeline,
+                        repo_url=repo_url,
+                        target_dir=target_dir,
+                        image_name=image_name,
+                        scan_prefs=scan_prefs,
+                    )
+                    if db_pipeline:
+                        db_pipeline.status = _normalize_status(result.status)
+                        db_pipeline.security_score = result.security_score
+                        db_pipeline.is_deployable = result.is_deployable
+                        db_pipeline.vulnerability_summary = result.vulnerability_summary or {}
+                        db_pipeline.stages = result.stages or {}
+                        db_pipeline.duration_seconds = result.duration_seconds
+                        db_pipeline.completed_at = utcnow()
+                        db.session.commit()
+                        check_and_notify_pipeline_completion(db_pipeline.to_dict())
+                    _store_scan_results_from_reports(pipeline.id, executor.reports_dir)
+                except Exception as exc:
+                    if db_pipeline:
+                        db_pipeline.status = "failed"
+                        db_pipeline.completed_at = utcnow()
+                        stages = db_pipeline.stages or {}
+                        stages["pipeline_error"] = {
+                            "name": "Pipeline Error",
+                            "status": "failed",
+                            "error": str(exc),
+                        }
+                        db_pipeline.stages = stages
+                        db.session.commit()
+                        check_and_notify_pipeline_completion(db_pipeline.to_dict())
+        except Exception as worker_exc:
+            with app.app_context():
+                db_pipeline = db.session.get(Pipeline, pipeline.id)
+                if db_pipeline and db_pipeline.status in ("queued", "running"):
+                    db_pipeline.status = "failed"
+                    db_pipeline.completed_at = utcnow()
+                    stages = db_pipeline.stages or {}
+                    stages["pipeline_error"] = {
+                        "name": "Pipeline Worker Error",
+                        "status": "failed",
+                        "error": str(worker_exc),
+                    }
+                    db_pipeline.stages = stages
+                    db.session.commit()
+        finally:
+            with _pipeline_queue_state_lock:
+                _queued_pipeline_ids.discard(pipeline_id)
+                _active_pipeline_id = None
+            _pipeline_job_queue.task_done()
+            _recover_orphaned_queued_pipelines()
+
+
+def _ensure_pipeline_worker():
+    global _pipeline_worker_started
+    with _pipeline_worker_lock:
+        if _pipeline_worker_started:
+            _recover_orphaned_queued_pipelines()
+            return
+        worker = threading.Thread(target=_pipeline_worker_loop, daemon=True)
+        worker.start()
+        _pipeline_worker_started = True
+    _recover_orphaned_queued_pipelines()
+
+
+def run_pipeline_async_db(
+    executor: PipelineExecutor,
+    pipeline,
+    repo_url: str = None,
+    target_dir: str = None,
+    image_name: str = None,
+    scan_prefs: dict = None,
+):
+    _ensure_pipeline_worker()
+    _enqueue_pipeline_job(
+        {
+            "executor": executor,
+            "pipeline": pipeline,
+            "repo_url": repo_url,
+            "target_dir": target_dir,
+            "image_name": image_name,
+            "scan_prefs": scan_prefs,
+        }
+    )
+    return None
 
 @app.route("/api/pipelines", methods=["GET"])
 @jwt_required()
 def get_pipelines():
+    _ensure_pipeline_worker()
+    current_user = get_current_user_info()
     limit = request.args.get("limit", 20, type=int)
-    pipelines = pipeline_executor.get_pipelines(limit)
-    return jsonify({"pipelines": pipelines, "total": len(pipelines)})
+    show_all = request.args.get("all", "false").lower() == "true"
+
+    q = Pipeline.query.order_by(Pipeline.created_at.desc())
+
+    # Admins can pass ?all=true to see the global view; everyone else is scoped
+    if not (show_all and current_user["role"] == "admin"):
+        q = q.filter(Pipeline.user_id == current_user["id"])
+
+    total = q.count()
+    pipelines = [p.to_dict() for p in q.limit(limit).all()]
+    return jsonify({"pipelines": pipelines, "total": total})
 
 
 @app.route("/api/pipelines/<pipeline_id>", methods=["GET"])
 @jwt_required()
 def get_pipeline(pipeline_id):
-    pipeline = pipeline_executor.get_pipeline(pipeline_id)
+    current_user = get_current_user_info()
+    pipeline = db.session.get(Pipeline, pipeline_id)
     if not pipeline:
         return jsonify({"error": "Pipeline not found"}), 404
-    return jsonify(pipeline)
+    # Admins can access any pipeline; regular users only their own
+    if current_user["role"] != "admin" and pipeline.user_id != current_user["id"]:
+        return jsonify({"error": "Not found"}), 404
+    return jsonify(pipeline.to_dict())
 
 
 @app.route("/api/pipelines/latest", methods=["GET"])
 @jwt_required()
 def get_latest_pipeline():
-    pipeline = pipeline_executor.get_latest_pipeline()
+    current_user = get_current_user_info()
+    pipeline = (
+        Pipeline.query
+        .filter(Pipeline.user_id == current_user["id"])
+        .order_by(Pipeline.created_at.desc())
+        .first()
+    )
     if not pipeline:
         return jsonify({"error": "No pipelines found"}), 404
-    check_and_notify_pipeline_completion(pipeline)
-    return jsonify(pipeline)
+    return jsonify(pipeline.to_dict())
 
 
 # Track already-notified pipelines
@@ -1141,6 +1981,7 @@ def check_and_notify_pipeline_completion(pipeline):
     if not pipeline:
         return
     pipeline_id = pipeline.get("id")
+    user_id = pipeline.get("user_id")
     status = pipeline.get("status", "").lower()
     if pipeline_id in _notified_pipelines or status not in ("success", "failed"):
         return
@@ -1154,12 +1995,35 @@ def check_and_notify_pipeline_completion(pipeline):
     vuln_summary = pipeline.get("vulnerability_summary", {})
 
     if status == "success":
+        if vuln_summary.get("critical", 0) > 0:
+            add_notification(
+                "critical",
+                "Critical Vulnerabilities Detected",
+                f"{vuln_summary.get('critical', 0)} critical vulnerabilities detected in pipeline {pipeline_id}.",
+                {"pipeline_id": pipeline_id, "critical_count": vuln_summary.get("critical", 0)},
+                user_id=user_id,
+                event_key="critical_vuln",
+            )
+
+        if (vuln_summary.get("secrets_found", 0) or vuln_summary.get("secrets", 0)) > 0:
+            secret_total = vuln_summary.get("secrets_found", 0) or vuln_summary.get("secrets", 0)
+            add_notification(
+                "warning",
+                "Secret Detected",
+                f"{secret_total} secret finding(s) detected in pipeline {pipeline_id}.",
+                {"pipeline_id": pipeline_id, "secret_count": secret_total},
+                user_id=user_id,
+                event_key="secret_detected",
+            )
+
         if is_deployable:
             add_notification(
                 "success",
                 "Deployment Approved",
                 f"Pipeline passed security checks. Score: {security_score}/100",
                 {"pipeline_id": pipeline_id, "security_score": security_score},
+                user_id=user_id,
+                event_key="pipeline_success",
             )
         else:
             reasons = []
@@ -1175,6 +2039,8 @@ def check_and_notify_pipeline_completion(pipeline):
                 "Deployment Blocked",
                 f"Pipeline blocked. {reason_text}. Score: {security_score}/100",
                 {"pipeline_id": pipeline_id, "security_score": security_score, "reasons": reasons},
+                user_id=user_id,
+                event_key="deployment_blocked",
             )
     else:
         add_notification(
@@ -1182,6 +2048,8 @@ def check_and_notify_pipeline_completion(pipeline):
             "Pipeline Failed",
             "Security scan failed to complete",
             {"pipeline_id": pipeline_id},
+            user_id=user_id,
+            event_key="pipeline_failure",
         )
 
 
@@ -1190,59 +2058,232 @@ def check_and_notify_pipeline_completion(pipeline):
 def trigger_pipeline():
     current_user = get_current_user_info()
     full_user = get_full_user_info(current_user["id"])
-    config = Config.get_instance()
     policy = Policy.get_instance()
     data = request.get_json() or {}
 
-    repo_url = data.get("repo_url") or config.github_repo_url
-    branch = data.get("branch") or config.github_branch or "main"
-    target_dir = data.get("target_dir") or config.target_directory
-    image_name = data.get("image_name") or config.target_image
+    # --- Resolve repo from user_repo_id or from payload ---
+    user_repo_id = data.get("user_repo_id")
+    user_repo = None
+    if user_repo_id:
+        user_repo = db.session.get(UserRepository, int(user_repo_id))
+        # Security: must belong to the requesting user
+        if user_repo and user_repo.user_id != current_user["id"]:
+            user_repo = None
+    else:
+        # Fallback: user's default repository if no explicit repo is passed
+        user_repo = (
+            UserRepository.query
+            .filter_by(user_id=current_user["id"], is_default=True)
+            .order_by(UserRepository.created_at.desc())
+            .first()
+        )
 
+    if user_repo:
+        repo_url = user_repo.url
+        branch = data.get("branch") or user_repo.branch
+    else:
+        repo_url = data.get("repo_url", "")
+        branch = data.get("branch", "main")
+
+    target_dir = data.get("target_dir", "")
+    image_name = data.get("image_name", "")
+
+    if not repo_url and not target_dir:
+        user = db.session.get(User, current_user["id"])
+        if user:
+            settings = _get_or_create_settings(user)
+            profile = settings.get_section("profile") or {}
+            repo_url = (profile.get("defaultRepoUrl") or "").strip()
+            branch = data.get("branch") or (profile.get("defaultBranch") or "main")
+
+    branch = (branch or "main").strip() or "main"
+
+    if not repo_url and not target_dir:
+        return jsonify({"error": "repo_url or target_dir is required"}), 400
+    if repo_url:
+        is_valid, error_msg = validate_repo_url(repo_url)
+        if not is_valid:
+            return jsonify({"error": error_msg}), 400
+
+    # --- Per-user, per-run report directory ---
+    pipeline_id = str(uuid.uuid4())[:8]
+    user_report_dir = os.path.join(
+        os.path.dirname(BASE_DIR), "runtime", "reports",
+        str(current_user["id"]), pipeline_id
+    )
+    os.makedirs(user_report_dir, exist_ok=True)
+
+    # --- Create DB pipeline record ---
+    pipeline_record = Pipeline(
+        id=pipeline_id,
+        user_id=current_user["id"],
+        user_repo_id=user_repo.id if user_repo else None,
+        report_dir=user_report_dir,
+        repo_url=repo_url,
+        repo_name=repo_url.rstrip("/").split("/")[-1] if repo_url else "",
+        branch=branch,
+        commit_sha=data.get("commit_sha", "manual"),
+        commit_message=data.get("commit_message", f"Manual trigger by {current_user['username']}"),
+        author=current_user["username"],
+        status="queued",
+    )
+    pipeline_record.triggered_by = full_user or current_user
+    pipeline_record.policy_snapshot = {
+        "minScore": policy.min_score,
+        "blockCritical": policy.block_critical,
+        "blockHigh": policy.block_high,
+        "maxCriticalVulns": policy.max_critical_vulns,
+        "maxHighVulns": policy.max_high_vulns,
+        "autoBlock": policy.auto_block,
+        "blockOnSecrets": policy.block_on_secrets,
+        "capturedAt": utcnow().isoformat(),
+    }
+    db.session.add(pipeline_record)
+    db.session.commit()
+
+    # --- Create executor pipeline object (for async run) ---
     pipeline = pipeline_executor.create_pipeline(
         repo_url=repo_url,
         branch=branch,
         commit_sha=data.get("commit_sha", "manual"),
         commit_message=data.get("commit_message", f"Manual trigger by {current_user['username']}"),
         author=current_user["username"],
+        pipeline_id=pipeline_id,
     )
-
-    # Enrich with user info and policy snapshot
-    for i, p in enumerate(pipeline_executor.pipeline_history):
-        if p["id"] == pipeline.id:
-            pipeline_executor.pipeline_history[i]["triggered_by"] = full_user or current_user
-            pipeline_executor.pipeline_history[i]["policy_snapshot"] = {
-                "minScore": policy.min_score,
-                "blockCritical": policy.block_critical,
-                "blockHigh": policy.block_high,
-                "maxCriticalVulns": policy.max_critical_vulns,
-                "maxHighVulns": policy.max_high_vulns,
-                "autoBlock": policy.auto_block,
-                "capturedAt": datetime.now().isoformat(),
-            }
-            break
-    pipeline_executor._save_pipelines()
 
     add_notification(
         "info",
         "Pipeline Triggered",
-        f"Security scan started for branch '{branch}' by {current_user['username']}",
-        {"pipeline_id": pipeline.id, "branch": branch},
+        f"Security scan started for {'branch' + chr(32) + repr(branch) if branch else 'local path'} by {current_user['username']}",
+        {"pipeline_id": pipeline_id, "branch": branch},
+        user_id=current_user["id"],
     )
 
-    run_pipeline_async(
+    scan_prefs = {}
+    user = db.session.get(User, current_user["id"])
+    if user:
+        settings = _get_or_create_settings(user)
+        scan_prefs = settings.get_section("scanPreferences") or {}
+
+    run_pipeline_async_db(
         pipeline_executor,
         pipeline,
         repo_url=repo_url if repo_url else None,
         target_dir=target_dir if target_dir else None,
-        image_name=image_name,
+        image_name=image_name if image_name else None,
+        scan_prefs=scan_prefs,
     )
 
     return jsonify({
         "message": "Pipeline triggered successfully",
-        "pipeline_id": pipeline.id,
-        "status": pipeline.status.value,
+        "pipeline_id": pipeline_id,
+        "status": "queued",
     }), 202
+
+
+# ====================================================================
+# USER REPOSITORY ROUTES  (per-user repo configuration)
+# ====================================================================
+
+@app.route("/api/repositories", methods=["GET"])
+@jwt_required()
+def list_repositories():
+    current_user = get_current_user_info()
+    repos = (
+        UserRepository.query
+        .filter_by(user_id=current_user["id"])
+        .order_by(UserRepository.created_at.desc())
+        .all()
+    )
+    return jsonify({"repositories": [r.to_dict() for r in repos]})
+
+
+@app.route("/api/repositories", methods=["POST"])
+@jwt_required()
+def add_repository():
+    current_user = get_current_user_info()
+    data = request.get_json() or {}
+
+    url = (data.get("url") or "").strip()
+    if not url:
+        return jsonify({"error": "url is required"}), 400
+
+    # Validate URL format
+    if not (url.startswith("https://") or url.startswith("git@") or url.startswith("http://")):
+        return jsonify({"error": "Invalid repository URL"}), 400
+
+    # If this is marked default, unset existing default for this user
+    if data.get("is_default"):
+        UserRepository.query.filter_by(
+            user_id=current_user["id"], is_default=True
+        ).update({"is_default": False})
+
+    repo = UserRepository(
+        user_id=current_user["id"],
+        name=data.get("name", url.rstrip("/").split("/")[-1]),
+        url=url,
+        branch=data.get("branch", "main"),
+        description=data.get("description", ""),
+        is_default=bool(data.get("is_default", False)),
+    )
+    db.session.add(repo)
+    db.session.commit()
+    return jsonify({"message": "Repository added", "repository": repo.to_dict()}), 201
+
+
+@app.route("/api/repositories/<int:repo_id>", methods=["PUT"])
+@jwt_required()
+def update_repository(repo_id):
+    current_user = get_current_user_info()
+    repo = db.session.get(UserRepository, repo_id)
+    if not repo or repo.user_id != current_user["id"]:
+        return jsonify({"error": "Repository not found"}), 404
+
+    data = request.get_json() or {}
+    if "name" in data:
+        repo.name = data["name"]
+    if "url" in data:
+        repo.url = data["url"]
+    if "branch" in data:
+        repo.branch = data["branch"]
+    if "description" in data:
+        repo.description = data["description"]
+    if data.get("is_default"):
+        UserRepository.query.filter_by(
+            user_id=current_user["id"], is_default=True
+        ).update({"is_default": False})
+        repo.is_default = True
+
+    db.session.commit()
+    return jsonify({"message": "Repository updated", "repository": repo.to_dict()})
+
+
+@app.route("/api/repositories/<int:repo_id>", methods=["DELETE"])
+@jwt_required()
+def delete_repository(repo_id):
+    current_user = get_current_user_info()
+    repo = db.session.get(UserRepository, repo_id)
+    if not repo or repo.user_id != current_user["id"]:
+        return jsonify({"error": "Repository not found"}), 404
+    db.session.delete(repo)
+    db.session.commit()
+    return jsonify({"message": "Repository deleted"})
+
+
+@app.route("/api/repositories/<int:repo_id>/set-default", methods=["POST"])
+@jwt_required()
+def set_default_repository(repo_id):
+    current_user = get_current_user_info()
+    repo = db.session.get(UserRepository, repo_id)
+    if not repo or repo.user_id != current_user["id"]:
+        return jsonify({"error": "Repository not found"}), 404
+    UserRepository.query.filter_by(
+        user_id=current_user["id"], is_default=True
+    ).update({"is_default": False})
+    repo.is_default = True
+    db.session.commit()
+    return jsonify({"message": "Default repository updated", "repository": repo.to_dict()})
+
 
 
 # ====================================================================
@@ -1278,7 +2319,7 @@ def update_pipeline_config():
         if json_key in data:
             setattr(config, attr, data[json_key])
 
-    config.updated_at = datetime.now()
+    config.updated_at = utcnow()
     config.updated_by = current_user["username"]
     db.session.commit()
 
@@ -1291,18 +2332,46 @@ def update_pipeline_config():
 
 @app.route("/webhook/github", methods=["POST"])
 def github_webhook():
-    signature = request.headers.get("X-Hub-Signature-256")
-    sig_valid = True
-    if GITHUB_WEBHOOK_SECRET != "your-webhook-secret":
-        sig_valid = verify_github_signature(request.data, signature)
-        if not sig_valid:
-            # Log the invalid attempt
-            log = WebhookLog(event_type="invalid_signature", signature_valid=False, processed=False)
-            db.session.add(log)
-            db.session.commit()
-            return jsonify({"error": "Invalid signature"}), 401
-
     event = request.headers.get("X-GitHub-Event", "ping")
+    payload = request.get_json(silent=True) or {}
+    signature = request.headers.get("X-Hub-Signature-256")
+
+    repo_url = payload.get("repository", {}).get("clone_url", "")
+    normalized_repo = _normalize_repo_url(repo_url)
+
+    owner_repo = None
+    if normalized_repo:
+        all_repos = UserRepository.query.all()
+        for repo in all_repos:
+            if _normalize_repo_url(repo.url) == normalized_repo:
+                owner_repo = repo
+                break
+
+    owner_user = db.session.get(User, owner_repo.user_id) if owner_repo else None
+    owner_settings = _get_or_create_settings(owner_user) if owner_user else None
+    owner_git_prefs = _get_user_git_integration(owner_user) if owner_user else {}
+    owner_secret = (owner_git_prefs.get("webhookSecret") or "").strip() if owner_git_prefs else ""
+
+    candidate_secrets = []
+    if owner_secret:
+        candidate_secrets.append(owner_secret)
+    if GITHUB_WEBHOOK_SECRET and GITHUB_WEBHOOK_SECRET != "your-webhook-secret":
+        candidate_secrets.append(GITHUB_WEBHOOK_SECRET)
+
+    sig_valid = True
+    if candidate_secrets:
+        sig_valid = any(verify_github_signature(request.data, signature, sec) for sec in candidate_secrets)
+    elif not ALLOW_UNVERIFIED_WEBHOOKS:
+        log = WebhookLog(event_type="missing_secret", signature_valid=False, processed=False)
+        db.session.add(log)
+        db.session.commit()
+        return jsonify({"error": "Webhook secret not configured"}), 503
+
+    if not sig_valid:
+        log = WebhookLog(event_type="invalid_signature", signature_valid=False, processed=False)
+        db.session.add(log)
+        db.session.commit()
+        return jsonify({"error": "Invalid signature"}), 401
 
     # Log webhook
     wh_log = WebhookLog(
@@ -1319,21 +2388,59 @@ def github_webhook():
     if event != "push":
         return jsonify({"message": f"Event '{event}' ignored"}), 200
 
-    config = Config.get_instance()
-    if not config.scan_on_push:
-        return jsonify({"message": "Auto-scan disabled"}), 200
+    if not owner_repo or not owner_user:
+        return jsonify({"message": "Repository not linked to any user; webhook ignored"}), 200
 
-    payload = request.get_json()
-    repo_url = payload.get("repository", {}).get("clone_url", "")
+    scan_prefs = (owner_settings.get_section("scanPreferences") or {}) if owner_settings else {}
+    if not bool(scan_prefs.get("autoScanOnPush", True)):
+        return jsonify({"message": "Auto-scan on push disabled for this repository owner"}), 200
+
     branch = payload.get("ref", "refs/heads/main").replace("refs/heads/", "")
     commit = payload.get("head_commit", {})
     commit_sha = commit.get("id", "")
     commit_message = commit.get("message", "")
     author = commit.get("author", {}).get("name", "GitHub")
 
-    configured_branch = config.github_branch or "main"
+    configured_branch = (owner_repo.branch or "main").strip() or "main"
     if branch != configured_branch:
         return jsonify({"message": f"Branch '{branch}' ignored, watching '{configured_branch}'"}), 200
+
+    policy = Policy.get_instance()
+    full_user = get_full_user_info(owner_user.id)
+
+    pipeline_id = str(uuid.uuid4())[:8]
+    user_report_dir = os.path.join(
+        os.path.dirname(BASE_DIR), "runtime", "reports",
+        str(owner_user.id), pipeline_id
+    )
+    os.makedirs(user_report_dir, exist_ok=True)
+
+    pipeline_record = Pipeline(
+        id=pipeline_id,
+        user_id=owner_user.id,
+        user_repo_id=owner_repo.id,
+        report_dir=user_report_dir,
+        repo_url=repo_url,
+        repo_name=repo_url.rstrip("/").split("/")[-1] if repo_url else "",
+        branch=branch,
+        commit_sha=commit_sha or "manual",
+        commit_message=commit_message or "Webhook trigger",
+        author=author,
+        status="queued",
+    )
+    pipeline_record.triggered_by = full_user or {"id": owner_user.id, "username": owner_user.username}
+    pipeline_record.policy_snapshot = {
+        "minScore": policy.min_score,
+        "blockCritical": policy.block_critical,
+        "blockHigh": policy.block_high,
+        "maxCriticalVulns": policy.max_critical_vulns,
+        "maxHighVulns": policy.max_high_vulns,
+        "autoBlock": policy.auto_block,
+        "blockOnSecrets": policy.block_on_secrets,
+        "capturedAt": utcnow().isoformat(),
+    }
+    db.session.add(pipeline_record)
+    db.session.commit()
 
     pipeline = pipeline_executor.create_pipeline(
         repo_url=repo_url,
@@ -1341,17 +2448,29 @@ def github_webhook():
         commit_sha=commit_sha,
         commit_message=commit_message,
         author=author,
+        pipeline_id=pipeline_id,
     )
 
-    target_dir = config.target_directory
-    image_name = config.target_image
-
-    run_pipeline_async(
+    run_pipeline_async_db(
         pipeline_executor,
         pipeline,
         repo_url=repo_url,
-        target_dir=target_dir if target_dir else None,
-        image_name=image_name,
+        target_dir=None,
+        image_name=None,
+        scan_prefs=scan_prefs
+    )
+
+    git_prefs = owner_git_prefs or {}
+    git_prefs["lastWebhookAt"] = utcnow().isoformat()
+    _set_user_git_integration(owner_user, git_prefs)
+    db.session.commit()
+
+    add_notification(
+        "info",
+        "Pipeline Triggered",
+        f"Security scan started for branch '{branch}' by webhook",
+        {"pipeline_id": pipeline_id, "branch": branch, "source": "webhook"},
+        user_id=owner_user.id,
     )
 
     return jsonify({"message": "Pipeline triggered", "pipeline_id": pipeline.id}), 202
@@ -1391,7 +2510,13 @@ def trigger_external_scan():
 
     if async_mode:
         def save_result(result: PipelineResult):
-            _scan_results[result.pipeline_id] = result.to_dict()
+            _scan_results[result.pipeline_id] = {
+                "user_id": current_user["id"],
+                "result": result.to_dict(),
+                "created_at": utcnow().isoformat(),
+            }
+            while len(_scan_results) > 200:
+                _scan_results.pop(next(iter(_scan_results)))
 
         pipeline_id = run_pipeline_background(
             repo_url=repo_url, branch=branch, run_trivy=run_trivy, callback=save_result
@@ -1407,7 +2532,13 @@ def trigger_external_scan():
     else:
         try:
             result = run_pipeline(repo_url=repo_url, branch=branch, run_trivy=run_trivy)
-            _scan_results[result.pipeline_id] = result.to_dict()
+            _scan_results[result.pipeline_id] = {
+                "user_id": current_user["id"],
+                "result": result.to_dict(),
+                "created_at": utcnow().isoformat(),
+            }
+            while len(_scan_results) > 200:
+                _scan_results.pop(next(iter(_scan_results)))
             response_data = result.to_dict()
             response_data["triggered_by"] = current_user["username"]
             return jsonify(response_data), 200 if result.success else 500
@@ -1419,8 +2550,10 @@ def trigger_external_scan():
 @app.route("/api/scan/trigger/<pipeline_id>", methods=["GET"])
 @jwt_required()
 def get_scan_result(pipeline_id):
-    if pipeline_id in _scan_results:
-        return jsonify({"found": True, "result": _scan_results[pipeline_id]})
+    current_user = get_current_user_info()
+    entry = _scan_results.get(pipeline_id)
+    if entry and entry.get("user_id") == current_user["id"]:
+        return jsonify({"found": True, "result": entry.get("result")})
     return jsonify({"found": False, "message": f"No result found for pipeline {pipeline_id}. Scan may still be in progress."}), 404
 
 
@@ -1456,31 +2589,33 @@ def admin_stats():
         return jsonify({"error": "Admin access required"}), 403
 
     # User stats via ORM
-    total_users = User.query.count()
-    admin_count = User.query.filter_by(role="admin").count()
-    viewer_count = User.query.filter_by(role="viewer").count()
-    user_count = User.query.filter_by(role="user").count()
+    total_users = User.query.filter_by(is_active=True).count()
+    admin_count = User.query.filter_by(role="admin", is_active=True).count()
+    user_count = User.query.filter_by(role="user", is_active=True).count()
     google_users = User.query.filter_by(auth_provider="google").count()
     local_users = total_users - google_users
 
-    # Pipeline stats (still from executor)
-    pipelines = pipeline_executor.get_pipelines(50)
+    # Pipeline stats (ORM)
+    pipelines = Pipeline.query.all()
     total_pipelines = len(pipelines)
-    successful = sum(1 for p in pipelines if p.get("status") == "success")
-    failed = sum(1 for p in pipelines if p.get("status") == "failed")
-    running = sum(1 for p in pipelines if p.get("status") == "running")
-    scores = [p.get("security_score") for p in pipelines if p.get("security_score") is not None]
+    successful = sum(1 for p in pipelines if p.status == "success")
+    failed = sum(1 for p in pipelines if p.status == "failed")
+    running = sum(1 for p in pipelines if p.status == "running" or p.status == "queued")
+    
+    scores = [p.security_score for p in pipelines if p.security_score is not None]
     avg_score = round(sum(scores) / len(scores)) if scores else 0
-    deployable_count = sum(1 for p in pipelines if p.get("is_deployable"))
-    blocked_count = sum(1 for p in pipelines if p.get("is_deployable") is False)
+    deployable_count = sum(1 for p in pipelines if p.is_deployable)
+    blocked_count = sum(1 for p in pipelines if p.is_deployable is False and p.status == "success")
 
+    # To maintain fallback compatibility for the UI toggle, we'll check if any rows exist in ScanResults
+    # instead of checking checking the raw JSON files.
     reports_status = {
-        "sast": os.path.exists(os.path.join(REPORT_DIR, "sast-report.json")),
-        "bandit": os.path.exists(os.path.join(REPORT_DIR, "bandit-report.json")),
-        "trivy": os.path.exists(os.path.join(REPORT_DIR, "trivy-report.json")),
-        "gitleaks": os.path.exists(os.path.join(REPORT_DIR, "gitleaks-report.json")),
-        "dast": os.path.exists(os.path.join(REPORT_DIR, "dast-report.json")),
-        "decision": os.path.exists(os.path.join(REPORT_DIR, "security_decision.json")),
+        "sast": ScanResult.query.filter_by(scanner_type="SAST").first() is not None,
+        "bandit": False, # deprecated
+        "trivy": ScanResult.query.filter_by(scanner_type="Trivy").first() is not None,
+        "gitleaks": ScanResult.query.filter_by(scanner_type="Gitleaks").first() is not None,
+        "dast": ScanResult.query.filter_by(scanner_type="DAST").first() is not None,
+        "decision": total_pipelines > 0, # Decision is implicit in the pipelines
     }
 
     config = Config.get_instance()
@@ -1491,7 +2626,6 @@ def admin_stats():
             "total": total_users,
             "admins": admin_count,
             "users": user_count,
-            "viewers": viewer_count,
             "google_auth": google_users,
             "local_auth": local_users,
         },
@@ -1586,6 +2720,51 @@ def admin_delete_user(user_id):
     return jsonify({"message": f"User '{username}' deleted successfully"})
 
 
+@app.route("/api/admin/users/<int:user_id>/details", methods=["GET"])
+@jwt_required()
+def admin_user_details(user_id):
+    current_user = get_current_user_info()
+    if current_user["role"] != "admin":
+        return jsonify({"error": "Admin access required"}), 403
+
+    user = db.session.get(User, user_id)
+    if not user:
+        return jsonify({"error": "User not found"}), 404
+
+    # Calculate stats
+    repositories = []
+    if 'UserRepository' in globals():
+        repos = UserRepository.query.filter_by(user_id=user.id).all()
+        repositories = [{"id": r.id, "name": r.name, "url": r.url, "branch": r.branch} for r in repos]
+    repos_count = len(repositories)
+    
+    pipelines = Pipeline.query.filter_by(user_id=user.id).all()
+    pipelines_count = len(pipelines)
+    
+    total_vulns = 0
+    if pipelines:
+        # Sum from ScanResult since Pipeline doesn't store this directly
+        results = ScanResult.query.filter(ScanResult.pipeline_id.in_([p.id for p in pipelines])).all()
+        for r in results:
+            total_vulns += (r.critical_count or 0) + (r.high_count or 0) + (r.medium_count or 0) + (r.low_count or 0)
+
+    user_data = user.to_dict(safe=True)
+    # Ensure all signup fields are included in case they aren't in to_dict
+    user_data["fullName"] = user.full_name or "N/A"
+    user_data["organization"] = user.organization or "N/A"
+    user_data["roleTitle"] = user.role_title or "N/A"
+    user_data["phone"] = user.phone or "N/A"
+
+    return jsonify({
+        "user": user_data,
+        "stats": {
+            "repositories": repos_count,
+            "pipeline_runs": pipelines_count,
+            "vulnerabilities_found": total_vulns
+        },
+        "repositories_list": repositories
+    })
+
 @app.route("/api/admin/users/<int:user_id>/reset-password", methods=["POST"])
 @jwt_required()
 def admin_reset_password(user_id):
@@ -1616,17 +2795,19 @@ def admin_get_pipelines():
 
     limit = request.args.get("limit", 50, type=int)
     status_filter = request.args.get("status", None)
-    pipelines = pipeline_executor.get_pipelines(limit)
-
+    
+    q = Pipeline.query.order_by(Pipeline.created_at.desc())
     if status_filter:
-        pipelines = [p for p in pipelines if p.get("status") == status_filter]
+        q = q.filter(Pipeline.status == status_filter)
+        
+    pipelines = q.limit(limit).all()
 
     enriched = []
     for p in pipelines:
-        entry = dict(p)
+        entry = p.to_dict()
         failures = []
         stage_logs = []
-        for stage_key, stage_data in (p.get("stages") or {}).items():
+        for stage_key, stage_data in (p.stages or {}).items():
             if isinstance(stage_data, dict):
                 if stage_data.get("status") == "failed":
                     failures.append({"stage": stage_data.get("name", stage_key), "error": stage_data.get("error", "Unknown error")})
@@ -1646,69 +2827,48 @@ def admin_vuln_summary():
     if current_user["role"] != "admin":
         return jsonify({"error": "Admin access required"}), 403
 
+    # Query all critical/high findings
+    vulns = Vulnerability.query.filter(
+        Vulnerability.severity.in_(["CRITICAL", "HIGH"])
+    ).order_by(Vulnerability.created_at.desc()).limit(100).all()
+
+    secrets = Secret.query.filter(
+        Secret.severity.in_(["CRITICAL", "HIGH"])
+    ).order_by(Secret.created_at.desc()).limit(100).all()
+
     critical_findings = []
+    
+    for v in vulns:
+        critical_findings.append({
+            "source": v.source,
+            "tool": v.tool,
+            "severity": v.severity,
+            "message": v.title[:150] if v.title else v.message[:150],
+            "file": v.file_path,
+            "line": v.line_number,
+            "language": v.language,
+            "rule_id": v.rule_id,
+            "vulnerability_id": v.vulnerability_id,
+            "fixed_version": v.fixed_version,
+            "url": v.url,
+            "cwe_id": v.cwe_id,
+            "created_at": v.created_at.isoformat() if v.created_at else None
+        })
 
-    sast_data = load_json_file("sast-report.json")
-    if sast_data and sast_data.get("results"):
-        for issue in sast_data["results"]:
-            sev = (issue.get("severity") or "").upper()
-            if sev in ("CRITICAL", "HIGH"):
-                critical_findings.append({
-                    "source": "SAST",
-                    "tool": issue.get("tool", "unknown"),
-                    "severity": sev,
-                    "message": (issue.get("message") or "")[:150],
-                    "file": issue.get("file", ""),
-                    "line": issue.get("line", 0),
-                    "language": issue.get("language", ""),
-                    "rule_id": issue.get("rule_id", ""),
-                })
+    for s in secrets:
+        critical_findings.append({
+            "source": "Gitleaks",
+            "tool": "gitleaks",
+            "severity": s.severity,
+            "message": f"Secret detected: {s.rule_id}",
+            "file": s.file_path,
+            "line": s.line_number,
+            "match": s.match,
+            "created_at": s.created_at.isoformat() if s.created_at else None
+        })
 
-    trivy_data = load_json_file("trivy-report.json")
-    if trivy_data and trivy_data.get("Results"):
-        for result in trivy_data["Results"]:
-            for vuln in (result.get("Vulnerabilities") or []):
-                sev = (vuln.get("Severity") or "").upper()
-                if sev in ("CRITICAL", "HIGH"):
-                    critical_findings.append({
-                        "source": "Trivy",
-                        "tool": "trivy",
-                        "severity": sev,
-                        "message": (vuln.get("Title") or vuln.get("Description", ""))[:150],
-                        "file": vuln.get("PkgName", ""),
-                        "line": 0,
-                        "vulnerability_id": vuln.get("VulnerabilityID", ""),
-                        "fixed_version": vuln.get("FixedVersion", ""),
-                    })
-
-    gitleaks_data = load_json_file("gitleaks-report.json")
-    if gitleaks_data and gitleaks_data.get("results"):
-        for secret in gitleaks_data["results"]:
-            critical_findings.append({
-                "source": "Gitleaks",
-                "tool": "gitleaks",
-                "severity": secret.get("severity", "HIGH"),
-                "message": f"Secret detected: {secret.get('rule_id', 'unknown')}",
-                "file": secret.get("file", ""),
-                "line": secret.get("line", 0),
-            })
-
-    dast_data = load_json_file("dast-report.json")
-    if dast_data and dast_data.get("results"):
-        for alert in dast_data["results"]:
-            risk = (alert.get("risk") or "LOW").upper()
-            if risk in ("HIGH", "MEDIUM"):
-                critical_findings.append({
-                    "source": "DAST",
-                    "tool": dast_data.get("tool", "zap"),
-                    "severity": risk,
-                    "message": (alert.get("name") or alert.get("description", ""))[:150],
-                    "url": alert.get("url", ""),
-                    "cwe_id": alert.get("cwe_id", ""),
-                })
-
-    severity_order = {"CRITICAL": 0, "HIGH": 1, "MEDIUM": 2, "LOW": 3}
-    critical_findings.sort(key=lambda x: severity_order.get(x.get("severity", "LOW"), 3))
+    severity_order = {"CRITICAL": 0, "HIGH": 1, "MEDIUM": 2, "LOW": 3, "INFO": 4}
+    critical_findings.sort(key=lambda x: (severity_order.get(x.get("severity", "LOW"), 3), x.get("created_at") or ""))
 
     return jsonify({"findings": critical_findings[:100], "total": len(critical_findings)})
 
@@ -1735,7 +2895,26 @@ def scan_local():
         commit_message=f"Local scan by {current_user['username']}",
         author=current_user["username"],
     )
-    run_pipeline_async(pipeline_executor, pipeline, repo_url=None, target_dir=target_dir, image_name=image_name)
+    scan_prefs = {}
+    user = db.session.get(User, current_user["id"])
+    if user:
+        settings = _get_or_create_settings(user)
+        scan_prefs = settings.get_section("scanPreferences") or {}
+    run_pipeline_async_db(
+        pipeline_executor,
+        pipeline,
+        repo_url=None,
+        target_dir=target_dir,
+        image_name=image_name,
+        scan_prefs=scan_prefs,
+    )
+    add_notification(
+        "info",
+        "Local Scan Triggered",
+        f"Security scan started for local path by {current_user['username']}",
+        {"pipeline_id": pipeline.id},
+        user_id=current_user["id"],
+    )
     return jsonify({"message": "Local scan triggered", "pipeline_id": pipeline.id}), 202
 
 
@@ -1746,72 +2925,32 @@ def admin_analytics():
     if current_user["role"] != "admin":
         return jsonify({"error": "Admin access required"}), 403
 
+    # Query vulnerabilities by severity
+    vuln_counts = db.session.query(
+        Vulnerability.severity, db.func.count(Vulnerability.id)
+    ).group_by(Vulnerability.severity).all()
+    
+    # Query secrets by severity
+    secret_counts = db.session.query(
+        Secret.severity, db.func.count(Secret.id)
+    ).group_by(Secret.severity).all()
+
     critical_count = high_count = medium_count = low_count = total_secrets = 0
-
-    sast_path = os.path.join(REPORT_DIR, "sast-report.json")
-    if os.path.exists(sast_path):
-        try:
-            with open(sast_path) as f:
-                sast = json.load(f)
-            for finding in sast.get("results", sast.get("findings", [])):
-                sev = (finding.get("extra", {}).get("severity", "") or finding.get("severity", "")).upper()
-                if sev in ("ERROR", "CRITICAL"):
-                    critical_count += 1
-                elif sev in ("WARNING", "HIGH"):
-                    high_count += 1
-                elif sev == "MEDIUM":
-                    medium_count += 1
-                else:
-                    low_count += 1
-        except Exception:
-            pass
-
-    bandit_path = os.path.join(REPORT_DIR, "bandit-report.json")
-    if os.path.exists(bandit_path):
-        try:
-            with open(bandit_path) as f:
-                bandit = json.load(f)
-            for finding in bandit.get("results", []):
-                sev = finding.get("issue_severity", "").upper()
-                if sev == "HIGH":
-                    high_count += 1
-                elif sev == "MEDIUM":
-                    medium_count += 1
-                else:
-                    low_count += 1
-        except Exception:
-            pass
-
-    trivy_path = os.path.join(REPORT_DIR, "trivy-report.json")
-    if os.path.exists(trivy_path):
-        try:
-            with open(trivy_path) as f:
-                trivy = json.load(f)
-            for result in trivy.get("Results", []):
-                for vuln in result.get("Vulnerabilities", []):
-                    sev = vuln.get("Severity", "").upper()
-                    if sev == "CRITICAL":
-                        critical_count += 1
-                    elif sev == "HIGH":
-                        high_count += 1
-                    elif sev == "MEDIUM":
-                        medium_count += 1
-                    else:
-                        low_count += 1
-        except Exception:
-            pass
-
-    gitleaks_path = os.path.join(REPORT_DIR, "gitleaks-report.json")
-    if os.path.exists(gitleaks_path):
-        try:
-            with open(gitleaks_path) as f:
-                gl = json.load(f)
-            if isinstance(gl, list):
-                total_secrets = len(gl)
-            elif isinstance(gl, dict):
-                total_secrets = len(gl.get("findings", gl.get("results", [])))
-        except Exception:
-            pass
+    
+    for sev, count in vuln_counts:
+        s = (sev or "INFO").upper()
+        if s == "CRITICAL": critical_count += count
+        elif s == "HIGH": high_count += count
+        elif s == "MEDIUM": medium_count += count
+        elif s == "LOW": low_count += count
+        
+    for sev, count in secret_counts:
+        s = (sev or "CRITICAL").upper()
+        if s == "CRITICAL": critical_count += count
+        elif s == "HIGH": high_count += count
+        elif s == "MEDIUM": medium_count += count
+        elif s == "LOW": low_count += count
+        total_secrets += count
 
     import shutil
 
@@ -1864,6 +3003,19 @@ def _get_or_create_settings(user: User) -> UserSettings:
     return settings
 
 
+def _get_user_git_integration(user: User) -> dict:
+    settings = _get_or_create_settings(user)
+    debug_blob = settings.get_section("debug") or {}
+    return debug_blob.get("gitIntegration") or {}
+
+
+def _set_user_git_integration(user: User, git_data: dict) -> None:
+    settings = _get_or_create_settings(user)
+    debug_blob = settings.get_section("debug") or {}
+    debug_blob["gitIntegration"] = git_data or {}
+    settings.set_section("debug", debug_blob)
+
+
 @app.route("/api/settings/profile", methods=["GET"])
 @jwt_required()
 def settings_get_profile():
@@ -1874,12 +3026,32 @@ def settings_get_profile():
 
     settings = _get_or_create_settings(user)
     profile = settings.get_section("profile")
+    default_repo = profile.get("defaultRepoUrl")
+    default_branch = (profile.get("defaultBranch") or "").strip()
+    if not default_repo:
+        repo = (
+            UserRepository.query
+            .filter_by(user_id=user.id, is_default=True)
+            .order_by(UserRepository.created_at.desc())
+            .first()
+        )
+        if repo:
+            default_repo = repo.url
+            if not default_branch:
+                default_branch = (repo.branch or "main").strip()
+
+    if not default_branch:
+        default_branch = "main"
 
     return jsonify({
+        "username": user.username,
         "fullName": profile.get("fullName", user.full_name or ""),
         "email": user.email,
         "organization": profile.get("organization", user.organization or ""),
-        "defaultRepoUrl": profile.get("defaultRepoUrl", ""),
+        "roleTitle": profile.get("roleTitle", user.role_title or ""),
+        "phone": profile.get("phone", user.phone or ""),
+        "defaultRepoUrl": default_repo or "",
+        "defaultBranch": default_branch,
         "timezone": profile.get("timezone", "UTC"),
         "preferredLanguage": profile.get("preferredLanguage", "en"),
         "avatarUrl": profile.get("avatarUrl", ""),
@@ -1902,20 +3074,107 @@ def settings_update_profile():
         user.full_name = data["fullName"]
     if "organization" in data:
         user.organization = data["organization"]
+    if "roleTitle" in data:
+        user.role_title = data["roleTitle"]
+    if "phone" in data:
+        user.phone = data["phone"]
+
+    requested_email = (data.get("email") or "").strip().lower()
+    if requested_email and requested_email != (user.email or "").lower():
+        exists = User.query.filter(db.func.lower(User.email) == requested_email).first()
+        if exists and exists.id != user.id:
+            return jsonify({"error": "Email already exists"}), 409
+        user.email = requested_email
 
     settings = _get_or_create_settings(user)
+    default_repo_url = (data.get("defaultRepoUrl") or "").strip()
+    default_branch = (data.get("defaultBranch") or "main").strip() or "main"
     profile_data = {
         "fullName": data.get("fullName", user.full_name or ""),
         "organization": data.get("organization", user.organization or ""),
-        "defaultRepoUrl": data.get("defaultRepoUrl", ""),
+        "roleTitle": data.get("roleTitle", user.role_title or ""),
+        "phone": data.get("phone", user.phone or ""),
+        "defaultRepoUrl": default_repo_url,
+        "defaultBranch": default_branch,
         "timezone": data.get("timezone", "UTC"),
         "preferredLanguage": data.get("preferredLanguage", "en"),
         "avatarUrl": data.get("avatarUrl", ""),
     }
     settings.set_section("profile", profile_data)
+
+    if default_repo_url:
+        existing_repo = (
+            UserRepository.query
+            .filter_by(user_id=user.id, url=default_repo_url)
+            .first()
+        )
+        UserRepository.query.filter_by(
+            user_id=user.id, is_default=True
+        ).update({"is_default": False})
+        if existing_repo:
+            existing_repo.is_default = True
+            existing_repo.branch = default_branch
+        else:
+            repo_name = default_repo_url.rstrip("/").split("/")[-1]
+            db.session.add(UserRepository(
+                user_id=user.id,
+                name=repo_name,
+                url=default_repo_url,
+                branch=default_branch,
+                description="",
+                is_default=True,
+            ))
     db.session.commit()
 
-    return jsonify({"message": "Profile updated", **profile_data})
+    return jsonify({
+        "message": "Profile updated",
+        "username": user.username,
+        "email": user.email,
+        **profile_data,
+    })
+
+
+@app.route("/api/settings/profile/avatar", methods=["POST"])
+@jwt_required()
+def settings_upload_avatar():
+    identity = get_jwt_identity()
+    user = User.query.filter_by(id=int(identity)).first()
+    if not user:
+        return jsonify({"error": "User not found"}), 404
+
+    avatar_url = ""
+    if request.is_json:
+        payload = request.get_json() or {}
+        avatar_url = (payload.get("avatarUrl") or "").strip()
+    else:
+        file = request.files.get("avatar")
+        if file:
+            raw = file.read()
+            if len(raw) > 2 * 1024 * 1024:
+                return jsonify({"error": "Image must be under 2MB"}), 400
+            import base64
+            mime = file.mimetype or "image/png"
+            avatar_url = f"data:{mime};base64,{base64.b64encode(raw).decode('utf-8')}"
+
+    if not avatar_url:
+        return jsonify({"error": "avatarUrl or avatar file is required"}), 400
+    if len(avatar_url) > 3_000_000:
+        return jsonify({"error": "Avatar payload too large"}), 400
+
+    settings = _get_or_create_settings(user)
+    profile = settings.get_section("profile") or {}
+    profile["avatarUrl"] = avatar_url
+    profile.setdefault("fullName", user.full_name or "")
+    profile.setdefault("organization", user.organization or "")
+    profile.setdefault("roleTitle", user.role_title or "")
+    profile.setdefault("phone", user.phone or "")
+    profile.setdefault("defaultBranch", "main")
+    profile.setdefault("timezone", "UTC")
+    profile.setdefault("preferredLanguage", "en")
+    settings.set_section("profile", profile)
+    db.session.commit()
+
+    return jsonify({"message": "Avatar updated", "avatarUrl": avatar_url})
 
 
 @app.route("/api/settings/notifications", methods=["GET"])
@@ -2011,27 +3270,88 @@ def settings_update_scan_prefs():
 @app.route("/api/settings/git-integration", methods=["GET"])
 @jwt_required()
 def settings_get_git_integration():
-    config = Config.get_instance()
+    identity = get_jwt_identity()
+    user = User.query.filter_by(id=int(identity)).first()
+    if not user:
+        return jsonify({"error": "User not found"}), 404
+
+    settings = _get_or_create_settings(user)
+    git_prefs = _get_user_git_integration(user)
+    scan_prefs = settings.get_section("scanPreferences") or {}
+
+    default_repo = (
+        UserRepository.query
+        .filter_by(user_id=user.id, is_default=True)
+        .order_by(UserRepository.created_at.desc())
+        .first()
+    )
+    fallback_branch = (default_repo.branch if default_repo else "main") or "main"
+    repo_url = (default_repo.url if default_repo else "")
+
     return jsonify({
-        "provider": "github",
-        "webhookUrl": f"{request.host_url}api/webhook/github",
-        "webhookSecret": GITHUB_WEBHOOK_SECRET[:8] + "..." if len(GITHUB_WEBHOOK_SECRET) > 8 else GITHUB_WEBHOOK_SECRET,
-        "lastWebhookAt": config.last_webhook_at.isoformat() if config.last_webhook_at else None,
-        "repoUrl": config.github_repo_url or "",
-        "branch": config.github_branch or "main",
+        "provider": git_prefs.get("provider", "github"),
+        "webhookUrl": f"{request.url_root.rstrip('/')}webhook/github",
+        "webhookSecret": git_prefs.get("webhookSecret") or "",
+        "lastWebhookAt": git_prefs.get("lastWebhookAt"),
+        "repoUrl": git_prefs.get("repoUrl", repo_url),
+        "branch": git_prefs.get("branch", fallback_branch),
+        "autoScanOnPush": bool(scan_prefs.get("autoScanOnPush", True)),
     })
 
 
 @app.route("/api/settings/git-integration", methods=["PUT"])
 @jwt_required()
 def settings_update_git_integration():
+    identity = get_jwt_identity()
+    user = User.query.filter_by(id=int(identity)).first()
+    if not user:
+        return jsonify({"error": "User not found"}), 404
+
     data = request.get_json()
     if not data:
         return jsonify({"error": "No data provided"}), 400
 
-    config = Config.get_instance()
-    if "provider" in data:
-        config.git_provider = data["provider"]
+    settings = _get_or_create_settings(user)
+    existing = _get_user_git_integration(user)
+
+    provider = data.get("provider", existing.get("provider", "github"))
+    repo_url = (data.get("repoUrl") or existing.get("repoUrl") or "").strip()
+    branch = (data.get("branch") or existing.get("branch") or "main").strip() or "main"
+    webhook_secret = (data.get("webhookSecret") or existing.get("webhookSecret") or "").strip()
+    last_webhook_at = existing.get("lastWebhookAt")
+
+    if repo_url and not re.match(r"^https?://", repo_url):
+        return jsonify({"error": "Repository URL must start with http:// or https://"}), 400
+
+    _set_user_git_integration(user, {
+        "provider": provider,
+        "repoUrl": repo_url,
+        "branch": branch,
+        "webhookSecret": webhook_secret,
+        "lastWebhookAt": last_webhook_at,
+    })
+
+    scan_prefs = settings.get_section("scanPreferences") or {}
+    if "autoScanOnPush" in data:
+        scan_prefs["autoScanOnPush"] = bool(data.get("autoScanOnPush"))
+        settings.set_section("scanPreferences", scan_prefs)
+
+    if repo_url:
+        existing_repo = UserRepository.query.filter_by(user_id=user.id, url=repo_url).first()
+        UserRepository.query.filter_by(user_id=user.id, is_default=True).update({"is_default": False})
+        if existing_repo:
+            existing_repo.is_default = True
+            existing_repo.branch = branch
+        else:
+            db.session.add(UserRepository(
+                user_id=user.id,
+                name=repo_url.rstrip("/").split("/")[-1],
+                url=repo_url,
+                branch=branch,
+                description="",
+                is_default=True,
+            ))
+
     db.session.commit()
     return jsonify({"message": "Git integration updated"})
 
@@ -2039,14 +3359,32 @@ def settings_update_git_integration():
 @app.route("/api/settings/git-integration/regenerate-secret", methods=["POST"])
 @jwt_required()
 def settings_regenerate_webhook_secret():
+    identity = get_jwt_identity()
+    user = User.query.filter_by(id=int(identity)).first()
+    if not user:
+        return jsonify({"error": "User not found"}), 404
+
     new_secret = _secrets.token_hex(32)
-    return jsonify({"message": "Webhook secret regenerated", "secret": new_secret[:8] + "..."})
+    existing = _get_user_git_integration(user)
+    existing["webhookSecret"] = new_secret
+    _set_user_git_integration(user, existing)
+    db.session.commit()
+    return jsonify({"message": "Webhook secret regenerated", "secret": new_secret})
 
 
 @app.route("/api/settings/git-integration/test", methods=["POST"])
 @jwt_required()
 def settings_test_webhook():
-    return jsonify({"message": "Webhook test sent", "status": "ok"})
+    identity = get_jwt_identity()
+    user = User.query.filter_by(id=int(identity)).first()
+    if not user:
+        return jsonify({"error": "User not found"}), 404
+
+    git_prefs = _get_user_git_integration(user)
+    repo_url = (git_prefs.get("repoUrl") or "").strip()
+    if not repo_url:
+        return jsonify({"error": "Set repository URL first"}), 400
+    return jsonify({"message": "Webhook configuration looks good", "status": "ok", "repoUrl": repo_url})
 
 
 @app.route("/api/settings/appearance", methods=["GET"])
@@ -2086,78 +3424,13 @@ def settings_update_appearance():
     db.session.commit()
     return jsonify({"message": "Appearance preferences updated"})
 
-
-@app.route("/api/settings/api-tokens", methods=["GET"])
-@jwt_required()
-def settings_get_api_tokens():
-    identity = get_jwt_identity()
-    user = User.query.filter_by(id=int(identity)).first()
-    if not user:
-        return jsonify({"error": "User not found"}), 404
-
-    tokens = ApiToken.query.filter_by(user_id=user.id).order_by(ApiToken.created_at.desc()).all()
-    return jsonify([t.to_dict() for t in tokens])
-
-
-@app.route("/api/settings/api-tokens", methods=["POST"])
-@jwt_required()
-def settings_create_api_token():
-    identity = get_jwt_identity()
-    user = User.query.filter_by(id=int(identity)).first()
-    if not user:
-        return jsonify({"error": "User not found"}), 404
-
-    data = request.get_json() or {}
-    name = data.get("name", "Unnamed Token")
-    expires_in = data.get("expiresIn", "30d")
-
-    token_value = f"sntl_{_secrets.token_hex(20)}"
-    token_id = str(uuid.uuid4())[:8]
-
-    expire_map = {"7d": 7, "30d": 30, "90d": 90, "1y": 365, "never": None}
-    days = expire_map.get(expires_in)
-    expires_at = (datetime.now() + timedelta(days=days)) if days else None
-
-    token = ApiToken(
-        id=token_id,
-        user_id=user.id,
-        name=name,
-        token_hash=hashlib.sha256(token_value.encode()).hexdigest(),
-        expires_at=expires_at,
-    )
-    db.session.add(token)
-    db.session.commit()
-
-    return jsonify({
-        "token": token_value,
-        "id": token_id,
-        "name": name,
-        "expires": expires_at.isoformat() if expires_at else None,
-    })
-
-
-@app.route("/api/settings/api-tokens/<token_id>", methods=["DELETE"])
-@jwt_required()
-def settings_revoke_api_token(token_id):
-    identity = get_jwt_identity()
-    user = User.query.filter_by(id=int(identity)).first()
-    if not user:
-        return jsonify({"error": "User not found"}), 404
-
-    token = ApiToken.query.filter_by(id=token_id, user_id=user.id).first()
-    if token:
-        db.session.delete(token)
-        db.session.commit()
-    return jsonify({"message": "Token revoked"})
-
-
 @app.route("/api/settings/security/sessions", methods=["GET"])
 @jwt_required()
 def settings_get_sessions():
     user_agent = request.headers.get("User-Agent", "Unknown")
     client_ip = request.remote_addr or "Unknown"
     return jsonify([
-        {"id": 1, "device": user_agent[:40], "ip": client_ip, "lastActive": datetime.now().isoformat(), "current": True},
+        {"id": 1, "device": user_agent[:40], "ip": client_ip, "lastActive": utcnow().isoformat(), "current": True},
     ])
 
 
@@ -2177,61 +3450,80 @@ def settings_get_oauth():
         },
     })
 
+# ====================================================================
+# USER FEEDBACK
+# ====================================================================
 
-@app.route("/api/settings/advanced/export", methods=["GET"])
+@app.route("/api/feedback", methods=["POST"])
 @jwt_required()
-def settings_export_data():
+def submit_feedback():
     identity = get_jwt_identity()
     user = User.query.filter_by(id=int(identity)).first()
     if not user:
         return jsonify({"error": "User not found"}), 404
 
-    settings = _get_or_create_settings(user)
-    history = pipeline_executor.get_pipelines(50)
+    data = request.json
+    message = data.get("message")
+    if not message:
+        return jsonify({"error": "Message is required"}), 400
 
-    export = {
-        "exportedAt": datetime.now().isoformat(),
-        "user": {
-            "username": user.username,
-            "email": user.email,
-            "role": user.role,
-            "createdAt": user.created_at.isoformat() if user.created_at else None,
-        },
-        "settings": settings.to_dict(),
-        "scanHistory": history[:50],
-    }
-    return jsonify(export)
-
-
-@app.route("/api/settings/advanced/reset", methods=["POST"])
-@jwt_required()
-def settings_reset_preferences():
-    identity = get_jwt_identity()
-    user = User.query.filter_by(id=int(identity)).first()
-    if not user:
-        return jsonify({"error": "User not found"}), 404
-
-    settings = _get_or_create_settings(user)
-    for section in UserSettings._SECTION_MAP:
-        settings.set_section(section, {})
+    feedback = Feedback(user_id=user.id, message=message)
+    db.session.add(feedback)
     db.session.commit()
-    return jsonify({"message": "All preferences reset to defaults"})
+    return jsonify({"message": "Feedback submitted successfully"}), 201
 
-
-@app.route("/api/settings/advanced/debug", methods=["PUT"])
+@app.route("/api/feedback", methods=["GET"])
 @jwt_required()
-def settings_toggle_debug():
+def get_user_feedback():
     identity = get_jwt_identity()
     user = User.query.filter_by(id=int(identity)).first()
     if not user:
         return jsonify({"error": "User not found"}), 404
 
-    data = request.get_json() or {}
-    settings = _get_or_create_settings(user)
-    settings.set_section("debug", {"enabled": data.get("enabled", False)})
-    db.session.commit()
-    return jsonify({"message": "Debug mode updated"})
+    feedbacks = Feedback.query.filter_by(user_id=user.id).order_by(Feedback.created_at.desc()).all()
+    return jsonify([f.to_dict() for f in feedbacks])
 
+@app.route("/api/admin/feedback", methods=["GET"])
+@jwt_required()
+def admin_get_feedbacks():
+    identity = get_jwt_identity()
+    user = User.query.filter_by(id=int(identity)).first()
+    if not user or user.role != "admin":
+        return jsonify({"error": "Admin access required"}), 403
+
+    feedbacks = Feedback.query.order_by(Feedback.created_at.desc()).limit(20).all()
+    results = []
+    for f in feedbacks:
+        fb_dict = f.to_dict()
+        submitter = User.query.get(f.user_id)
+        if submitter:
+            fb_dict["username"] = submitter.username
+            fb_dict["email"] = submitter.email
+        results.append(fb_dict)
+    return jsonify(results)
+
+@app.route("/api/admin/feedback/<int:feedback_id>/reply", methods=["POST"])
+@jwt_required()
+def admin_reply_feedback(feedback_id):
+    identity = get_jwt_identity()
+    user = User.query.filter_by(id=int(identity)).first()
+    if not user or user.role != "admin":
+        return jsonify({"error": "Admin access required"}), 403
+
+    feedback = Feedback.query.get(feedback_id)
+    if not feedback:
+        return jsonify({"error": "Feedback not found"}), 404
+
+    data = request.json
+    reply = data.get("reply")
+    if not reply:
+        return jsonify({"error": "Reply message is required"}), 400
+
+    feedback.admin_reply = reply
+    feedback.status = "reviewed"
+    feedback.replied_at = utcnow()
+    db.session.commit()
+    return jsonify({"message": "Reply sent successfully", "feedback": feedback.to_dict()})
 
 # ====================================================================
 # ENTRY POINT

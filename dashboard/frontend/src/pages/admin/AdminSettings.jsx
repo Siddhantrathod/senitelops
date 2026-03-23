@@ -16,6 +16,7 @@ const DEFAULT_POLICY = {
   severityWeights: { CRITICAL: 40, HIGH: 25, MEDIUM: 10, LOW: 2 },
   secretPenalty: 30,
   dastPenalty: 15,
+  requiredScanners: { sast: true, dast: false, trivy: true, bandit: true },
 }
 
 export default function AdminSettings() {
@@ -147,7 +148,7 @@ export default function AdminSettings() {
             className={cn(
               'flex items-center gap-2 px-4 py-2.5 rounded-lg text-sm font-medium transition-all',
               activeTab === t.id
-                ? 'bg-violet-500/15 text-violet-400 border border-violet-500/25'
+                ? 'bg-emerald-500/15 text-emerald-400 border border-emerald-500/25'
                 : 'text-steel-400 hover:text-steel-200'
             )}
           >
@@ -177,7 +178,7 @@ export default function AdminSettings() {
                     max="100"
                     value={policy.minScore}
                     onChange={e => setPolicy(p => ({ ...p, minScore: parseInt(e.target.value) }))}
-                    className="flex-1 accent-violet-500"
+                    className="flex-1 accent-emerald-500"
                   />
                   <span className={cn(
                     'text-2xl font-black font-mono w-16 text-right',
@@ -197,7 +198,7 @@ export default function AdminSettings() {
                     type="checkbox"
                     checked={policy.blockCritical}
                     onChange={e => setPolicy(p => ({ ...p, blockCritical: e.target.checked }))}
-                    className="w-5 h-5 rounded accent-violet-500"
+                    className="w-5 h-5 rounded accent-emerald-500"
                   />
                 </label>
                 <label className="flex items-center justify-between p-3 rounded-xl bg-white/[0.02] border border-white/[0.06] cursor-pointer">
@@ -209,7 +210,7 @@ export default function AdminSettings() {
                     type="checkbox"
                     checked={policy.autoBlock}
                     onChange={e => setPolicy(p => ({ ...p, autoBlock: e.target.checked }))}
-                    className="w-5 h-5 rounded accent-violet-500"
+                    className="w-5 h-5 rounded accent-emerald-500"
                   />
                 </label>
               </div>
@@ -242,10 +243,47 @@ export default function AdminSettings() {
             </div>
           </div>
 
+          {/* Minimal Scanner Requirements */}
+          <div className="glass-card p-6">
+            <h3 className="text-lg font-semibold text-steel-50 flex items-center gap-2 mb-6">
+              <Shield className="w-5 h-5 text-indigo-400" /> Minimal Scanner Requirements
+            </h3>
+            <p className="text-xs text-steel-500 mb-4">Select which security scans are strictly required for a pipeline to pass.</p>
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+              {[
+                { id: 'trivy', label: 'Trivy Scan', desc: 'Container & FS' },
+                { id: 'sast', label: 'SAST Scan', desc: 'Static Analysis' },
+                { id: 'dast', label: 'DAST Scan', desc: 'Dynamic Analysis' },
+                { id: 'bandit', label: 'Secret Detection', desc: 'Hardcoded Secrets' }
+              ].map(scanner => (
+                <label key={scanner.id} className="flex items-start gap-4 p-4 rounded-xl bg-white/[0.02] border border-white/[0.06] cursor-pointer hover:bg-white/[0.04] transition-colors">
+                  <div className="pt-0.5">
+                    <input
+                      type="checkbox"
+                      checked={policy.requiredScanners?.[scanner.id] ?? false}
+                      onChange={e => setPolicy(p => ({
+                        ...p,
+                        requiredScanners: {
+                          ...(p.requiredScanners || DEFAULT_POLICY.requiredScanners),
+                          [scanner.id]: e.target.checked
+                        }
+                      }))}
+                      className="w-5 h-5 rounded accent-indigo-500"
+                    />
+                  </div>
+                  <div>
+                    <span className="text-sm font-medium text-steel-100 block">{scanner.label}</span>
+                    <span className="text-[10px] text-steel-500">{scanner.desc}</span>
+                  </div>
+                </label>
+              ))}
+            </div>
+          </div>
+
           {/* Severity Weights */}
           <div className="glass-card p-6">
             <h3 className="text-lg font-semibold text-steel-50 flex items-center gap-2 mb-6">
-              <Sliders className="w-5 h-5 text-violet-400" /> Severity Weights
+              <Sliders className="w-5 h-5 text-emerald-400" /> Severity Weights
             </h3>
             <p className="text-xs text-steel-500 mb-4">Points deducted from security score per finding (base 100)</p>
             <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
@@ -328,7 +366,7 @@ export default function AdminSettings() {
         <div className="space-y-6">
           <div className="glass-card p-6">
             <h3 className="text-lg font-semibold text-steel-50 flex items-center gap-2 mb-6">
-              <FileText className="w-5 h-5 text-blue-400" /> Repository Configuration
+              <FileText className="w-5 h-5 text-emerald-400" /> Repository Configuration
             </h3>
             <div className="space-y-5">
               <div>
@@ -378,7 +416,7 @@ export default function AdminSettings() {
                   type="checkbox"
                   checked={config.auto_scan || false}
                   onChange={e => setConfig(c => ({ ...c, auto_scan: e.target.checked }))}
-                  className="w-5 h-5 rounded accent-violet-500"
+                  className="w-5 h-5 rounded accent-emerald-500"
                 />
               </label>
             </div>

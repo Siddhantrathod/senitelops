@@ -11,11 +11,11 @@ export default function StatCard({
   gradient = 'primary',
 }) {
   const gradients = {
-    primary: 'from-violet-500 to-violet-400',
+    primary: 'from-emerald-500 to-emerald-400',
     danger: 'from-red-500 to-red-400',
     warning: 'from-amber-500 to-orange-400',
     success: 'from-lime-500 to-lime-400',
-    purple: 'from-purple-500 to-violet-400',
+    purple: 'from-purple-500 to-emerald-400',
   }
 
   const glowColors = {
@@ -27,7 +27,7 @@ export default function StatCard({
   }
 
   const iconBg = {
-    primary: 'bg-violet-500/10 text-violet-400 border border-violet-500/20',
+    primary: 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20',
     danger: 'bg-red-500/10 text-red-400 border border-red-500/20',
     warning: 'bg-amber-500/10 text-amber-400 border border-amber-500/20',
     success: 'bg-lime-500/10 text-lime-400 border border-lime-500/20',

@@ -3,7 +3,7 @@ import {
   GitBranch, Webhook, Copy, RefreshCw, CheckCircle, Eye, EyeOff,
   Clock, ExternalLink, Save, RotateCcw, Zap, AlertTriangle,
 } from 'lucide-react'
-import { SettingsCard, FormField, SectionHeader, ConfirmationModal, SettingsSkeleton } from '../components'
+import { SettingsCard, FormField, ConfirmationModal, SettingsSkeleton, ToggleSwitch } from '../components'
 import { TextInput, Select } from '../components/FormInputs'
 import { useSettings } from '../hooks/useSettings'
 import { fetchGitIntegration, updateGitIntegration, regenerateWebhookSecret, testWebhook } from '../services/settingsApi'
@@ -14,6 +14,7 @@ const DEFAULTS = {
   webhookUrl: '',
   webhookSecret: '',
   lastWebhookAt: null,
+  autoScanOnPush: true,
 }
 
 const PROVIDERS = [
@@ -105,6 +106,19 @@ export default function GitIntegrationTab({ showToast }) {
       {/* Webhook Configuration */}
       <SettingsCard title="Webhook Configuration" icon={Webhook} description="Manage incoming webhook for scan triggers">
         <div className="space-y-5">
+          <div className="flex items-center justify-between p-4 rounded-xl bg-theme-base border border-theme-subtle">
+            <div className="flex items-center gap-3">
+              <div className="p-2 rounded-lg bg-lime-500/10">
+                <Zap className="w-4 h-4 text-lime-400" />
+              </div>
+              <div>
+                <p className="text-sm font-medium text-steel-100">Auto-scan on Push</p>
+                <p className="text-xs text-steel-500">Trigger a pipeline when webhook push events are received</p>
+              </div>
+            </div>
+            <ToggleSwitch checked={Boolean(data.autoScanOnPush)} onChange={(val) => update('autoScanOnPush', val)} />
+          </div>
+
           {/* Webhook URL */}
           <FormField label="Webhook URL" hint="Share this URL in your repository webhook settings">
             <div className="flex items-center gap-2">
@@ -121,10 +135,13 @@ export default function GitIntegrationTab({ showToast }) {
                   {copied === 'url' ? <CheckCircle className="w-4 h-4 text-lime-400" /> : <Copy className="w-4 h-4" />}
                 </button>
               </div>
-              <a href={data.webhookUrl || '#'} target="_blank" rel="noopener noreferrer"
-                className="p-2.5 rounded-xl bg-theme-accent border border-theme text-steel-400 hover:text-steel-200 transition-colors">
+              <button
+                type="button"
+                onClick={() => copyToClipboard(data.webhookUrl || `${window.location.origin}/api/webhook/${data.provider}`, 'url')}
+                className="p-2.5 rounded-xl bg-theme-accent border border-theme text-steel-400 hover:text-steel-200 transition-colors"
+              >
                 <ExternalLink className="w-4 h-4" />
-              </a>
+              </button>
             </div>
           </FormField>
 

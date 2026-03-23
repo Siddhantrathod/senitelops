@@ -20,8 +20,10 @@ import {
   Globe,
   KeyRound,
 } from 'lucide-react'
-import { fetchSecuritySummary, fetchLatestPipeline, triggerPipeline, fetchSetupStatus, fetchGitleaksReport, fetchDastReport } from '../services/api'
+import { fetchSecuritySummary, fetchLatestPipeline, triggerPipeline, fetchSetupStatus, fetchGitleaksReport, fetchDastReport, fetchRepositories, fetchProfile, fetchPipelines } from '../services/api'
+import { notyf } from '../utils/notifications'
 import { formatDate, calculateRiskScore, getSecurityGrade } from '../utils/helpers'
+import { getAutoRefreshInterval } from '../utils/appearance'
 import StatCard from '../components/StatCard'
 import SeverityPieChart from '../components/charts/SeverityPieChart'
 import VulnerabilityBarChart from '../components/charts/VulnerabilityBarChart'
@@ -30,15 +32,43 @@ import SecurityRadarChart from '../components/charts/SecurityRadarChart'
 import { PageLoader } from '../components/LoadingSpinner'
 import Alert from '../components/Alert'
 import { useAuth } from '../context/AuthContext'
+import FeedbackModal from '../components/FeedbackModal'
+
+function formatTrendLabel(dateStr) {
+  if (!dateStr) return '—'
+  try {
+    return new Date(dateStr).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })
+  } catch {
+    return dateStr
+  }
+}
+
+function summarizePipeline(pipeline) {
+  const vuln = pipeline?.vulnerability_summary || {}
+  return {
+    total: Number(vuln.total || 0),
+    critical: Number(vuln.critical || 0),
+    high: Number(vuln.high || 0),
+    medium: Number(vuln.medium || 0),
+    low: Number(vuln.low || 0),
+    securityScore: pipeline?.security_score ?? null,
+    createdAt: pipeline?.created_at || pipeline?.completed_at || pipeline?.started_at || pipeline?.triggered_at || null,
+    status: pipeline?.status || 'unknown',
+    isDeployable: pipeline?.is_deployable,
+  }
+}
 
 export default function Dashboard() {
   const navigate = useNavigate()
   const [data, setData] = useState(null)
   const [pipeline, setPipeline] = useState(null)
+  const [pipelineHistory, setPipelineHistory] = useState([])
   const [loading, setLoading] = useState(true)
   const [triggering, setTriggering] = useState(false)
   const [error, setError] = useState(null)
   const [redirecting, setRedirecting] = useState(false)
+  const [isFeedbackOpen, setIsFeedbackOpen] = useState(false)
+  const [refreshSeconds, setRefreshSeconds] = useState(getAutoRefreshInterval(30))
   const { isAuthenticated, loading: authLoading } = useAuth()
 
   useEffect(() => {
@@ -70,7 +100,15 @@ export default function Dashboard() {
 
   // Auto-refresh pipeline status if running
   useEffect(() => {
+    const handler = () => setRefreshSeconds(getAutoRefreshInterval(30))
+    window.addEventListener('sentinelops:appearance-updated', handler)
+    return () => window.removeEventListener('sentinelops:appearance-updated', handler)
+  }, [])
+
+  // Auto-refresh pipeline status if running
+  useEffect(() => {
     if (pipeline && ['running', 'queued'].includes(pipeline.status)) {
+      if (refreshSeconds === 0) return undefined
       const interval = setInterval(async () => {
         try {
           const latestPipeline = await fetchLatestPipeline()
@@ -84,21 +122,23 @@ export default function Dashboard() {
         } catch (err) {
           console.error('Error refreshing pipeline:', err)
         }
-      }, 3000)
+      }, refreshSeconds * 1000)
       return () => clearInterval(interval)
     }
-  }, [pipeline])
+  }, [pipeline, refreshSeconds])
 
   const loadData = async () => {
     try {
-      const [result, latestPipeline, gitleaksResult, dastResult] = await Promise.all([
+      const [result, latestPipeline, gitleaksResult, dastResult, pipelinesResult] = await Promise.all([
         fetchSecuritySummary(),
         fetchLatestPipeline().catch(() => null),
         fetchGitleaksReport().catch(() => null),
         fetchDastReport().catch(() => null),
+        fetchPipelines(14).catch(() => null),
       ])
       setData({ ...result, gitleaks: gitleaksResult, dast: dastResult })
       setPipeline(latestPipeline)
+      setPipelineHistory(pipelinesResult?.pipelines || [])
     } catch (err) {
       setError('Failed to load security data. Please ensure the backend is running.')
       console.error(err)
@@ -108,11 +148,29 @@ export default function Dashboard() {
   const handleTriggerScan = async () => {
     setTriggering(true)
     try {
-      await triggerPipeline()
+      const reposRes = await fetchRepositories()
+      const repos = reposRes.repositories || []
+
+      if (repos.length === 0) {
+        const profile = await fetchProfile().catch(() => null)
+        const defaultRepoUrl = profile?.defaultRepoUrl?.trim()
+        const defaultBranch = profile?.defaultBranch?.trim() || 'main'
+        if (!defaultRepoUrl) {
+          notyf.error('No repositories configured. Please set them up in Settings first.')
+          setTriggering(false)
+          return
+        }
+        await triggerPipeline({ repo_url: defaultRepoUrl, branch: defaultBranch })
+      } else {
+        await triggerPipeline()
+      }
+
+      notyf.success('Security scan started successfully.')
       const latestPipeline = await fetchLatestPipeline()
       setPipeline(latestPipeline)
     } catch (err) {
       console.error('Error triggering scan:', err)
+      notyf.error(err.response?.data?.error || 'Failed to trigger pipeline.')
     } finally {
       setTriggering(false)
     }
@@ -189,6 +247,8 @@ export default function Dashboard() {
   const calculatedScore = 100 - riskScore
   // Prefer pipeline score for consistency
   const securityScore = pipeline?.security_score ?? calculatedScore
+  const maxCvssScore = pipeline?.max_cvss_score?.toFixed(1) || pipeline?.vulnerability_summary?.max_cvss_score?.toFixed(1) || 'N/A'
+  
   const { grade, color } = getSecurityGrade(securityScore)
 
   // Radar chart data
@@ -209,13 +269,20 @@ export default function Dashboard() {
   const dastMedium = dastData?.metrics?.medium || 0
   const dastLow = dastData?.metrics?.low || 0
 
+  const radarCoverageCount = [
+    Boolean(sastResults.length > 0 || banditResults.length > 0),
+    Boolean(trivyResults.length > 0),
+    Boolean(secretsCount > 0),
+    Boolean(dastAlerts > 0),
+  ].filter(Boolean).length
+
   const radarData = [
     { category: 'Code Security', score: codeSecurityScore },
-    { category: 'Container Security', score: 100 - calculateRiskScore(trivyResults) },
-    { category: 'Dependencies', score: trivyResults.length > 3 ? 60 : 90 },
-    { category: 'Secrets', score: secretsCount > 0 ? Math.max(0, 100 - secretsCount * 15) : 95 },
-    { category: 'DAST', score: dastAlerts > 0 ? Math.max(0, 100 - dastHigh * 20 - dastMedium * 5) : 95 },
-    { category: 'Compliance', score: totalVulnerabilities > 5 ? 65 : 85 },
+    { category: 'Container Security', score: trivyResults.length > 0 ? 100 - calculateRiskScore(trivyResults) : 100 },
+    { category: 'Secrets', score: secretsCount > 0 ? Math.max(0, 100 - secretsCount * 15) : 100 },
+    { category: 'DAST', score: dastAlerts > 0 ? Math.max(0, 100 - dastHigh * 20 - dastMedium * 5) : 100 },
+    { category: 'Pipeline Readiness', score: pipeline?.security_score ?? securityScore },
+    { category: 'Scan Coverage', score: Math.round((radarCoverageCount / 4) * 100) },
   ]
 
   // Bar chart data by type
@@ -226,25 +293,76 @@ export default function Dashboard() {
     { name: 'DAST Alerts', count: dastAlerts, severity: 'medium' },
   ]
 
-  // Trend data (mock for demo - in real app this would be historical)
-  const trendData = [
-    { date: 'Jan 28', vulnerabilities: totalVulnerabilities + 3, fixed: 2 },
-    { date: 'Jan 29', vulnerabilities: totalVulnerabilities + 2, fixed: 3 },
-    { date: 'Jan 30', vulnerabilities: totalVulnerabilities + 1, fixed: 4 },
-    { date: 'Jan 31', vulnerabilities: totalVulnerabilities, fixed: 5 },
-    { date: 'Feb 1', vulnerabilities: totalVulnerabilities - 1, fixed: 6 },
-    { date: 'Feb 2', vulnerabilities: totalVulnerabilities, fixed: 6 },
-  ]
+
+  const latestPipelineSummary = summarizePipeline(pipeline)
+  const previousPipelineSummary = summarizePipeline(pipelineHistory?.[1])
+
+  const newFindings = Math.max((latestPipelineSummary.total || totalVulnerabilities) - (previousPipelineSummary.total || 0), 0)
+  const fixedFindings = Math.max((previousPipelineSummary.total || 0) - (latestPipelineSummary.total || totalVulnerabilities), 0)
+
+  const trendData = (() => {
+    const runs = [...(pipelineHistory || [])]
+      .filter((item) => item?.created_at || item?.completed_at || item?.started_at || item?.triggered_at)
+      .sort((a, b) => new Date(a.created_at || a.completed_at || a.started_at || a.triggered_at) - new Date(b.created_at || b.completed_at || b.started_at || b.triggered_at))
+      .slice(-7)
+
+    if (runs.length === 0) {
+      return [{ date: 'Current', vulnerabilities: totalVulnerabilities, fixed: 0 }]
+    }
+
+    return runs.map((run, index) => {
+      const summary = summarizePipeline(run)
+      const prev = index > 0 ? summarizePipeline(runs[index - 1]) : null
+      return {
+        date: formatTrendLabel(summary.createdAt),
+        vulnerabilities: summary.total,
+        fixed: prev ? Math.max(prev.total - summary.total, 0) : 0,
+      }
+    })
+  })()
 
   const criticalCount = combinedSeverity.Critical + combinedSeverity.High
+
+  const nextActions = [
+    criticalCount > 0 && {
+      title: 'Review critical/high findings',
+      description: `${criticalCount} issues need immediate attention`,
+      href: '/dashboard/sast',
+      icon: AlertTriangle,
+      tone: 'danger',
+    },
+    secretsCount > 0 && {
+      title: 'Rotate exposed secrets',
+      description: `${secretsCount} secret${secretsCount === 1 ? '' : 's'} detected`,
+      href: '/dashboard/sast',
+      icon: KeyRound,
+      tone: 'warning',
+    },
+    dastCount > 0 && {
+      title: 'Inspect DAST alerts',
+      description: `${dastCount} runtime alert${dastCount === 1 ? '' : 's'} detected`,
+      href: '/dashboard/dast',
+      icon: Globe,
+      tone: 'info',
+    },
+    pipeline?.status && {
+      title: pipeline.status === 'success' ? 'Deployment gate passed' : 'Check latest pipeline',
+      description: pipeline.status === 'success'
+        ? (pipeline.is_deployable ? 'Ready for deployment' : 'Blocked by policy')
+        : `Current state: ${pipeline.status}`,
+      href: '/dashboard/pipeline',
+      icon: Rocket,
+      tone: pipeline.status === 'success' ? 'success' : 'info',
+    },
+  ].filter(Boolean).slice(0, 3)
 
   return (
     <div className="space-y-6 animate-fade-in">
       {/* Page Header */}
       <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
         <div>
-          <h1 className="text-3xl font-bold text-slate-800 mb-2">Security Dashboard</h1>
-          <p className="text-slate-500">
+          <h1 className="text-3xl font-bold text-steel-50 mb-2">Security Dashboard</h1>
+          <p className="text-steel-400">
             Overview of your DevSecOps security posture
           </p>
         </div>
@@ -253,7 +371,7 @@ export default function Dashboard() {
             <Link
               to="/dashboard/pipeline"
               className={`flex items-center gap-2 px-4 py-2 rounded-xl border ${pipeline.status === 'running' || pipeline.status === 'queued'
-                ? 'bg-blue-50 border-blue-200 text-blue-600'
+                ? 'bg-emerald-50 border-emerald-200 text-emerald-600'
                 : pipeline.status === 'success'
                   ? 'bg-green-50 border-green-200 text-green-600'
                   : 'bg-red-50 border-red-200 text-red-600'
@@ -289,6 +407,14 @@ export default function Dashboard() {
               <Play className="w-4 h-4" />
             )}
             {triggering ? 'Starting...' : 'Run Scan'}
+          </button>
+          
+          <button
+            onClick={() => setIsFeedbackOpen(true)}
+            className="btn-secondary flex items-center gap-2"
+          >
+            <Globe className="w-4 h-4 text-blue-400" />
+            Feedback
           </button>
         </div>
       </div>
@@ -345,29 +471,31 @@ export default function Dashboard() {
           gradient="primary"
         />
         <StatCard
-          title="Total Vulnerabilities"
-          value={totalVulnerabilities}
-          subtitle={`${codeIssueCount} code + ${trivyResults.length} container`}
+          title="Open Critical/High"
+          value={criticalCount}
+          subtitle="Issues requiring immediate action"
           icon={AlertTriangle}
-          trend={totalVulnerabilities > 5 ? '+2' : '-1'}
-          trendDirection={totalVulnerabilities > 5 ? 'up' : 'down'}
+          trend={criticalCount > 0 ? 'Needs attention' : 'Clear'}
+          trendDirection={criticalCount > 0 ? 'up' : 'down'}
           gradient="warning"
         />
         <StatCard
-          title="Critical Issues"
-          value={criticalCount}
-          subtitle="Require immediate action"
+          title="New Findings"
+          value={newFindings}
+          subtitle="Compared to the previous scan"
           icon={XCircle}
-          gradient="danger"
+          trend={fixedFindings > 0 ? `${fixedFindings} fixed` : 'No change'}
+          trendDirection={fixedFindings > 0 ? 'down' : 'up'}
+          gradient={newFindings > 0 ? 'danger' : 'success'}
         />
         <StatCard
-          title="Fixed This Week"
-          value="6"
-          subtitle="Vulnerabilities resolved"
-          icon={CheckCircle}
-          trend="+3"
-          trendDirection="down"
-          gradient="success"
+          title="Max CVSS Score"
+          value={maxCvssScore}
+          subtitle="Highest vulnerability severity"
+          icon={AlertTriangle}
+          trend={pipeline?.status ? `Pipeline: ${pipeline.status}` : 'No pipeline'}
+          trendDirection={maxCvssScore >= 7.0 ? 'up' : 'down'}
+          gradient={maxCvssScore >= 9.0 ? 'danger' : maxCvssScore >= 7.0 ? 'warning' : 'success'}
         />
       </div>
 
@@ -389,7 +517,7 @@ export default function Dashboard() {
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         <TrendChart
           data={trendData}
-          title="Vulnerability Trend (7 Days)"
+          title="Vulnerability Trend (Last 7 Runs)"
           dataKeys={['vulnerabilities', 'fixed']}
           height={280}
         />
@@ -400,6 +528,44 @@ export default function Dashboard() {
         />
       </div>
 
+      {/* Next Actions */}
+      <div className="glass-card p-6">
+        <div className="flex items-center justify-between mb-5">
+          <div>
+            <h3 className="text-lg font-semibold text-steel-50">Next Actions</h3>
+            <p className="text-sm text-steel-500">Short, actionable steps based on the latest scan results.</p>
+          </div>
+          <Link to="/dashboard/pipeline" className="text-emerald-400 hover:text-emerald-300 text-sm font-medium">
+            Go to Pipeline →
+          </Link>
+        </div>
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          {nextActions.map((action) => {
+            const ActionIcon = action.icon
+            const toneClasses = {
+              danger: 'bg-red-500/10 border-red-500/20 text-red-400',
+              warning: 'bg-amber-500/10 border-amber-500/20 text-amber-400',
+              success: 'bg-lime-500/10 border-lime-500/20 text-lime-400',
+              info: 'bg-cyan-500/10 border-cyan-500/20 text-cyan-400',
+            }
+            return (
+              <Link key={action.title} to={action.href} className="rounded-2xl border border-white/[0.06] bg-white/[0.02] p-4 hover:bg-white/[0.04] transition-all group">
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <div className={`inline-flex p-2 rounded-xl border ${toneClasses[action.tone]}`}>
+                      <ActionIcon className="w-4 h-4" />
+                    </div>
+                    <h4 className="text-steel-50 font-semibold mt-3 mb-1">{action.title}</h4>
+                    <p className="text-steel-400 text-sm">{action.description}</p>
+                  </div>
+                  <ChevronRight className="w-5 h-5 text-steel-600 group-hover:text-emerald-400 group-hover:translate-x-1 transition-all" />
+                </div>
+              </Link>
+            )
+          })}
+        </div>
+      </div>
+
       {/* Quick Access Cards */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
         {/* SAST Code Analysis Summary */}
@@ -408,7 +574,7 @@ export default function Dashboard() {
             <div className="p-3 rounded-xl bg-purple-500/10 border border-purple-500/20">
               <Code2 className="w-6 h-6 text-purple-400" />
             </div>
-            <ChevronRight className="w-5 h-5 text-steel-600 group-hover:text-violet-400 group-hover:translate-x-1 transition-all" />
+            <ChevronRight className="w-5 h-5 text-steel-600 group-hover:text-emerald-400 group-hover:translate-x-1 transition-all" />
           </div>
           <h3 className="text-xl font-semibold text-steel-50 mb-2">SAST Code Analysis</h3>
           <p className="text-steel-400 text-sm mb-4">
@@ -434,7 +600,7 @@ export default function Dashboard() {
             <div className="p-3 rounded-xl bg-cyan-500/10 border border-cyan-500/20">
               <Container className="w-6 h-6 text-cyan-400" />
             </div>
-            <ChevronRight className="w-5 h-5 text-steel-600 group-hover:text-violet-400 group-hover:translate-x-1 transition-all" />
+            <ChevronRight className="w-5 h-5 text-steel-600 group-hover:text-emerald-400 group-hover:translate-x-1 transition-all" />
           </div>
           <h3 className="text-xl font-semibold text-steel-50 mb-2">Trivy Container Scan</h3>
           <p className="text-steel-400 text-sm mb-4">
@@ -463,7 +629,7 @@ export default function Dashboard() {
             <div className="p-3 rounded-xl bg-cyan-500/10 border border-cyan-500/20">
               <Globe className="w-6 h-6 text-cyan-400" />
             </div>
-            <ChevronRight className="w-5 h-5 text-steel-600 group-hover:text-violet-400 group-hover:translate-x-1 transition-all" />
+            <ChevronRight className="w-5 h-5 text-steel-600 group-hover:text-emerald-400 group-hover:translate-x-1 transition-all" />
           </div>
           <h3 className="text-xl font-semibold text-steel-50 mb-2">DAST Security Scan</h3>
           <p className="text-steel-400 text-sm mb-4">
@@ -489,7 +655,7 @@ export default function Dashboard() {
             <div className="p-3 rounded-xl bg-amber-500/10 border border-amber-500/20">
               <KeyRound className="w-6 h-6 text-amber-400" />
             </div>
-            <ChevronRight className="w-5 h-5 text-steel-600 group-hover:text-violet-400 group-hover:translate-x-1 transition-all" />
+            <ChevronRight className="w-5 h-5 text-steel-600 group-hover:text-emerald-400 group-hover:translate-x-1 transition-all" />
           </div>
           <h3 className="text-xl font-semibold text-steel-50 mb-2">Secret Detection</h3>
           <p className="text-steel-400 text-sm mb-4">
@@ -514,7 +680,7 @@ export default function Dashboard() {
       <div className="glass-card p-6">
         <div className="flex items-center justify-between mb-6">
           <h3 className="text-lg font-semibold text-steel-50">Recent Critical Findings</h3>
-          <Link to="/dashboard/sast" className="text-violet-400 hover:text-violet-300 text-sm font-medium">
+          <Link to="/dashboard/sast" className="text-emerald-400 hover:text-emerald-300 text-sm font-medium">
             View All →
           </Link>
         </div>
@@ -580,6 +746,7 @@ export default function Dashboard() {
           )}
         </div>
       </div>
+      <FeedbackModal open={isFeedbackOpen} onClose={() => setIsFeedbackOpen(false)} />
     </div>
   )
 }

@@ -36,12 +36,15 @@ import {
   Hash,
   KeyRound,
   Globe,
+  Save,
 } from 'lucide-react'
 import { fetchPipelines, triggerPipeline, fetchSetupStatus } from '../services/api'
 import { formatDate, cn } from '../utils/helpers'
+import { getAutoRefreshInterval } from '../utils/appearance'
 import { PageLoader } from '../components/LoadingSpinner'
 import Alert from '../components/Alert'
 import { useAuth } from '../context/AuthContext'
+import { fetchProfile, updateProfile } from './settings/services/settingsApi'
 
 /* =========================================================================
    CONFIG / CONSTANTS
@@ -49,7 +52,7 @@ import { useAuth } from '../context/AuthContext'
 
 const statusConfig = {
   queued: { color: 'bg-steel-600', accent: 'border-l-steel-400', glow: '', label: 'Queued', icon: Clock },
-  running: { color: 'bg-violet-500', accent: 'border-l-violet-500', glow: 'shadow-glow-sm', label: 'Running', icon: Loader2, animate: true },
+  running: { color: 'bg-emerald-500', accent: 'border-l-emerald-500', glow: 'shadow-glow-sm', label: 'Running', icon: Loader2, animate: true },
   success: { color: 'bg-lime-500', accent: 'border-l-lime-500', glow: '', label: 'Success', icon: CheckCircle },
   failed: { color: 'bg-red-500', accent: 'border-l-red-500', glow: 'shadow-[0_0_15px_rgba(255,59,92,0.15)]', label: 'Failed', icon: XCircle },
   cancelled: { color: 'bg-amber-500', accent: 'border-l-amber-500', glow: '', label: 'Cancelled', icon: AlertTriangle },
@@ -81,7 +84,7 @@ const stageDisplayNames = {
 
 const stageColors = {
   pending: { bg: 'bg-white/[0.03]', border: 'border-white/[0.06]', text: 'text-steel-500', dot: 'bg-steel-600' },
-  running: { bg: 'bg-violet-500/5', border: 'border-violet-500/20', text: 'text-violet-400', dot: 'bg-violet-500' },
+  running: { bg: 'bg-emerald-500/5', border: 'border-emerald-500/20', text: 'text-emerald-400', dot: 'bg-emerald-500' },
   success: { bg: 'bg-lime-500/5', border: 'border-lime-500/20', text: 'text-lime-400', dot: 'bg-lime-500' },
   failed: { bg: 'bg-red-500/5', border: 'border-red-500/20', text: 'text-red-400', dot: 'bg-red-500' },
   skipped: { bg: 'bg-white/[0.02]', border: 'border-white/[0.04]', text: 'text-steel-600', dot: 'bg-steel-700' },
@@ -118,6 +121,27 @@ function timeAgo(dateStr) {
   if (diff < 3600) return `${Math.floor(diff / 60)}m ago`
   if (diff < 86400) return `${Math.floor(diff / 3600)}h ago`
   return `${Math.floor(diff / 86400)}d ago`
+}
+
+function formatTimestamp(dateStr) {
+  if (!dateStr) return '—'
+  try {
+    return new Date(dateStr).toLocaleString()
+  } catch {
+    return dateStr
+  }
+}
+
+function buildStageLogText(stage) {
+  if (!stage) return 'No stage data available.'
+  const lines = []
+  lines.push(`Status: ${(stage.status || 'pending').toUpperCase()}`)
+  lines.push(`Started: ${formatTimestamp(stage.started_at)}`)
+  lines.push(`Finished: ${formatTimestamp(stage.finished_at)}`)
+  lines.push(`Duration: ${formatDuration(stage.duration_seconds)}`)
+  if (stage.logs) lines.push('', stage.logs)
+  if (stage.error) lines.push('', `Error: ${stage.error}`)
+  return lines.join('\n')
 }
 
 /* =========================================================================
@@ -199,30 +223,37 @@ function ScoreGauge({ score, size = 120 }) {
 
 function PipelineStepper({ stages, onStageClick }) {
   return (
-    <div className="flex items-center w-full overflow-x-auto py-3 px-1">
-      {STAGE_ORDER.map((key, i) => {
+    <div className="grid grid-cols-2 sm:grid-cols-4 xl:grid-cols-8 gap-2 py-1">
+      {STAGE_ORDER.map((key) => {
         const rk = resolveStageKey(key, stages)
         const stage = stages[rk] || { name: key, status: 'pending' }
         const sc = stageColors[stage.status] || stageColors.pending
         const Icon = stageIcons[rk] || stageIcons[key] || Shield
-        const isLast = i === STAGE_ORDER.length - 1
 
         return (
-          <div key={key} className="flex items-center flex-1 min-w-0">
+          <div
+            key={key}
+            className={cn(
+              'rounded-xl border px-2 py-2 transition-all',
+              sc.bg,
+              sc.border,
+              stage.status === 'running' && 'ring-1 ring-emerald-500/30',
+              stage.status === 'failed' && 'ring-1 ring-red-500/30'
+            )}
+          >
             <button
               onClick={() => onStageClick?.(rk)}
-              className="flex flex-col items-center gap-1.5 flex-shrink-0 group cursor-pointer"
+              className="w-full flex items-center gap-2 text-left group cursor-pointer"
             >
               <div className={cn(
-                'w-10 h-10 rounded-xl flex items-center justify-center border-2 transition-all duration-300',
-                'group-hover:scale-110 group-hover:shadow-lg',
+                'w-8 h-8 rounded-lg flex items-center justify-center border transition-all duration-300 flex-shrink-0',
                 sc.bg, sc.border,
-                stage.status === 'running' && 'ring-2 ring-violet-500/40 shadow-glow-sm animate-pulse-slow',
+                stage.status === 'running' && 'ring-2 ring-emerald-500/40 shadow-glow-sm',
                 stage.status === 'success' && 'border-lime-500/40',
                 stage.status === 'failed' && 'border-red-500/40',
               )}>
                 {stage.status === 'running' ? (
-                  <Loader2 className="w-4 h-4 text-violet-400 animate-spin" />
+                  <Loader2 className="w-4 h-4 text-emerald-400 animate-spin" />
                 ) : stage.status === 'success' ? (
                   <CheckCircle className="w-4 h-4 text-lime-400" />
                 ) : stage.status === 'failed' ? (
@@ -231,26 +262,122 @@ function PipelineStepper({ stages, onStageClick }) {
                   <Icon className={cn('w-4 h-4', sc.text)} />
                 )}
               </div>
-              <div className="flex flex-col items-center gap-0.5">
-                <span className={cn('text-[10px] font-semibold text-center leading-tight whitespace-nowrap', sc.text)}>
+              <div className="min-w-0 flex-1">
+                <span className={cn('block text-[10px] font-semibold leading-tight truncate', sc.text)}>
                   {stageDisplayNames[rk] || stageDisplayNames[key] || (stage.name || key).replace(/_/g, ' ')}
                 </span>
                 {stage.duration_seconds && (
-                  <span className="text-[9px] font-mono text-steel-600">{formatDuration(stage.duration_seconds)}</span>
+                  <span className="block text-[9px] font-mono text-steel-600">{formatDuration(stage.duration_seconds)}</span>
                 )}
               </div>
             </button>
-            {!isLast && (
-              <div className="flex-1 mx-2 min-w-6">
-                <div className={cn(
-                  'h-0.5 w-full rounded-full transition-all duration-500',
-                  stage.status === 'success' ? 'bg-gradient-to-r from-lime-500/60 to-lime-500/20' : 'bg-white/[0.06]'
-                )} />
-              </div>
-            )}
           </div>
         )
       })}
+    </div>
+  )
+}
+
+function StageLogRail({ stages }) {
+  const [hoveredKey, setHoveredKey] = useState(null)
+  const [selectedKey, setSelectedKey] = useState(null)
+
+  const resolvedStages = STAGE_ORDER.map((key) => {
+    const rk = resolveStageKey(key, stages)
+    return {
+      key: rk,
+      data: stages?.[rk] || { name: stageDisplayNames[key] || key, status: 'pending' },
+    }
+  })
+
+  const activeKey = hoveredKey || selectedKey
+  const activeStage = activeKey ? resolvedStages.find((s) => s.key === activeKey) : null
+
+  const handleSelect = (stageKey) => {
+    setSelectedKey((prev) => (prev === stageKey ? null : stageKey))
+  }
+
+  return (
+    <div
+      className="relative"
+      onMouseLeave={() => {
+        setHoveredKey(null)
+      }}
+    >
+      <div className="grid grid-cols-2 sm:grid-cols-4 xl:grid-cols-8 gap-2">
+        {resolvedStages.map(({ key, data }) => {
+          const sc = stageColors[data.status] || stageColors.pending
+          const Icon = stageIcons[key] || Shield
+          const isActive = activeKey === key
+          return (
+            <button
+              key={key}
+              onMouseEnter={() => setHoveredKey(key)}
+              onMouseLeave={() => setHoveredKey(null)}
+              onClick={() => handleSelect(key)}
+              className={cn(
+                'rounded-xl border p-2 text-left transition-all bg-white/[0.01] border-white/[0.08]',
+                isActive && 'ring-1 ring-emerald-500/25',
+                'hover:bg-white/[0.03]'
+              )}
+            >
+              <div className="flex items-center justify-between gap-2">
+                <div className="flex items-center gap-1.5 min-w-0">
+                  <span className={cn(
+                    'w-7 h-7 rounded-full border flex items-center justify-center flex-shrink-0',
+                    sc.bg,
+                    sc.border
+                  )}>
+                    {data.status === 'running' ? (
+                      <Loader2 className="w-3.5 h-3.5 text-emerald-400 animate-spin" />
+                    ) : data.status === 'success' ? (
+                      <CheckCircle className="w-3.5 h-3.5 text-lime-400" />
+                    ) : data.status === 'failed' ? (
+                      <XCircle className="w-3.5 h-3.5 text-red-400" />
+                    ) : (
+                      <Icon className={cn('w-3.5 h-3.5', sc.text)} />
+                    )}
+                  </span>
+                  <span className="text-[10px] font-semibold text-steel-100 truncate">
+                    {stageDisplayNames[key] || (data.name || key).replace(/_/g, ' ')}
+                  </span>
+                </div>
+                <span className={cn(
+                  'text-[8px] px-1.5 py-0.5 rounded border uppercase tracking-wider font-bold',
+                  data.status === 'success' && 'bg-lime-500/10 text-lime-400 border-lime-500/20',
+                  data.status === 'failed' && 'bg-red-500/10 text-red-400 border-red-500/20',
+                  data.status === 'running' && 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20',
+                  data.status === 'pending' && 'bg-white/[0.02] text-steel-500 border-white/[0.06]',
+                  data.status === 'skipped' && 'bg-white/[0.02] text-steel-500 border-white/[0.06]'
+                )}>
+                  {data.status}
+                </span>
+              </div>
+
+              <div className="mt-1 text-[9px] text-steel-600 font-mono">
+                {data.duration_seconds ? formatDuration(data.duration_seconds) : formatTimestamp(data.started_at)}
+              </div>
+            </button>
+          )
+        })}
+      </div>
+
+      {activeStage && (
+        <div className="absolute left-1/2 -translate-x-1/2 top-full mt-2 z-50 w-[min(760px,95vw)] rounded-xl bg-surface-code border border-white/[0.16] p-3 shadow-card-hover">
+          <div className="flex items-center justify-between gap-2 mb-2">
+            <span className="text-xs font-semibold text-steel-200">
+              {stageDisplayNames[activeStage.key] || (activeStage.data?.name || activeStage.key).replace(/_/g, ' ')} logs
+            </span>
+            <span className="text-[10px] text-steel-500 font-mono">hover/click stage • click same stage to close</span>
+          </div>
+          <pre className={cn(
+            'text-[11px] leading-relaxed font-mono whitespace-pre-wrap break-all max-h-56 overflow-y-auto custom-scrollbar',
+            activeStage.data?.error ? 'text-red-400' : 'text-steel-300'
+          )}>
+            {buildStageLogText(activeStage.data)}
+          </pre>
+        </div>
+      )}
     </div>
   )
 }
@@ -295,7 +422,7 @@ function StageLogCard({ stageKey, stage, isOpen, onToggle }) {
           'text-[10px] px-2 py-0.5 rounded-full font-bold uppercase tracking-wider border',
           stage.status === 'success' && 'bg-lime-500/10 text-lime-400 border-lime-500/20',
           stage.status === 'failed' && 'bg-red-500/10 text-red-400 border-red-500/20',
-          stage.status === 'running' && 'bg-violet-500/10 text-violet-400 border-violet-500/20',
+          stage.status === 'running' && 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20',
           stage.status === 'skipped' && 'bg-white/[0.04] text-steel-500 border-white/[0.06]',
           stage.status === 'pending' && 'bg-white/[0.02] text-steel-600 border-white/[0.04]',
         )}>
@@ -340,49 +467,57 @@ function StageLogCard({ stageKey, stage, isOpen, onToggle }) {
 function PipelineCard({ pipeline, isSelected, onClick }) {
   const cfg = statusConfig[pipeline.status] || statusConfig.queued
   const deployable = pipeline.is_deployable
+  const stages = pipeline.stages || {}
 
   return (
     <button
       onClick={onClick}
       className={cn(
-        'w-full text-left rounded-2xl border-l-[3px] transition-all duration-300 group',
-        'bg-obsidian-50/60 backdrop-blur-xl border border-white/[0.06] shadow-card',
-        cfg.accent,
+        'w-full text-left rounded-2xl border transition-all duration-300',
+        'bg-obsidian-50/60 backdrop-blur-xl border-white/[0.06] shadow-card px-4 py-3',
         isSelected
-          ? 'border-r-transparent border-t-transparent border-b-transparent bg-violet-500/[0.06] ring-1 ring-violet-500/20 shadow-glow-sm scale-[1.01]'
-          : 'hover:bg-white/[0.03] hover:border-r-white/[0.1] hover:border-t-white/[0.1] hover:border-b-white/[0.1] hover:shadow-card-hover hover:scale-[1.005]'
+          ? 'ring-1 ring-emerald-500/20 bg-emerald-500/[0.05]'
+          : 'hover:bg-white/[0.03] hover:border-white/[0.1]'
       )}
     >
-      <div className="p-4">
-        {/* Top row — branch + status */}
-        <div className="flex items-center justify-between mb-2.5">
-          <div className="flex items-center gap-2 min-w-0">
-            <GitBranch className="w-3.5 h-3.5 text-violet-400 flex-shrink-0" />
-            <span className="text-sm font-bold text-steel-50 truncate">{pipeline.branch}</span>
-          </div>
-          <StatusBadge status={pipeline.status} size="sm" />
-        </div>
-
-        {/* Commit message */}
-        <p className="text-xs text-steel-400 truncate mb-3 pl-5.5">{pipeline.commit_message}</p>
-
-        {/* Meta row */}
-        <div className="flex items-center justify-between pl-5.5">
-          <div className="flex items-center gap-3 text-[10px] text-steel-500">
-            <span className="flex items-center gap-1 font-mono">
+      <div className="flex flex-col xl:flex-row xl:items-center gap-3">
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-2 flex-wrap mb-1.5">
+            <span className="inline-flex items-center gap-1.5 text-sm font-bold text-steel-50">
+              <GitBranch className="w-3.5 h-3.5 text-emerald-400" />{pipeline.branch}
+            </span>
+            <StatusBadge status={pipeline.status} size="sm" />
+            <span className="text-[10px] text-steel-500 font-mono inline-flex items-center gap-1">
               <Hash className="w-3 h-3" />{pipeline.commit_sha?.substring(0, 7)}
             </span>
-            <span className="flex items-center gap-1">
+            <span className="text-[10px] text-steel-500 inline-flex items-center gap-1">
               <User className="w-3 h-3" />{pipeline.author}
             </span>
-            <span className="flex items-center gap-1 font-mono">
+            <span className="text-[10px] text-steel-600 font-mono inline-flex items-center gap-1">
               <Clock className="w-3 h-3" />{timeAgo(pipeline.triggered_at)}
             </span>
           </div>
+          <p className="text-xs text-steel-400 truncate mb-2">{pipeline.commit_message}</p>
 
+          <div className="flex items-center gap-2 overflow-x-auto custom-scrollbar pb-1">
+            {STAGE_ORDER.map((key) => {
+              const rk = resolveStageKey(key, stages)
+              const st = stages[rk] || { status: 'pending' }
+              const dot = stageColors[st.status]?.dot || 'bg-steel-600'
+              return (
+                <span key={`${pipeline.id}-${key}`} className="inline-flex items-center gap-1.5 px-2 py-1 rounded-lg border border-white/[0.06] bg-white/[0.02] text-[10px] text-steel-400 whitespace-nowrap">
+                  <span className={cn('w-1.5 h-1.5 rounded-full', dot)} />
+                  {stageDisplayNames[rk] || stageDisplayNames[key] || key}
+                </span>
+              )
+            })}
+          </div>
+        </div>
+
+        <div className="flex items-center gap-2 xl:flex-col xl:items-end xl:min-w-[120px]">
           {pipeline.security_score != null && (
             <div className={cn(
-              'text-[11px] font-black font-mono flex items-center gap-1 px-2 py-0.5 rounded-lg border',
+              'text-[11px] font-black font-mono flex items-center gap-1 px-2 py-1 rounded-lg border',
               pipeline.security_score >= 70
                 ? 'bg-lime-500/10 text-lime-400 border-lime-500/20'
                 : pipeline.security_score >= 40
@@ -393,26 +528,17 @@ function PipelineCard({ pipeline, isSelected, onClick }) {
               {pipeline.security_score}
             </div>
           )}
+          {pipeline.status === 'success' && deployable != null && (
+            <span className={cn(
+              'text-[10px] px-2 py-1 rounded-lg border font-semibold',
+              deployable
+                ? 'bg-lime-500/[0.06] text-lime-400 border-lime-500/15'
+                : 'bg-red-500/[0.06] text-red-400 border-red-500/15'
+            )}>
+              {deployable ? 'Approved' : 'Blocked'}
+            </span>
+          )}
         </div>
-
-        {/* Deploy decision strip */}
-        {pipeline.status === 'success' && deployable != null && (
-          <div className={cn(
-            'mt-3 py-1.5 rounded-lg text-[10px] font-bold text-center uppercase tracking-wider border',
-            deployable
-              ? 'bg-lime-500/[0.06] text-lime-400 border-lime-500/15'
-              : 'bg-red-500/[0.06] text-red-400 border-red-500/15'
-          )}>
-            {deployable ? '✅ Approved for Deploy' : '❌ Deployment Blocked'}
-          </div>
-        )}
-
-        {/* Running progress bar */}
-        {pipeline.status === 'running' && (
-          <div className="mt-3 h-1 rounded-full bg-white/[0.04] overflow-hidden">
-            <div className="h-full bg-gradient-to-r from-violet-500 to-violet-400 rounded-full animate-shimmer" style={{ width: '60%', backgroundSize: '200% 100%' }} />
-          </div>
-        )}
       </div>
     </button>
   )
@@ -482,6 +608,7 @@ function PipelineDetails({ pipeline, onBack }) {
   const stages = pipeline.stages || {}
   const score = pipeline.security_score
   const isDeployable = pipeline.is_deployable
+  const maxCvssScore = pipeline.max_cvss_score?.toFixed(1) || summary.max_cvss_score?.toFixed(1) || 'N/A'
 
   const resolvedStages = STAGE_ORDER.map(k => {
     const rk = resolveStageKey(k, stages)
@@ -500,13 +627,13 @@ function PipelineDetails({ pipeline, onBack }) {
       {/* ── Back Button (mobile) ──────────────────────────────── */}
       <button
         onClick={onBack}
-        className="lg:hidden flex items-center gap-2 text-sm text-steel-400 hover:text-violet-400 transition-colors mb-2"
+        className="lg:hidden flex items-center gap-2 text-sm text-steel-400 hover:text-emerald-400 transition-colors mb-2"
       >
         <ArrowLeft className="w-4 h-4" /> Back to list
       </button>
 
       {/* ── Header Card ────────────────────────────────────────── */}
-      <div className="glass-card overflow-hidden">
+      <div className="glass-card overflow-visible">
         <div className="p-5 border-b border-white/[0.06] bg-gradient-to-r from-white/[0.01] to-transparent">
           <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-4">
             <div className="min-w-0 flex-1">
@@ -518,7 +645,7 @@ function PipelineDetails({ pipeline, onBack }) {
               </div>
               <div className="flex items-center gap-4 text-xs text-steel-400 font-mono flex-wrap">
                 <span className="flex items-center gap-1.5 bg-white/[0.03] px-2 py-1 rounded-lg border border-white/[0.06]">
-                  <GitBranch className="w-3.5 h-3.5 text-violet-400" />{pipeline.branch}
+                  <GitBranch className="w-3.5 h-3.5 text-emerald-400" />{pipeline.branch}
                 </span>
                 <span className="flex items-center gap-1.5 bg-white/[0.03] px-2 py-1 rounded-lg border border-white/[0.06]">
                   <GitCommit className="w-3.5 h-3.5 text-steel-500" />{pipeline.commit_sha?.substring(0, 7)}
@@ -550,6 +677,14 @@ function PipelineDetails({ pipeline, onBack }) {
           <div className="md:col-span-3 glass-card p-6 flex flex-col items-center justify-center">
             <ScoreGauge score={score} size={130} />
             <span className="text-[10px] font-bold text-steel-500 uppercase tracking-[0.15em] font-mono mt-2">Security Score</span>
+            
+            <div className="mt-4 pt-4 border-t border-white/[0.06] w-full text-center">
+              <span className={cn(
+                "text-2xl font-black font-mono",
+                maxCvssScore >= 9.0 ? "text-red-400" : maxCvssScore >= 7.0 ? "text-orange-400" : "text-emerald-400"
+              )}>{maxCvssScore}</span>
+              <span className="block text-[10px] font-bold text-steel-500 uppercase tracking-[0.15em] font-mono mt-1">CVSS Max</span>
+            </div>
           </div>
 
           {/* Severity breakdown */}
@@ -563,7 +698,7 @@ function PipelineDetails({ pipeline, onBack }) {
                 { label: 'Critical', value: summary.critical, cls: 'bg-red-500/[0.08] border-red-500/15 text-red-400', ring: 'ring-red-500/10' },
                 { label: 'High', value: summary.high, cls: 'bg-orange-500/[0.08] border-orange-500/15 text-orange-400', ring: 'ring-orange-500/10' },
                 { label: 'Medium', value: summary.medium, cls: 'bg-amber-500/[0.08] border-amber-500/15 text-amber-400', ring: 'ring-amber-500/10' },
-                { label: 'Low', value: summary.low, cls: 'bg-violet-500/[0.08] border-violet-500/15 text-violet-400', ring: 'ring-violet-500/10' },
+                { label: 'Low', value: summary.low, cls: 'bg-emerald-500/[0.08] border-emerald-500/15 text-emerald-400', ring: 'ring-emerald-500/10' },
               ].map(s => (
                 <div key={s.label} className={cn('rounded-xl p-3 text-center border flex flex-col justify-center ring-1', s.cls, s.ring)}>
                   <div className="text-2xl font-black font-mono mb-0.5">{s.value || 0}</div>
@@ -574,7 +709,7 @@ function PipelineDetails({ pipeline, onBack }) {
             {/* Per-scanner breakdown */}
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-1.5">
               {[
-                { icon: FileCode, label: 'SAST', value: summary.sast_issues || summary.bandit_issues || 0, color: 'text-violet-400' },
+                { icon: FileCode, label: 'SAST', value: summary.sast_issues || summary.bandit_issues || 0, color: 'text-emerald-400' },
                 { icon: KeyRound, label: 'Secrets', value: summary.secrets_found || 0, color: summary.secrets_found > 0 ? 'text-red-400' : 'text-steel-500' },
                 { icon: Container, label: 'Trivy', value: summary.trivy_vulns || 0, color: 'text-sky-400' },
                 { icon: Globe, label: 'DAST', value: summary.dast_alerts || 0, color: summary.dast_alerts > 0 ? 'text-orange-400' : 'text-steel-500' },
@@ -618,7 +753,7 @@ function PipelineDetails({ pipeline, onBack }) {
       {policySnapshot && pipeline.status === 'success' && (
         <div className="glass-card p-4">
           <div className="flex items-center gap-2 mb-3">
-            <Scale className="w-4 h-4 text-violet-400" />
+            <Scale className="w-4 h-4 text-emerald-400" />
             <span className="text-[10px] font-bold text-steel-500 uppercase tracking-[0.15em] font-mono">Policy Applied</span>
           </div>
           <div className="flex flex-wrap gap-2 text-xs font-mono text-steel-400">
@@ -649,7 +784,7 @@ function PipelineDetails({ pipeline, onBack }) {
           {allStages.some(s => s.data.logs || s.data.error) && (
             <button
               onClick={handleExpandAll}
-              className="flex items-center gap-1.5 text-[10px] font-semibold text-steel-500 hover:text-violet-400 transition-colors px-2 py-1 rounded-lg hover:bg-white/[0.03]"
+              className="flex items-center gap-1.5 text-[10px] font-semibold text-steel-500 hover:text-emerald-400 transition-colors px-2 py-1 rounded-lg hover:bg-white/[0.03]"
             >
               {expandAll ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
               {expandAll ? 'Collapse All' : 'Expand All'}
@@ -687,7 +822,7 @@ function PipelineDetails({ pipeline, onBack }) {
               <div className="flex gap-2 text-[10px] font-mono flex-wrap">
                 {summary.sast_high > 0 && <span className="text-orange-400 bg-orange-500/10 px-1.5 py-0.5 rounded">{summary.sast_high} high</span>}
                 {summary.sast_medium > 0 && <span className="text-amber-400 bg-amber-500/10 px-1.5 py-0.5 rounded">{summary.sast_medium} med</span>}
-                {summary.sast_low > 0 && <span className="text-violet-400 bg-violet-500/10 px-1.5 py-0.5 rounded">{summary.sast_low} low</span>}
+                {summary.sast_low > 0 && <span className="text-emerald-400 bg-emerald-500/10 px-1.5 py-0.5 rounded">{summary.sast_low} low</span>}
                 {(summary.sast_issues || 0) === 0 && <span className="text-lime-400">No issues found</span>}
               </div>
               {summary.languages_detected?.length > 0 && (
@@ -710,7 +845,7 @@ function PipelineDetails({ pipeline, onBack }) {
                 {summary.trivy_critical > 0 && <span className="text-red-400 bg-red-500/10 px-1.5 py-0.5 rounded">{summary.trivy_critical} crit</span>}
                 {summary.trivy_high > 0 && <span className="text-orange-400 bg-orange-500/10 px-1.5 py-0.5 rounded">{summary.trivy_high} high</span>}
                 {summary.trivy_medium > 0 && <span className="text-amber-400 bg-amber-500/10 px-1.5 py-0.5 rounded">{summary.trivy_medium} med</span>}
-                {summary.trivy_low > 0 && <span className="text-violet-400 bg-violet-500/10 px-1.5 py-0.5 rounded">{summary.trivy_low} low</span>}
+                {summary.trivy_low > 0 && <span className="text-emerald-400 bg-emerald-500/10 px-1.5 py-0.5 rounded">{summary.trivy_low} low</span>}
                 {(summary.trivy_vulns || 0) === 0 && <span className="text-lime-400">No vulnerabilities</span>}
               </div>
             </div>
@@ -735,7 +870,7 @@ function RequirementsBanner() {
         className="w-full flex items-center justify-between px-5 py-3 hover:bg-white/[0.02] transition-colors"
       >
         <div className="flex items-center gap-2">
-          <Info className="w-4 h-4 text-violet-400" />
+          <Info className="w-4 h-4 text-emerald-400" />
           <span className="text-xs font-semibold text-steel-300">Repository Scan Requirements</span>
         </div>
         <ChevronDown className={cn('w-4 h-4 text-steel-600 transition-transform duration-300', show && 'rotate-180')} />
@@ -795,7 +930,11 @@ export default function Pipeline() {
   const [triggering, setTriggering] = useState(false)
   const [error, setError] = useState(null)
   const [redirecting, setRedirecting] = useState(false)
+  const [refreshSeconds, setRefreshSeconds] = useState(getAutoRefreshInterval(30))
   const { isAuthenticated, loading: authLoading } = useAuth()
+  const [repoUrl, setRepoUrl] = useState('')
+  const [repoBranch, setRepoBranch] = useState('main')
+  const [savingRepo, setSavingRepo] = useState(false)
 
   // Search & filter state
   const [searchQuery, setSearchQuery] = useState('')
@@ -803,6 +942,16 @@ export default function Pipeline() {
 
   // Mobile: show detail panel when pipeline selected
   const [showDetail, setShowDetail] = useState(false)
+
+  const loadRepoConfig = useCallback(async () => {
+    try {
+      const profile = await fetchProfile()
+      setRepoUrl(profile?.defaultRepoUrl || '')
+      setRepoBranch(profile?.defaultBranch || 'main')
+    } catch (err) {
+      console.error('Failed to load repository configuration', err)
+    }
+  }, [])
 
   const loadPipelines = useCallback(async () => {
     try {
@@ -838,6 +987,7 @@ export default function Pipeline() {
         return
       }
       await loadPipelines()
+      await loadRepoConfig()
       setLoading(false)
     } catch (err) {
       console.error(err)
@@ -845,19 +995,66 @@ export default function Pipeline() {
     }
   }
 
+  const handleSaveRepoConfig = async () => {
+    const trimmedRepo = repoUrl.trim()
+    const trimmedBranch = (repoBranch || 'main').trim() || 'main'
+    if (!trimmedRepo) {
+      setError('Repository URL is required before saving.')
+      return
+    }
+
+    setSavingRepo(true)
+    setError(null)
+    try {
+      await updateProfile({ defaultRepoUrl: trimmedRepo, defaultBranch: trimmedBranch })
+      setRepoUrl(trimmedRepo)
+      setRepoBranch(trimmedBranch)
+    } catch (err) {
+      const msg = err.response?.data?.error || 'Failed to save repository configuration'
+      setError(msg)
+    } finally {
+      setSavingRepo(false)
+    }
+  }
+
+  useEffect(() => {
+    const handler = () => setRefreshSeconds(getAutoRefreshInterval(30))
+    window.addEventListener('sentinelops:appearance-updated', handler)
+    return () => window.removeEventListener('sentinelops:appearance-updated', handler)
+  }, [])
+
   useEffect(() => {
     const hasRunning = pipelines.some(p => ['running', 'queued'].includes(p.status))
-    if (hasRunning) {
-      const interval = setInterval(loadPipelines, 3000)
+    if (hasRunning && refreshSeconds > 0) {
+      const interval = setInterval(loadPipelines, refreshSeconds * 1000)
       return () => clearInterval(interval)
     }
-  }, [pipelines, loadPipelines])
+  }, [pipelines, loadPipelines, refreshSeconds])
 
   const handleTrigger = async () => {
     setTriggering(true)
     setError(null)
     try {
-      const res = await triggerPipeline()
+      const payloadRepoUrl = repoUrl.trim()
+      const payloadBranch = (repoBranch || 'main').trim() || 'main'
+
+      if (!payloadRepoUrl) {
+        const profile = await fetchProfile().catch(() => null)
+        const fallbackRepoUrl = profile?.defaultRepoUrl?.trim()
+        if (!fallbackRepoUrl) {
+          setError('No repository configured. Add your repository URL and branch at the top of this page.')
+          setTriggering(false)
+          return
+        }
+        setRepoUrl(fallbackRepoUrl)
+        setRepoBranch(profile?.defaultBranch?.trim() || 'main')
+      }
+
+      const res = await triggerPipeline({
+        repo_url: payloadRepoUrl || repoUrl.trim(),
+        branch: payloadBranch,
+      })
+
       await loadPipelines()
       if (res.pipeline_id) {
         const list = (await fetchPipelines()).pipelines || []
@@ -868,7 +1065,8 @@ export default function Pipeline() {
         }
       }
     } catch (err) {
-      setError('Failed to trigger pipeline')
+      const msg = err.response?.data?.error || 'Failed to trigger pipeline'
+      setError(msg)
       console.error(err)
     } finally {
       setTriggering(false)
@@ -906,6 +1104,20 @@ export default function Pipeline() {
     return c
   }, [pipelines])
 
+  const activePipeline = useMemo(() => {
+    if (!filteredPipelines.length) return null
+    return (
+      filteredPipelines.find(p => p.status === 'running') ||
+      filteredPipelines.find(p => p.status === 'queued') ||
+      filteredPipelines[0]
+    )
+  }, [filteredPipelines])
+
+  const historyPipelines = useMemo(() => {
+    if (!activePipeline) return filteredPipelines
+    return filteredPipelines.filter(p => p.id !== activePipeline.id)
+  }, [filteredPipelines, activePipeline])
+
   if (authLoading || loading || redirecting) return <PageLoader />
 
   return (
@@ -914,7 +1126,7 @@ export default function Pipeline() {
       <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
         <div>
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-violet-600 to-violet-400 flex items-center justify-center shadow-glow-sm">
+            <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-emerald-600 to-emerald-400 flex items-center justify-center shadow-glow-sm">
               <GitBranch className="w-5 h-5 text-white" />
             </div>
             <div>
@@ -927,19 +1139,59 @@ export default function Pipeline() {
           <button onClick={loadPipelines} className="btn-secondary flex items-center gap-1.5 text-sm group">
             <RefreshCw className="w-3.5 h-3.5 group-hover:rotate-180 transition-transform duration-500" /> Refresh
           </button>
-          <button
-            onClick={handleTrigger}
-            disabled={triggering}
-            className="btn-primary flex items-center gap-1.5 text-sm"
-          >
-            {triggering
-              ? <><Loader2 className="w-3.5 h-3.5 animate-spin" /> Starting...</>
-              : <><Zap className="w-3.5 h-3.5" /> Run Scan</>
-            }
-          </button>
           <Link to="/dashboard/settings?tab=github" className="btn-secondary flex items-center gap-1.5 text-sm">
-            <Settings className="w-3.5 h-3.5" /> Configure
+            <Settings className="w-3.5 h-3.5" /> Webhook Settings
           </Link>
+        </div>
+      </div>
+
+      <div className="glass-card border border-emerald-500/30 shadow-[0_0_25px_rgba(250,129,18,0.14)]">
+        <div className="p-5 border-b border-emerald-500/20 bg-gradient-to-r from-emerald-500/10 to-transparent">
+          <p className="text-[10px] font-bold text-emerald-400 uppercase tracking-[0.15em] font-mono">Primary Scan Target</p>
+          <h2 className="text-lg font-bold text-steel-50 mt-1">Repository Configuration</h2>
+          <p className="text-sm text-steel-400 mt-1">Set the repository and branch used when starting a scan from this page.</p>
+        </div>
+        <div className="p-5 grid grid-cols-1 lg:grid-cols-12 gap-4 items-end">
+          <div className="lg:col-span-7">
+            <label className="text-xs font-semibold text-steel-400 uppercase tracking-wide mb-2 block">Repository URL</label>
+            <input
+              type="text"
+              value={repoUrl}
+              onChange={(e) => setRepoUrl(e.target.value)}
+              placeholder="https://github.com/your-org/your-repository"
+              className="w-full px-4 py-2.5 bg-theme-input text-steel-50 border border-theme rounded-xl text-sm font-mono outline-none focus:ring-2 focus:ring-emerald-500/30 focus:border-emerald-500/30"
+            />
+          </div>
+          <div className="lg:col-span-2">
+            <label className="text-xs font-semibold text-steel-400 uppercase tracking-wide mb-2 block">Branch</label>
+            <input
+              type="text"
+              value={repoBranch}
+              onChange={(e) => setRepoBranch(e.target.value)}
+              placeholder="main"
+              className="w-full px-4 py-2.5 bg-theme-input text-steel-50 border border-theme rounded-xl text-sm font-mono outline-none focus:ring-2 focus:ring-emerald-500/30 focus:border-emerald-500/30"
+            />
+          </div>
+          <div className="lg:col-span-3 flex flex-col sm:flex-row lg:flex-col xl:flex-row gap-2">
+            <button
+              onClick={handleSaveRepoConfig}
+              disabled={savingRepo}
+              className="btn-secondary w-full flex items-center justify-center gap-1.5 text-sm disabled:opacity-50"
+            >
+              {savingRepo ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Save className="w-3.5 h-3.5" />}
+              {savingRepo ? 'Saving...' : 'Save Repo'}
+            </button>
+            <button
+              onClick={handleTrigger}
+              disabled={triggering}
+              className="btn-primary w-full flex items-center justify-center gap-1.5 text-sm disabled:opacity-50"
+            >
+              {triggering
+                ? <><Loader2 className="w-3.5 h-3.5 animate-spin" /> Starting...</>
+                : <><Zap className="w-3.5 h-3.5" /> Run Scan</>
+              }
+            </button>
+          </div>
         </div>
       </div>
 
@@ -950,116 +1202,108 @@ export default function Pipeline() {
       {/* ── Requirements Info ─────────────────────────────────── */}
       <RequirementsBanner />
 
-      {/* ── Main Content ─────────────────────────────────────── */}
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-        {/* Sidebar — Pipeline List */}
-        <div className={cn(
-          'lg:col-span-4 xl:col-span-4 space-y-4',
-          showDetail && 'hidden lg:block'
-        )}>
-          {/* Search & Filter Bar */}
-          <div className="space-y-3">
-            {/* Search */}
-            <div className="relative">
-              <Search className="w-4 h-4 text-steel-500 absolute left-3 top-1/2 -translate-y-1/2" />
-              <input
-                type="text"
-                placeholder="Search branch, author, commit..."
-                value={searchQuery}
-                onChange={e => setSearchQuery(e.target.value)}
-                className="w-full pl-10 pr-4 py-2.5 bg-white/[0.03] border border-white/[0.08] rounded-xl text-sm text-steel-50 placeholder-steel-500 focus:outline-none focus:border-violet-500/40 focus:ring-1 focus:ring-violet-500/20 transition-all font-mono"
-              />
-              {searchQuery && (
-                <button
-                  onClick={() => setSearchQuery('')}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 text-steel-600 hover:text-steel-50 transition-colors"
-                >
-                  <XCircle className="w-3.5 h-3.5" />
-                </button>
-              )}
-            </div>
-
-            {/* Status Filter Tabs */}
-            <div className="flex items-center gap-1 bg-white/[0.02] rounded-xl p-1 border border-white/[0.06]">
-              {FILTER_TABS.map(tab => (
-                <button
-                  key={tab.key}
-                  onClick={() => setStatusFilter(tab.key)}
-                  className={cn(
-                    'flex-1 px-3 py-1.5 rounded-lg text-[11px] font-semibold transition-all duration-200',
-                    statusFilter === tab.key
-                      ? 'bg-violet-500/15 text-violet-400 border border-violet-500/20 shadow-glow-sm'
-                      : 'text-steel-500 hover:text-steel-300 hover:bg-white/[0.03] border border-transparent'
-                  )}
-                >
-                  {tab.label}
-                  <span className={cn(
-                    'ml-1 text-[9px] font-mono',
-                    statusFilter === tab.key ? 'text-violet-400/60' : 'text-steel-600'
-                  )}>
-                    {statusCounts[tab.key] || 0}
-                  </span>
-                </button>
-              ))}
-            </div>
-          </div>
-
-          {/* Pipeline List Header */}
-          <div className="flex items-center justify-between">
-            <h2 className="text-xs font-bold text-steel-500 uppercase tracking-[0.15em] font-mono flex items-center gap-2">
-              <Layers className="w-3.5 h-3.5" /> Pipeline Runs
-            </h2>
-            <span className="text-[10px] text-steel-600 font-mono">
-              {filteredPipelines.length}{filteredPipelines.length !== pipelines.length ? ` / ${pipelines.length}` : ''} total
-            </span>
-          </div>
-
-          {/* Pipeline List */}
-          {filteredPipelines.length === 0 ? (
-            <div className="glass-card p-10 text-center">
-              {pipelines.length === 0 ? (
-                <>
-                  <div className="w-16 h-16 mx-auto mb-4 rounded-2xl bg-gradient-to-br from-violet-500/10 to-violet-600/5 border border-violet-500/10 flex items-center justify-center">
-                    <Rocket className="w-8 h-8 text-violet-400/60" />
-                  </div>
-                  <p className="text-steel-300 font-semibold text-sm mb-1">No pipelines yet</p>
-                  <p className="text-[11px] text-steel-600 mb-4">Trigger a scan or push code to get started</p>
-                  <button onClick={handleTrigger} disabled={triggering} className="btn-primary text-sm inline-flex items-center gap-1.5">
-                    <Zap className="w-3.5 h-3.5" /> Run Your First Scan
-                  </button>
-                </>
-              ) : (
-                <>
-                  <Search className="w-10 h-10 mx-auto mb-3 text-steel-700" />
-                  <p className="text-steel-400 font-medium text-sm">No matching pipelines</p>
-                  <p className="text-[10px] text-steel-600 mt-1">Try adjusting your search or filter</p>
-                </>
-              )}
-            </div>
-          ) : (
-            <div className="space-y-2 max-h-[calc(100vh-400px)] overflow-y-auto pr-1 custom-scrollbar">
-              {filteredPipelines.map(p => (
-                <PipelineCard
-                  key={p.id}
-                  pipeline={p}
-                  isSelected={selectedPipeline?.id === p.id}
-                  onClick={() => handleSelectPipeline(p)}
-                />
-              ))}
-            </div>
+      {/* ── Search & Filter ─────────────────────────────────── */}
+      <div className="flex flex-wrap items-center gap-2 justify-between">
+        <div className="relative w-full sm:w-[300px] lg:w-[360px]">
+          <Search className="w-4 h-4 text-steel-500 absolute left-3 top-1/2 -translate-y-1/2" />
+          <input
+            type="text"
+            placeholder="Search branch, author, commit..."
+            value={searchQuery}
+            onChange={e => setSearchQuery(e.target.value)}
+            className="w-full pl-10 pr-4 py-2 bg-white/[0.03] border border-white/[0.08] rounded-xl text-sm text-steel-50 placeholder-steel-500 focus:outline-none focus:border-emerald-500/40 focus:ring-1 focus:ring-emerald-500/20 transition-all font-mono"
+          />
+          {searchQuery && (
+            <button
+              onClick={() => setSearchQuery('')}
+              className="absolute right-3 top-1/2 -translate-y-1/2 text-steel-600 hover:text-steel-50 transition-colors"
+            >
+              <XCircle className="w-3.5 h-3.5" />
+            </button>
           )}
         </div>
 
-        {/* Main — Pipeline Details */}
-        <div className={cn(
-          'lg:col-span-8 xl:col-span-8',
-          !showDetail && 'hidden lg:block'
-        )}>
-          <PipelineDetails
-            pipeline={selectedPipeline}
-            onBack={() => setShowDetail(false)}
-          />
+        <div className="flex flex-wrap items-center gap-1 bg-white/[0.02] rounded-xl p-1 border border-white/[0.06]">
+          {FILTER_TABS.map(tab => (
+            <button
+              key={tab.key}
+              onClick={() => setStatusFilter(tab.key)}
+              className={cn(
+                'px-3 py-1.5 rounded-lg text-[11px] font-semibold transition-all duration-200 whitespace-nowrap',
+                statusFilter === tab.key
+                  ? 'bg-emerald-500/15 text-emerald-400 border border-emerald-500/20 shadow-glow-sm'
+                  : 'text-steel-500 hover:text-steel-300 hover:bg-white/[0.03] border border-transparent'
+              )}
+            >
+              {tab.label}
+              <span className={cn(
+                'ml-1 text-[9px] font-mono',
+                statusFilter === tab.key ? 'text-emerald-400/60' : 'text-steel-600'
+              )}>
+                {statusCounts[tab.key] || 0}
+              </span>
+            </button>
+          ))}
         </div>
+      </div>
+
+      {/* ── Current Pipeline (Top) ─────────────────────────── */}
+      <div className="glass-card overflow-visible relative z-10">
+        <div className="p-5 border-b border-white/[0.06] bg-gradient-to-r from-white/[0.01] to-transparent flex items-center justify-between gap-3">
+          <div>
+            <p className="text-[10px] font-bold text-steel-500 uppercase tracking-[0.15em] font-mono">Current Pipeline</p>
+            <h2 className="text-lg font-bold text-steel-50 mt-1">{activePipeline?.repo_name || 'No active pipeline'}</h2>
+          </div>
+          {activePipeline ? <StatusBadge status={activePipeline.status} /> : null}
+        </div>
+
+        {activePipeline ? (
+          <div className="p-5 space-y-4">
+            <div className="flex flex-wrap items-center gap-3 text-[11px] text-steel-400 font-mono">
+              <span className="inline-flex items-center gap-1.5 bg-white/[0.03] px-2 py-1 rounded-lg border border-white/[0.06]">
+                <GitBranch className="w-3.5 h-3.5 text-emerald-400" />{activePipeline.branch}
+              </span>
+              <span className="inline-flex items-center gap-1"><GitCommit className="w-3 h-3" />{activePipeline.commit_sha?.substring(0, 7)}</span>
+              <span className="inline-flex items-center gap-1"><User className="w-3 h-3" />{activePipeline.author}</span>
+              <span className="inline-flex items-center gap-1"><Clock className="w-3 h-3" />{timeAgo(activePipeline.triggered_at)}</span>
+            </div>
+
+            <div>
+              <p className="text-[10px] font-bold text-steel-500 uppercase tracking-[0.15em] font-mono mb-2">Stages</p>
+              <StageLogRail stages={activePipeline.stages || {}} />
+            </div>
+          </div>
+        ) : (
+          <div className="p-10 text-center">
+            <Rocket className="w-8 h-8 text-steel-700 mx-auto mb-2" />
+            <p className="text-sm text-steel-400">No pipeline available for selected filter.</p>
+          </div>
+        )}
+      </div>
+
+      {/* ── Older Pipelines (Landscape) ─────────────────────── */}
+      <div className="space-y-3">
+        <div className="flex items-center justify-between">
+          <h2 className="text-xs font-bold text-steel-500 uppercase tracking-[0.15em] font-mono flex items-center gap-2">
+            <Layers className="w-3.5 h-3.5" /> Older Pipelines
+          </h2>
+          <span className="text-[10px] text-steel-600 font-mono">{historyPipelines.length} total</span>
+        </div>
+
+        {historyPipelines.length === 0 ? (
+          <div className="glass-card p-6 text-center text-steel-500 text-sm">No older pipelines yet.</div>
+        ) : (
+          <div className="space-y-2">
+            {historyPipelines.map(p => (
+              <PipelineCard
+                key={p.id}
+                pipeline={p}
+                isSelected={selectedPipeline?.id === p.id}
+                onClick={() => setSelectedPipeline(p)}
+              />
+            ))}
+          </div>
+        )}
       </div>
     </div>
   )

@@ -11,7 +11,7 @@ const icons = {
 const styles = {
   success: 'bg-lime-500/10 border-lime-500/20 text-lime-400',
   error: 'bg-red-500/10 border-red-500/20 text-red-400',
-  info: 'bg-violet-500/10 border-violet-500/20 text-violet-400',
+  info: 'bg-emerald-500/10 border-emerald-500/20 text-emerald-400',
 }
 
 export function useToast() {

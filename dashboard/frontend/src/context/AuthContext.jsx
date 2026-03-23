@@ -29,6 +29,8 @@ export function AuthProvider({ children }) {
         }
       })
       setUser(response.data)
+      if (response.data.timezone) localStorage.setItem('user_tz', response.data.timezone)
+      if (response.data.language) localStorage.setItem('user_lang', response.data.language)
       return response.data
     } catch (error) {
       console.error('Failed to fetch user:', error)
@@ -48,6 +50,8 @@ export function AuthProvider({ children }) {
 
       // Store token first
       localStorage.setItem('token', newToken)
+      if (userData.timezone) localStorage.setItem('user_tz', userData.timezone)
+      if (userData.language) localStorage.setItem('user_lang', userData.language)
       setToken(newToken)
       setUser(userData)
       setLoading(false)

@@ -121,6 +121,8 @@ def seed_policy():
         max_critical_vulns=0,
         max_high_vulns=5,
         auto_block=True,
+        block_on_secrets=True,
+        block_on_dast_high=False,
         configured=False,
     )
     db.session.add(pol)
@@ -149,7 +151,7 @@ def seed_sample_notifications():
             message=message,
             read=False,
         )
-        n.metadata = {}
+        n.extra_data = {}
         db.session.add(n)
 
     db.session.commit()

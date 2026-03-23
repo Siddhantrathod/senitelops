@@ -9,14 +9,14 @@ import { StatusBadge, DataTable, KpiCard, SkeletonTable } from '../../components
 import { fetchAdminPipelines, fetchAdminUsers, fetchAdminStats } from '../../services/api'
 
 const LOG_TYPES = {
-  pipeline: { label: 'Pipeline', icon: GitBranch, color: 'text-violet-400' },
-  auth: { label: 'Auth', icon: Users, color: 'text-blue-400' },
+  pipeline: { label: 'Pipeline', icon: GitBranch, color: 'text-emerald-400' },
+  auth: { label: 'Auth', icon: Users, color: 'text-emerald-400' },
   security: { label: 'Security', icon: Shield, color: 'text-red-400' },
   system: { label: 'System', icon: Terminal, color: 'text-cyan-400' },
 }
 
 const SEVERITY_STYLES = {
-  info: 'bg-blue-500/10 border-blue-500/20 text-blue-400',
+  info: 'bg-emerald-500/10 border-emerald-500/20 text-emerald-400',
   warning: 'bg-amber-500/10 border-amber-500/20 text-amber-400',
   error: 'bg-red-500/10 border-red-500/20 text-red-400',
   success: 'bg-lime-500/10 border-lime-500/20 text-lime-400',
@@ -165,7 +165,7 @@ export default function AdminLogs() {
 
       {/* KPI Cards */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-        <KpiCard label="Total Events" value={logs.length} icon={FileText} accent="violet" />
+        <KpiCard label="Total Events" value={logs.length} icon={FileText} accent="blue" />
         <KpiCard label="Today" value={todayCount} icon={Clock} accent="blue" />
         <KpiCard label="Errors" value={errorCount} icon={AlertTriangle} accent="red" />
         <KpiCard label="Warnings" value={warningCount} icon={AlertTriangle} accent="amber" />
@@ -180,7 +180,7 @@ export default function AdminLogs() {
               className={cn(
                 'px-3 py-1.5 rounded-lg text-xs font-medium transition-colors border',
                 typeFilter === t
-                  ? 'bg-violet-500/15 border-violet-500/30 text-violet-400'
+                  ? 'bg-emerald-500/15 border-emerald-500/30 text-emerald-400'
                   : 'border-white/[0.06] text-steel-400 hover:text-steel-200 hover:bg-white/[0.04]'
               )}>
               {t === 'all' ? 'All Types' : LOG_TYPES[t]?.label || t}
@@ -194,7 +194,7 @@ export default function AdminLogs() {
               className={cn(
                 'px-3 py-1.5 rounded-lg text-xs font-medium transition-colors border',
                 severityFilter === s
-                  ? 'bg-blue-500/15 border-blue-500/30 text-blue-400'
+                  ? 'bg-emerald-500/15 border-emerald-500/30 text-emerald-400'
                   : 'border-white/[0.06] text-steel-400 hover:text-steel-200 hover:bg-white/[0.04]'
               )}>
               {s === 'all' ? 'All Levels' : s.charAt(0).toUpperCase() + s.slice(1)}

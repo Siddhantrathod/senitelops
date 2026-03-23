@@ -1,28 +1,30 @@
-# Virtual env
 venv/
+.venv/
 .env
+.env.local
+.env.production
 
-# Python cache
 __pycache__/
 *.pyc
 
-# Flask
 instance/
 
-# IDE
 .vscode/
 .idea/
 
-# OS junk
 .DS_Store
 
-# Logs & DB
 *.log
 *.db
-# Runtime artifacts
+
+# Frontend build artifacts
+node_modules/
+dist/
+build/
+
+# Runtime scan reports (keep folder structure via .keep)
 runtime/reports/*
 runtime/history/*
 
-# Keep folders tracked
 !runtime/reports/.keep
 !runtime/history/.keep

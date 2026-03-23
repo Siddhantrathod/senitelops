@@ -26,12 +26,13 @@ import VulnerabilityBarChart from '../components/charts/VulnerabilityBarChart'
 import { PageLoader } from '../components/LoadingSpinner'
 import Alert from '../components/Alert'
 import { useAuth } from '../context/AuthContext'
+import { createPortal } from 'react-dom'
 
 const riskColors = {
   HIGH: { badge: 'bg-red-500/15 text-red-400 border-red-500/25', dot: 'bg-red-500' },
   MEDIUM: { badge: 'bg-amber-500/15 text-amber-400 border-amber-500/25', dot: 'bg-amber-500' },
   LOW: { badge: 'bg-green-500/15 text-green-400 border-green-500/25', dot: 'bg-green-500' },
-  INFORMATIONAL: { badge: 'bg-blue-500/15 text-blue-400 border-blue-500/25', dot: 'bg-blue-500' },
+  INFORMATIONAL: { badge: 'bg-emerald-500/15 text-emerald-400 border-emerald-500/25', dot: 'bg-emerald-500' },
 }
 
 function RiskBadge({ risk }) {
@@ -51,7 +52,7 @@ export default function DastReport() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
   const [redirecting, setRedirecting] = useState(false)
-  const [expandedAlert, setExpandedAlert] = useState(null)
+  const [selectedAlert, setSelectedAlert] = useState(null)
   const [filters, setFilters] = useState({
     risk: 'all',
     search: '',
@@ -64,15 +65,19 @@ export default function DastReport() {
 
   const filteredResults = useMemo(() => {
     return results.filter(alert => {
+      const alertName = alert.name || alert.alert || ''
+      const alertDesc = alert.description || alert.desc || ''
+      const alertUrl = alert.url || alert.uri || ''
+
       if (filters.risk !== 'all' && (alert.risk || '').toUpperCase() !== filters.risk) {
         return false
       }
       if (filters.search) {
         const q = filters.search.toLowerCase()
         return (
-          (alert.name || '').toLowerCase().includes(q) ||
-          (alert.description || '').toLowerCase().includes(q) ||
-          (alert.url || '').toLowerCase().includes(q) ||
+          alertName.toLowerCase().includes(q) ||
+          alertDesc.toLowerCase().includes(q) ||
+          alertUrl.toLowerCase().includes(q) ||
           (alert.cwe_id || '').toString().includes(q)
         )
       }
@@ -126,13 +131,8 @@ export default function DastReport() {
           <p className="text-steel-400">Dynamic Application Security Testing with OWASP ZAP</p>
         </div>
         <Alert variant="info" title="No DAST Report Available">
-          <p className="mb-2">No DAST scan has been run yet. DAST scanning requires:</p>
-          <ul className="list-disc list-inside text-sm space-y-1 text-steel-300">
-            <li>A Dockerfile in your repository</li>
-            <li>Docker installed on the system</li>
-            <li>OWASP ZAP Docker image (pulled automatically)</li>
-          </ul>
-          <p className="mt-2 text-sm">Run a full pipeline scan to include DAST analysis.</p>
+          <p className="mb-2">No DAST report is available for your account yet.</p>
+          <p className="mt-2 text-sm">Run pipeline to see reports.</p>
           <button onClick={() => navigate('/dashboard/pipeline')} className="btn-primary mt-4 text-sm">
             Go to Pipeline
           </button>
@@ -315,7 +315,7 @@ export default function DastReport() {
             placeholder="Search alerts..."
             value={filters.search}
             onChange={e => setFilters({ ...filters, search: e.target.value })}
-            className="w-full pl-10 pr-4 py-2.5 bg-white/[0.04] text-steel-50 rounded-xl border border-white/[0.08] outline-none text-sm focus:ring-2 focus:ring-violet-500/30 placeholder-steel-600"
+            className="w-full pl-10 pr-4 py-2.5 bg-white/[0.04] text-steel-50 rounded-xl border border-white/[0.08] outline-none text-sm focus:ring-2 focus:ring-emerald-500/30 placeholder-steel-600"
           />
         </div>
         <div className="flex items-center gap-1 bg-white/[0.02] p-1 rounded-xl border border-white/[0.06]">
@@ -326,7 +326,7 @@ export default function DastReport() {
               className={cn(
                 'px-3 py-1.5 text-xs font-bold uppercase tracking-wider rounded-lg transition-colors',
                 filters.risk === r
-                  ? 'bg-violet-500/15 text-violet-400'
+                  ? 'bg-emerald-500/15 text-emerald-400'
                   : 'text-steel-500 hover:text-steel-300'
               )}
             >
@@ -339,107 +339,126 @@ export default function DastReport() {
 
       {/* Alerts list */}
       <div className="space-y-3">
-        {filteredResults.map((alert, idx) => {
-          const isExpanded = expandedAlert === idx
-          return (
-            <div key={idx} className="glass-card overflow-hidden">
-              <button
-                onClick={() => setExpandedAlert(isExpanded ? null : idx)}
-                className="w-full flex items-center gap-4 px-5 py-4 text-left hover:bg-white/[0.02] transition-colors"
-              >
-                {isExpanded ? <ChevronDown className="w-4 h-4 text-steel-500" /> : <ChevronRight className="w-4 h-4 text-steel-500" />}
-                <RiskBadge risk={alert.risk} />
-                <div className="flex-1 min-w-0">
-                  <p className="text-sm font-medium text-steel-50 truncate">{alert.name || 'Alert'}</p>
-                  <p className="text-xs text-steel-500 font-mono truncate">{alert.url || targetUrl}</p>
+        {filteredResults.map((alert, idx) => (
+          <div key={idx} className="glass-card overflow-hidden">
+            <button
+              onClick={() => setSelectedAlert(alert)}
+              className="w-full flex items-center gap-4 px-5 py-4 text-left hover:bg-white/[0.04] transition-colors"
+            >
+              <RiskBadge risk={alert.risk} />
+              <div className="flex-1 min-w-0 flex items-center justify-between">
+                <div>
+                  <p className="text-sm font-medium text-steel-50 truncate">{alert.name || alert.alert || 'Alert'}</p>
+                  <p className="text-xs text-steel-500 font-mono truncate max-w-lg">{alert.url || alert.uri || targetUrl}</p>
                 </div>
                 {alert.cwe_id && (
                   <span className="text-xs text-steel-500 font-mono hidden sm:block">CWE-{alert.cwe_id}</span>
                 )}
+              </div>
+            </button>
+          </div>
+        ))}
+      </div>
+
+      {selectedAlert && createPortal(
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
+          <div className="absolute inset-0 bg-black/40 backdrop-blur-sm transition-opacity" onClick={() => setSelectedAlert(null)} />
+          <div className="relative w-full max-w-3xl max-h-[90vh] overflow-y-auto glass-card animate-fade-in shadow-card-hover border border-white/[0.16]">
+            {/* Header */}
+            <div className="sticky top-0 flex items-start justify-between p-6 border-b border-theme bg-surface-secondary/95 backdrop-blur-2xl rounded-t-2xl z-10">
+              <div>
+                <div className="flex items-center gap-3 mb-2">
+                  <RiskBadge risk={selectedAlert.risk} />
+                  {selectedAlert.cwe_id && (
+                    <span className="badge badge-info">CWE-{selectedAlert.cwe_id}</span>
+                  )}
+                </div>
+                <h2 className="text-xl font-bold text-steel-50">{selectedAlert.name || selectedAlert.alert || 'Alert'}</h2>
+              </div>
+              <button onClick={() => setSelectedAlert(null)} className="p-2 text-steel-500 hover:text-steel-50 hover:bg-theme-active rounded-lg transition-colors">
+                <XCircle className="w-5 h-5" />
               </button>
+            </div>
+            
+            {/* Content */}
+            <div className="p-6 space-y-6">
+              {/* Description */}
+              {(selectedAlert.description || selectedAlert.desc) && (
+                <div>
+                  <h4 className="text-[10px] font-bold text-steel-500 uppercase tracking-wider mb-2 font-mono">Description</h4>
+                  <div className="text-sm text-steel-300 leading-relaxed whitespace-pre-wrap prose prose-invert max-w-none prose-p:mb-2 prose-a:text-emerald-400" dangerouslySetInnerHTML={{ __html: selectedAlert.description || selectedAlert.desc }} />
+                </div>
+              )}
 
-              {isExpanded && (
-                <div className="px-5 pb-5 border-t border-white/[0.06] pt-4 space-y-4">
-                  {/* Description */}
-                  {alert.description && (
-                    <div>
-                      <h4 className="text-xs font-bold text-steel-400 uppercase tracking-wider mb-1">Description</h4>
-                      <p className="text-sm text-steel-300 leading-relaxed">{alert.description}</p>
-                    </div>
-                  )}
+              {/* Solution */}
+              {selectedAlert.solution && (
+                <div>
+                  <h4 className="text-[10px] font-bold text-lime-400 uppercase tracking-wider mb-2 font-mono">Solution</h4>
+                  <div className="text-sm text-steel-300 leading-relaxed whitespace-pre-wrap prose prose-invert max-w-none prose-p:mb-2 prose-a:text-emerald-400" dangerouslySetInnerHTML={{ __html: selectedAlert.solution }} />
+                </div>
+              )}
 
-                  {/* Solution */}
-                  {alert.solution && (
-                    <div>
-                      <h4 className="text-xs font-bold text-lime-400 uppercase tracking-wider mb-1">Solution</h4>
-                      <p className="text-sm text-steel-300 leading-relaxed">{alert.solution}</p>
-                    </div>
-                  )}
-
-                  {/* Details grid */}
-                  <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-xs">
-                    {alert.url && (
-                      <div>
-                        <span className="text-steel-500 block mb-1">URL</span>
-                        <span className="text-steel-50 font-mono break-all text-[11px]">{alert.url}</span>
-                      </div>
-                    )}
-                    {alert.method && (
-                      <div>
-                        <span className="text-steel-500 block mb-1">Method</span>
-                        <span className="text-steel-50 font-mono">{alert.method}</span>
-                      </div>
-                    )}
-                    {alert.param && (
-                      <div>
-                        <span className="text-steel-500 block mb-1">Parameter</span>
-                        <span className="text-steel-50 font-mono">{alert.param}</span>
-                      </div>
-                    )}
-                    {alert.cwe_id && (
-                      <div>
-                        <span className="text-steel-500 block mb-1">CWE</span>
-                        <a
-                          href={`https://cwe.mitre.org/data/definitions/${alert.cwe_id}.html`}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="text-violet-400 hover:text-violet-300 flex items-center gap-1"
-                        >
-                          CWE-{alert.cwe_id} <ExternalLink className="w-3 h-3" />
-                        </a>
-                      </div>
-                    )}
-                    {alert.evidence && (
-                      <div className="col-span-2">
-                        <span className="text-steel-500 block mb-1">Evidence</span>
-                        <code className="text-xs text-amber-300 bg-white/[0.04] px-2 py-1 rounded border border-white/[0.06] block overflow-x-auto">
-                          {typeof alert.evidence === 'string' ? alert.evidence.slice(0, 300) : JSON.stringify(alert.evidence).slice(0, 300)}
-                        </code>
-                      </div>
-                    )}
+              {/* Details */}
+              <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
+                {(selectedAlert.url || selectedAlert.uri) && (
+                  <div className="col-span-2 bg-white/[0.02] border border-white/[0.06] rounded-xl p-4">
+                    <span className="text-[10px] text-steel-500 font-mono tracking-wider uppercase block mb-1">URL</span>
+                    <span className="text-steel-50 font-mono break-all text-xs">{selectedAlert.url || selectedAlert.uri}</span>
                   </div>
+                )}
+                {selectedAlert.method && (
+                  <div className="bg-white/[0.02] border border-white/[0.06] rounded-xl p-4">
+                    <span className="text-[10px] text-steel-500 font-mono tracking-wider uppercase block mb-1">Method</span>
+                    <span className="text-steel-50 font-mono text-sm">{selectedAlert.method}</span>
+                  </div>
+                )}
+                {selectedAlert.param && (
+                  <div className="bg-white/[0.02] border border-white/[0.06] rounded-xl p-4">
+                    <span className="text-[10px] text-steel-500 font-mono tracking-wider uppercase block mb-1">Parameter</span>
+                    <span className="text-steel-50 font-mono text-sm">{selectedAlert.param}</span>
+                  </div>
+                )}
+                {selectedAlert.cwe_id && (
+                  <div className="bg-white/[0.02] border border-white/[0.06] rounded-xl p-4">
+                    <span className="text-[10px] text-steel-500 font-mono tracking-wider uppercase block mb-1">CWE Link</span>
+                    <a href={`https://cwe.mitre.org/data/definitions/${selectedAlert.cwe_id}.html`} target="_blank" rel="noopener noreferrer" className="text-emerald-400 hover:text-emerald-300 flex items-center gap-1 text-sm font-mono block">CWE-{selectedAlert.cwe_id} <ExternalLink className="w-3 h-3" /></a>
+                  </div>
+                )}
+              </div>
 
-                  {/* References */}
-                  {alert.reference && (
-                    <div>
-                      <h4 className="text-xs font-bold text-steel-400 uppercase tracking-wider mb-1">References</h4>
-                      <div className="text-xs text-violet-400 space-y-1">
-                        {(typeof alert.reference === 'string' ? alert.reference.split('\n') : [alert.reference])
-                          .filter(Boolean)
-                          .slice(0, 5)
-                          .map((ref, i) => (
-                            <a key={i} href={ref} target="_blank" rel="noopener noreferrer" className="flex items-center gap-1 hover:text-violet-300">
-                              <ExternalLink className="w-3 h-3" /> {ref}
-                            </a>
-                          ))}
-                      </div>
-                    </div>
-                  )}
+              {selectedAlert.evidence && (
+                <div>
+                  <h4 className="text-[10px] font-bold text-steel-500 uppercase tracking-wider mb-2 font-mono">Evidence</h4>
+                  <pre className="text-xs text-amber-300 bg-surface-code p-4 rounded-xl border border-white/[0.06] overflow-x-auto whitespace-pre-wrap break-all custom-scrollbar">
+                    {typeof selectedAlert.evidence === 'string' ? selectedAlert.evidence : JSON.stringify(selectedAlert.evidence, null, 2)}
+                  </pre>
+                </div>
+              )}
+
+              {selectedAlert.reference && (
+                <div>
+                  <h4 className="text-[10px] font-bold text-steel-500 uppercase tracking-wider mb-2 font-mono">References</h4>
+                  <div className="text-xs space-y-2">
+                    {(typeof selectedAlert.reference === 'string' ? selectedAlert.reference.replace(/<[^>]+>/g, ' ').split(/\s+/) : [selectedAlert.reference])
+                      .filter(ref => ref && ref.trim().startsWith('http'))
+                      .map((ref, i) => (
+                      <a key={i} href={ref.trim()} target="_blank" rel="noopener noreferrer" className="flex items-start gap-2 text-emerald-400 hover:text-emerald-300">
+                        <ExternalLink className="w-3.5 h-3.5 flex-shrink-0 mt-0.5" /> <span className="break-all">{ref.trim()}</span>
+                      </a>
+                    ))}
+                  </div>
                 </div>
               )}
             </div>
-          )
-        })}
+            
+            {/* Footer */}
+            <div className="sticky bottom-0 flex justify-end gap-3 p-6 border-t border-theme bg-surface-secondary/95 backdrop-blur-2xl rounded-b-2xl">
+              <button onClick={() => setSelectedAlert(null)} className="btn-secondary">Close</button>
+            </div>
+          </div>
+        </div>,
+        document.body
+      )}
 
         {filteredResults.length === 0 && results.length > 0 && (
           <div className="text-center py-12 text-steel-500 text-sm">No alerts match the current filters</div>
@@ -451,7 +470,6 @@ export default function DastReport() {
             <p className="text-sm text-steel-500">Your application passed the dynamic security scan.</p>
           </div>
         )}
-      </div>
     </div>
   )
 }

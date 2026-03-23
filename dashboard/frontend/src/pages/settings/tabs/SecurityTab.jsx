@@ -232,8 +232,8 @@ export default function SecurityTab({ showToast }) {
       <SettingsCard title="Connected Accounts" icon={KeyRound} description="Manage third-party connections">
         <div className="flex items-center justify-between p-4 rounded-xl bg-theme-base border border-theme-subtle">
           <div className="flex items-center gap-3">
-            <div className="p-2 rounded-lg bg-blue-500/10">
-              <Chrome className="w-5 h-5 text-blue-400" />
+            <div className="p-2 rounded-lg bg-emerald-500/10">
+              <Chrome className="w-5 h-5 text-emerald-400" />
             </div>
             <div>
               <p className="text-sm font-medium text-steel-100">Google</p>
@@ -247,7 +247,7 @@ export default function SecurityTab({ showToast }) {
               Disconnect
             </button>
           ) : (
-            <button className="text-xs text-violet-400 hover:text-violet-300 font-medium transition-colors">
+            <button className="text-xs text-emerald-400 hover:text-emerald-300 font-medium transition-colors">
               Connect
             </button>
           )}

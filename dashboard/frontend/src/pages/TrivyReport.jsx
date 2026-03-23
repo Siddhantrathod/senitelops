@@ -167,11 +167,14 @@ export default function TrivyReport() {
         </div>
         <Alert variant="warning" title="No Trivy Report Available">
           <p className="mb-4">
-            No container scan has been performed yet. Trivy scans are optional and can be enabled when triggering a scan.
+            No Trivy report is available for your account yet.
           </p>
           <p className="text-sm text-steel-400">
-            To run a Trivy scan, use the scan trigger API with <code className="bg-white/[0.06] border border-white/[0.08] px-2 py-1 rounded font-mono text-violet-400">"run_trivy": true</code>
+            Run pipeline to see reports.
           </p>
+          <button onClick={() => navigate('/dashboard/pipeline')} className="btn-primary mt-4 text-sm">
+            Go to Pipeline
+          </button>
         </Alert>
       </div>
     )
@@ -231,7 +234,7 @@ export default function TrivyReport() {
         <h3 className="text-lg font-semibold text-steel-50 mb-4">Container Image Information</h3>
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
           <div className="flex items-center gap-3">
-            <div className="p-2 rounded-lg bg-violet-500/10 text-violet-400 border border-violet-500/20">
+            <div className="p-2 rounded-lg bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
               <Server className="w-5 h-5" />
             </div>
             <div>
@@ -326,7 +329,7 @@ export default function TrivyReport() {
           </div>
 
           {/* Search */}
-          <div className="flex items-center gap-2 px-4 py-2 bg-white/[0.04] rounded-lg border border-white/[0.06] flex-1 md:max-w-xs focus-within:ring-2 focus-within:ring-violet-500/30 transition-all">
+          <div className="flex items-center gap-2 px-4 py-2 bg-white/[0.04] rounded-lg border border-white/[0.06] flex-1 md:max-w-xs focus-within:ring-2 focus-within:ring-emerald-500/30 transition-all">
             <Search className="w-4 h-4 text-steel-500" />
             <input
               type="text"
@@ -341,7 +344,7 @@ export default function TrivyReport() {
           <select
             value={filters.severity}
             onChange={(e) => setFilters({ ...filters, severity: e.target.value })}
-            className="px-4 py-2 bg-white/[0.04] text-steel-300 rounded-lg border border-white/[0.06] outline-none text-sm focus:ring-2 focus:ring-violet-500/30"
+            className="px-4 py-2 bg-white/[0.04] text-steel-300 rounded-lg border border-white/[0.06] outline-none text-sm focus:ring-2 focus:ring-emerald-500/30"
           >
             <option value="all">All Severities</option>
             <option value="CRITICAL">Critical</option>
@@ -354,7 +357,7 @@ export default function TrivyReport() {
           <select
             value={filters.hasfix}
             onChange={(e) => setFilters({ ...filters, hasfix: e.target.value })}
-            className="px-4 py-2 bg-white/[0.04] text-steel-300 rounded-lg border border-white/[0.06] outline-none text-sm focus:ring-2 focus:ring-violet-500/30"
+            className="px-4 py-2 bg-white/[0.04] text-steel-300 rounded-lg border border-white/[0.06] outline-none text-sm focus:ring-2 focus:ring-emerald-500/30"
           >
             <option value="all">All Status</option>
             <option value="yes">Fix Available</option>

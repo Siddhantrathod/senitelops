@@ -1,10 +1,12 @@
 import { createContext, useContext, useState, useEffect } from 'react'
+import { applyAppearancePrefs, getStoredAppearance } from '../utils/appearance'
 
 const ThemeContext = createContext(null)
 
 export function ThemeProvider({ children }) {
   const [theme, setTheme] = useState(() => {
-    // Check localStorage first, then system preference, default to dark
+    const mode = localStorage.getItem('sentinelops-theme-mode')
+    if (mode === 'light' || mode === 'dark' || mode === 'system') return mode
     const stored = localStorage.getItem('sentinelops-theme')
     if (stored === 'light' || stored === 'dark') return stored
     if (window.matchMedia('(prefers-color-scheme: light)').matches) return 'light'
@@ -12,22 +14,17 @@ export function ThemeProvider({ children }) {
   })
 
   useEffect(() => {
-    const root = document.documentElement
-    if (theme === 'dark') {
-      root.classList.add('dark')
-    } else {
-      root.classList.remove('dark')
-    }
-    localStorage.setItem('sentinelops-theme', theme)
+    const stored = getStoredAppearance()
+    applyAppearancePrefs({ ...stored, theme })
   }, [theme])
 
   // Listen for system preference changes
   useEffect(() => {
     const mq = window.matchMedia('(prefers-color-scheme: dark)')
-    const handler = (e) => {
-      const stored = localStorage.getItem('sentinelops-theme')
-      if (!stored) {
-        setTheme(e.matches ? 'dark' : 'light')
+    const handler = () => {
+      const mode = localStorage.getItem('sentinelops-theme-mode')
+      if (mode === 'system') {
+        applyAppearancePrefs({ theme: 'system' })
       }
     }
     mq.addEventListener('change', handler)
@@ -35,13 +32,21 @@ export function ThemeProvider({ children }) {
   }, [])
 
   const toggleTheme = () => {
-    setTheme(prev => prev === 'dark' ? 'light' : 'dark')
+    setTheme(prev => {
+      const current = prev === 'system'
+        ? (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light')
+        : prev
+      return current === 'dark' ? 'light' : 'dark'
+    })
   }
 
-  const isDark = theme === 'dark'
+  const effectiveTheme = theme === 'system'
+    ? (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light')
+    : theme
+  const isDark = effectiveTheme === 'dark'
 
   return (
-    <ThemeContext.Provider value={{ theme, toggleTheme, isDark }}>
+    <ThemeContext.Provider value={{ theme, toggleTheme, setThemeMode: setTheme, isDark }}>
       {children}
     </ThemeContext.Provider>
   )

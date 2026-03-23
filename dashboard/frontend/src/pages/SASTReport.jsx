@@ -27,9 +27,9 @@ import { useAuth } from '../context/AuthContext'
 
 // Language color mapping for dark theme badges
 const LANG_COLORS = {
-  python: { bg: 'bg-blue-500/10', text: 'text-blue-400', border: 'border-blue-500/20' },
+  python: { bg: 'bg-emerald-500/10', text: 'text-emerald-400', border: 'border-emerald-500/20' },
   javascript: { bg: 'bg-yellow-500/10', text: 'text-yellow-400', border: 'border-yellow-500/20' },
-  typescript: { bg: 'bg-blue-500/10', text: 'text-blue-400', border: 'border-blue-500/20' },
+  typescript: { bg: 'bg-emerald-500/10', text: 'text-emerald-400', border: 'border-emerald-500/20' },
   java: { bg: 'bg-orange-500/10', text: 'text-orange-400', border: 'border-orange-500/20' },
   go: { bg: 'bg-cyan-500/10', text: 'text-cyan-400', border: 'border-cyan-500/20' },
   ruby: { bg: 'bg-red-500/10', text: 'text-red-400', border: 'border-red-500/20' },
@@ -163,8 +163,8 @@ export default function SASTReport() {
     return (
       <div className="space-y-6 animate-fade-in">
         <div className="flex items-center gap-4">
-          <div className="p-3 rounded-xl bg-violet-500/10 border border-violet-500/20">
-            <Code2 className="w-8 h-8 text-violet-400" />
+          <div className="p-3 rounded-xl bg-emerald-500/10 border border-emerald-500/20">
+            <Code2 className="w-8 h-8 text-emerald-400" />
           </div>
           <div>
             <h1 className="text-3xl font-bold text-steel-50">Code Analysis (SAST)</h1>
@@ -173,10 +173,10 @@ export default function SASTReport() {
         </div>
         <Alert variant="warning" title="No SAST Report Available">
           <p className="mb-4">
-            No static analysis scan has been performed yet. SAST scans analyze your source code for security vulnerabilities.
+            No SAST report is available for your account yet.
           </p>
           <p className="text-sm text-steel-400">
-            Run a pipeline scan to generate a SAST report with tools like Semgrep and Bandit.
+            Run pipeline to see reports.
           </p>
           <button onClick={() => navigate('/dashboard/pipeline')} className="btn-primary mt-4 text-sm">
             Go to Pipeline
@@ -296,7 +296,7 @@ export default function SASTReport() {
             <span className="text-sm font-medium text-steel-400">Tools:</span>
             <div className="flex flex-wrap gap-1.5">
               {tools.map(tool => (
-                <span key={tool} className="px-2.5 py-1 rounded-lg text-xs font-medium border bg-violet-500/10 text-violet-400 border-violet-500/20">
+                <span key={tool} className="px-2.5 py-1 rounded-lg text-xs font-medium border bg-emerald-500/10 text-emerald-400 border-emerald-500/20">
                   {tool.charAt(0).toUpperCase() + tool.slice(1)}
                 </span>
               ))}
@@ -393,7 +393,7 @@ export default function SASTReport() {
           </div>
 
           {/* Search */}
-          <div className="flex items-center gap-2 px-4 py-2 bg-white/[0.04] rounded-lg border border-white/[0.06] flex-1 md:max-w-xs focus-within:ring-2 focus-within:ring-violet-500/30 transition-all">
+          <div className="flex items-center gap-2 px-4 py-2 bg-white/[0.04] rounded-lg border border-white/[0.06] flex-1 md:max-w-xs focus-within:ring-2 focus-within:ring-emerald-500/30 transition-all">
             <Search className="w-4 h-4 text-steel-500" />
             <input
               type="text"
@@ -408,7 +408,7 @@ export default function SASTReport() {
           <select
             value={filters.severity}
             onChange={(e) => setFilters({ ...filters, severity: e.target.value })}
-            className="px-4 py-2 bg-white/[0.04] text-steel-300 rounded-lg border border-white/[0.06] outline-none text-sm focus:ring-2 focus:ring-violet-500/30"
+            className="px-4 py-2 bg-white/[0.04] text-steel-300 rounded-lg border border-white/[0.06] outline-none text-sm focus:ring-2 focus:ring-emerald-500/30"
           >
             <option value="all">All Severities</option>
             <option value="CRITICAL">Critical</option>
@@ -421,7 +421,7 @@ export default function SASTReport() {
           <select
             value={filters.language}
             onChange={(e) => setFilters({ ...filters, language: e.target.value })}
-            className="px-4 py-2 bg-white/[0.04] text-steel-300 rounded-lg border border-white/[0.06] outline-none text-sm focus:ring-2 focus:ring-violet-500/30"
+            className="px-4 py-2 bg-white/[0.04] text-steel-300 rounded-lg border border-white/[0.06] outline-none text-sm focus:ring-2 focus:ring-emerald-500/30"
           >
             <option value="all">All Languages</option>
             {languages.map(lang => (
@@ -433,7 +433,7 @@ export default function SASTReport() {
           <select
             value={filters.tool}
             onChange={(e) => setFilters({ ...filters, tool: e.target.value })}
-            className="px-4 py-2 bg-white/[0.04] text-steel-300 rounded-lg border border-white/[0.06] outline-none text-sm focus:ring-2 focus:ring-violet-500/30"
+            className="px-4 py-2 bg-white/[0.04] text-steel-300 rounded-lg border border-white/[0.06] outline-none text-sm focus:ring-2 focus:ring-emerald-500/30"
           >
             <option value="all">All Tools</option>
             {tools.map(tool => (

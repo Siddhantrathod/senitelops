@@ -6,7 +6,7 @@ import {
   Tooltip,
   Legend,
 } from 'recharts'
-import { CHART_COLORS } from '../../utils/helpers'
+import { getChartPalette, isAnimationsEnabled } from '../../utils/appearance'
 
 const CustomTooltip = ({ active, payload }) => {
   if (active && payload && payload.length) {
@@ -43,17 +43,19 @@ const CustomLegend = ({ payload }) => {
 }
 
 export default function SeverityPieChart({ data, title, height = 300 }) {
+  const palette = getChartPalette()
+  const animate = isAnimationsEnabled()
   const chartData = data.map(item => ({
     ...item,
     percent: item.value / data.reduce((acc, curr) => acc + curr.value, 0),
   }))
 
   const colors = {
-    Critical: CHART_COLORS.critical,
-    High: CHART_COLORS.high,
-    Medium: CHART_COLORS.medium,
-    Low: CHART_COLORS.low,
-    Info: CHART_COLORS.info,
+    Critical: palette.critical,
+    High: palette.high,
+    Medium: palette.medium,
+    Low: palette.low,
+    Info: palette.info,
   }
 
   return (
@@ -72,12 +74,12 @@ export default function SeverityPieChart({ data, title, height = 300 }) {
             paddingAngle={2}
             dataKey="value"
             animationBegin={0}
-            animationDuration={800}
+            animationDuration={animate ? 800 : 0}
           >
             {chartData.map((entry, index) => (
               <Cell
                 key={`cell-${index}`}
-                fill={colors[entry.name] || CHART_COLORS.info}
+                fill={colors[entry.name] || palette.info}
                 stroke="transparent"
               />
             ))}

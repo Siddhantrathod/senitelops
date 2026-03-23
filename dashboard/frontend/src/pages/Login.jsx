@@ -45,7 +45,7 @@ export default function Login() {
   if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-surface">
-        <div className="animate-spin w-8 h-8 border-2 border-violet-500 border-t-transparent rounded-full" />
+        <div className="animate-spin w-8 h-8 border-2 border-emerald-500 border-t-transparent rounded-full" />
       </div>
     )
   }
@@ -70,13 +70,13 @@ export default function Login() {
     window.location.href = getGoogleAuthUrl()
   }
 
-  const inputClass = 'w-full py-3 bg-theme-input text-steel-50 rounded-xl border border-theme-strong focus:border-violet-500/50 focus:ring-1 focus:ring-violet-500/30 outline-none transition-all placeholder-theme font-mono text-sm'
+  const inputClass = 'w-full py-3 bg-theme-input text-steel-50 rounded-xl border border-theme-strong focus:border-emerald-500/50 focus:ring-1 focus:ring-emerald-500/30 outline-none transition-all placeholder-theme font-mono text-sm'
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-surface px-4 relative">
       {/* Background decoration */}
       <div className="absolute inset-0 overflow-hidden">
-        <div className="absolute -top-40 -right-40 w-80 h-80 bg-violet-500/10 rounded-full blur-3xl" />
+        <div className="absolute -top-40 -right-40 w-80 h-80 bg-emerald-500/10 rounded-full blur-3xl" />
         <div className="absolute -bottom-40 -left-40 w-80 h-80 bg-purple-500/10 rounded-full blur-3xl" />
         <div className="absolute inset-0 grid-bg opacity-30" />
       </div>
@@ -85,7 +85,7 @@ export default function Login() {
         {/* Logo */}
         <div className="text-center mb-8">
           <Link to="/" className="inline-block">
-            <div className="inline-flex items-center justify-center w-16 h-16 rounded-2xl bg-gradient-to-br from-violet-500 to-violet-600 shadow-glow-sm mb-4">
+            <div className="inline-flex items-center justify-center w-16 h-16 rounded-2xl bg-gradient-to-br from-emerald-500 to-emerald-600 shadow-glow-sm mb-4">
               <Shield className="w-8 h-8 text-white" />
             </div>
           </Link>
@@ -185,7 +185,7 @@ export default function Login() {
           <div className="mt-6 pt-6 border-t border-theme">
             <p className="text-steel-500 text-sm text-center">
               Don't have an account?{' '}
-              <Link to="/signup" className="font-semibold text-violet-400 hover:text-violet-300">
+              <Link to="/signup" className="font-semibold text-emerald-400 hover:text-emerald-300">
                 Create one
               </Link>
             </p>

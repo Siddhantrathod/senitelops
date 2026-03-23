@@ -36,11 +36,8 @@ logger = logging.getLogger('SentinelOps.Pipeline')
 BASE_DIR = Path(__file__).parent.parent.absolute()
 RUNTIME_DIR = BASE_DIR / "runtime"
 REPORTS_DIR = RUNTIME_DIR / "reports"
-HISTORY_DIR = RUNTIME_DIR / "history"
-
 # Ensure runtime directories exist
 REPORTS_DIR.mkdir(parents=True, exist_ok=True)
-HISTORY_DIR.mkdir(parents=True, exist_ok=True)
 
 # Default report paths
 DEFAULT_BANDIT_REPORT = REPORTS_DIR / "bandit-report.json"
@@ -49,6 +46,9 @@ DEFAULT_TRIVY_REPORT = REPORTS_DIR / "trivy-report.json"
 DEFAULT_GITLEAKS_REPORT = REPORTS_DIR / "gitleaks-report.json"
 DEFAULT_DAST_REPORT = REPORTS_DIR / "dast-report.json"
 DEFAULT_DECISION_REPORT = REPORTS_DIR / "security_decision.json"
+
+# Timeouts (seconds)
+TRIVY_TIMEOUT_SECONDS = int(os.getenv("TRIVY_TIMEOUT_SECONDS", "120"))
 
 # Temp workspace prefix
 WORKSPACE_PREFIX = "sentinelops_scan_"
@@ -99,6 +99,7 @@ class PipelineRun:
     duration_seconds: Optional[float] = None
     stages: Dict[str, Dict] = None
     security_score: Optional[int] = None
+    max_cvss_score: Optional[float] = None
     is_deployable: Optional[bool] = None
     vulnerability_summary: Optional[Dict] = None
 
@@ -121,6 +122,7 @@ class PipelineRun:
             "duration_seconds": self.duration_seconds,
             "stages": self.stages,
             "security_score": self.security_score,
+            "max_cvss_score": self.max_cvss_score,
             "is_deployable": self.is_deployable,
             "vulnerability_summary": self.vulnerability_summary
         }
@@ -129,43 +131,33 @@ class PipelineRun:
 class PipelineExecutor:
     """Executes security scanning pipeline"""
     
-    def __init__(self, reports_dir: str, pipelines_file: str):
+    def __init__(self, reports_dir: str, on_update=None):
         self.reports_dir = reports_dir
-        self.pipelines_file = pipelines_file
         self.current_runs: Dict[str, PipelineRun] = {}
-        self._load_pipelines()
-        
-    def _load_pipelines(self):
-        """Load pipeline history from file"""
+        self.on_update = on_update
+
+    def _notify_update(self, pipeline: PipelineRun) -> None:
+        if not self.on_update:
+            return
         try:
-            if os.path.exists(self.pipelines_file):
-                with open(self.pipelines_file, 'r') as f:
-                    data = json.load(f)
-                    self.pipeline_history = data.get('pipelines', [])
-            else:
-                self.pipeline_history = []
-        except Exception as e:
-            print(f"Error loading pipelines: {e}")
-            self.pipeline_history = []
+            self.on_update(pipeline)
+        except Exception:
+            # Best-effort updates; never break the pipeline
+            pass
     
-    def _save_pipelines(self):
-        """Save pipeline history to file"""
-        try:
-            os.makedirs(os.path.dirname(self.pipelines_file), exist_ok=True)
-            with open(self.pipelines_file, 'w') as f:
-                json.dump({
-                    'pipelines': self.pipeline_history[-50:],  # Keep last 50 runs
-                    'updated_at': datetime.now().isoformat()
-                }, f, indent=2)
-        except Exception as e:
-            print(f"Error saving pipelines: {e}")
-    
-    def create_pipeline(self, repo_url: str, branch: str, commit_sha: str, 
-                       commit_message: str, author: str) -> PipelineRun:
-        """Create a new pipeline run"""
-        pipeline_id = str(uuid.uuid4())[:8]
+    def create_pipeline(self, repo_url: str, branch: str, commit_sha: str,
+                       commit_message: str, author: str, pipeline_id: Optional[str] = None) -> PipelineRun:
+        """Create a new pipeline run.
+
+        pipeline_id is optional; when provided (e.g., DB record already created)
+        it will be used as the canonical ID and key for in-memory tracking so
+        stage updates line up with the database record.
+        """
+        pipeline_id = pipeline_id or str(uuid.uuid4())[:8]
         repo_name = repo_url.split('/')[-1].replace('.git', '') if repo_url else 'local'
         
+        queued_at = datetime.now().isoformat()
+
         pipeline = PipelineRun(
             id=pipeline_id,
             repo_name=repo_name,
@@ -176,20 +168,18 @@ class PipelineExecutor:
             status=PipelineStatus.QUEUED,
             triggered_at=datetime.now().isoformat(),
             stages={
-                "clone": {"name": "Clone Repository", "status": StageStatus.PENDING.value},
-                "build": {"name": "Build Image", "status": StageStatus.PENDING.value},
-                "sast_scan": {"name": "SAST Security Scan", "status": StageStatus.PENDING.value},
-                "gitleaks_scan": {"name": "Secret Detection (Gitleaks)", "status": StageStatus.PENDING.value},
-                "trivy_scan": {"name": "Trivy Container Scan", "status": StageStatus.PENDING.value},
-                "dast_scan": {"name": "DAST Security Scan (ZAP)", "status": StageStatus.PENDING.value},
-                "policy_check": {"name": "Policy Evaluation", "status": StageStatus.PENDING.value},
-                "decision": {"name": "Deployment Decision", "status": StageStatus.PENDING.value}
+                "clone": {"name": "Clone Repository", "status": StageStatus.PENDING.value, "queued_at": queued_at},
+                "build": {"name": "Build Image", "status": StageStatus.PENDING.value, "queued_at": queued_at},
+                "sast_scan": {"name": "SAST Security Scan", "status": StageStatus.PENDING.value, "queued_at": queued_at},
+                "gitleaks_scan": {"name": "Secret Detection (Gitleaks)", "status": StageStatus.PENDING.value, "queued_at": queued_at},
+                "trivy_scan": {"name": "Trivy Container Scan", "status": StageStatus.PENDING.value, "queued_at": queued_at},
+                "dast_scan": {"name": "DAST Security Scan (ZAP)", "status": StageStatus.PENDING.value, "queued_at": queued_at},
+                "policy_check": {"name": "Policy Evaluation", "status": StageStatus.PENDING.value, "queued_at": queued_at},
+                "decision": {"name": "Deployment Decision", "status": StageStatus.PENDING.value, "queued_at": queued_at}
             }
         )
         
         self.current_runs[pipeline_id] = pipeline
-        self.pipeline_history.insert(0, pipeline.to_dict())
-        self._save_pipelines()
         
         return pipeline
     
@@ -199,32 +189,39 @@ class PipelineExecutor:
         if pipeline_id in self.current_runs:
             pipeline = self.current_runs[pipeline_id]
             if stage_name in pipeline.stages:
-                pipeline.stages[stage_name]["status"] = status.value
-                pipeline.stages[stage_name]["logs"] = logs
+                stage = pipeline.stages[stage_name]
+                now_iso = datetime.now().isoformat()
+                stage["status"] = status.value
+                stage["updated_at"] = now_iso
+
+                existing_logs = (stage.get("logs") or "").strip()
+                event_line = f"[{now_iso}] {status.value.upper()}"
+                if logs:
+                    event_line = f"{event_line} - {logs.strip()}"
+                stage["logs"] = f"{existing_logs}\n{event_line}".strip()
+
                 if error:
-                    pipeline.stages[stage_name]["error"] = error
+                    stage["error"] = f"[{now_iso}] {error}"
                 if status == StageStatus.RUNNING:
-                    pipeline.stages[stage_name]["started_at"] = datetime.now().isoformat()
+                    stage["started_at"] = now_iso
                 elif status in [StageStatus.SUCCESS, StageStatus.FAILED]:
-                    pipeline.stages[stage_name]["finished_at"] = datetime.now().isoformat()
-                    if pipeline.stages[stage_name].get("started_at"):
-                        start = datetime.fromisoformat(pipeline.stages[stage_name]["started_at"])
-                        end = datetime.fromisoformat(pipeline.stages[stage_name]["finished_at"])
-                        pipeline.stages[stage_name]["duration_seconds"] = (end - start).total_seconds()
-            
-            # Update history
-            for i, p in enumerate(self.pipeline_history):
-                if p['id'] == pipeline_id:
-                    self.pipeline_history[i] = pipeline.to_dict()
-                    break
-            self._save_pipelines()
+                    stage["finished_at"] = now_iso
+                    if stage.get("started_at"):
+                        start = datetime.fromisoformat(stage["started_at"])
+                        end = datetime.fromisoformat(stage["finished_at"])
+                        stage["duration_seconds"] = (end - start).total_seconds()
+                self._notify_update(pipeline)
     
     def run_pipeline(self, pipeline: PipelineRun, repo_url: str = None, 
-                    target_dir: str = None, image_name: str = None):
+                    target_dir: str = None, image_name: str = None,
+                    scan_prefs: Dict[str, Any] = None):
         """Execute the full pipeline"""
+        scan_prefs = scan_prefs or {}
+        scanners = scan_prefs.get('scanners', {'sast': True, 'dast': True, 'trivy': True, 'gitleaks': True})
+        fast_scan = scan_prefs.get('fastScanMode', False)
         pipeline.status = PipelineStatus.RUNNING
         pipeline.started_at = datetime.now().isoformat()
-        self._save_pipelines()
+        self._notify_update(pipeline)
         
         work_dir = target_dir or tempfile.mkdtemp(prefix="sentinelops_")
         cleanup_dir = target_dir is None
@@ -279,69 +276,106 @@ class PipelineExecutor:
                                 "No Dockerfile found — Trivy will scan filesystem instead")
             
             # Stage 3: Multi-Language SAST Scan
-            self.update_stage(pipeline.id, "sast_scan", StageStatus.RUNNING)
-            try:
-                sast_report = run_sast_scan(work_dir, self.reports_dir)
-                tools_used = [t for t, info in sast_report.get('tools_used', {}).items() if info.get('success')]
-                langs = list(sast_report.get('languages_detected', {}).keys())
-                total_issues = sast_report.get('metrics', {}).get('totals', {}).get('total', 0)
-                self.update_stage(pipeline.id, "sast_scan", StageStatus.SUCCESS,
-                                f"SAST scan completed: {total_issues} issues found across {len(langs)} language(s) using {', '.join(tools_used) or 'no tools'}")
-            except Exception as e:
-                self.update_stage(pipeline.id, "sast_scan", StageStatus.FAILED, error=str(e))
-                raise
+            if scanners.get('sast', True):
+                self.update_stage(pipeline.id, "sast_scan", StageStatus.RUNNING)
+                try:
+                    sast_report = run_sast_scan(work_dir, self.reports_dir)
+                    tools_used = [t for t, info in sast_report.get('tools_used', {}).items() if info.get('success')]
+                    langs = list(sast_report.get('languages_detected', {}).keys())
+                    total_issues = sast_report.get('metrics', {}).get('totals', {}).get('total', 0)
+                    self.update_stage(pipeline.id, "sast_scan", StageStatus.SUCCESS,
+                                    f"SAST scan completed: {total_issues} issues found across {len(langs)} language(s) using {', '.join(tools_used) or 'no tools'}")
+                except Exception as e:
+                    self.update_stage(pipeline.id, "sast_scan", StageStatus.FAILED, error=str(e))
+                    raise
+            else:
+                self.update_stage(pipeline.id, "sast_scan", StageStatus.SKIPPED, "Disabled by Scan Preferences")
             
             # Define report paths for later stages
             bandit_report_path = os.path.join(self.reports_dir, "bandit-report.json")
             
             # Stage 4: Gitleaks Secret Detection
-            self.update_stage(pipeline.id, "gitleaks_scan", StageStatus.RUNNING)
-            try:
-                gitleaks_report = run_secrets_scan(work_dir, self.reports_dir)
-                secrets_count = gitleaks_report.get('total_secrets', 0)
-                tool_used = gitleaks_report.get('tool', 'unknown')
-                self.update_stage(pipeline.id, "gitleaks_scan", StageStatus.SUCCESS,
-                                f"Secret scan ({tool_used}): {secrets_count} secret(s) found")
-            except Exception as e:
-                self.update_stage(pipeline.id, "gitleaks_scan", StageStatus.FAILED, error=str(e))
-                # Don't fail pipeline for gitleaks errors
-                logger.warning(f"Gitleaks scan failed: {e}")
-                gitleaks_report = {}
+            if scanners.get('gitleaks', True):
+                self.update_stage(pipeline.id, "gitleaks_scan", StageStatus.RUNNING)
+                try:
+                    gitleaks_report = run_secrets_scan(work_dir, self.reports_dir)
+                    secrets_count = gitleaks_report.get('total_secrets', 0)
+                    tool_used = gitleaks_report.get('tool', 'unknown')
+                    self.update_stage(pipeline.id, "gitleaks_scan", StageStatus.SUCCESS,
+                                    f"Secret scan ({tool_used}): {secrets_count} secret(s) found")
+                except Exception as e:
+                    self.update_stage(pipeline.id, "gitleaks_scan", StageStatus.FAILED, error=str(e))
+                    # Don't fail pipeline for gitleaks errors
+                    logger.warning(f"Gitleaks scan failed: {e}")
+                    gitleaks_report = {}
+            else:
+                self.update_stage(pipeline.id, "gitleaks_scan", StageStatus.SKIPPED, "Disabled by Scan Preferences")
             
             # Stage 5: Trivy Container Scan
-            self.update_stage(pipeline.id, "trivy_scan", StageStatus.RUNNING)
             trivy_report_path = os.path.join(self.reports_dir, "trivy-report.json")
-            
-            try:
-                if built_image_name:
-                    # Scan the built Docker image
-                    scan_target = built_image_name
-                    trivy_cmd = ["trivy", "image", "--format", "json", "--output", trivy_report_path, scan_target]
-                    scan_mode_msg = f"image scan for {scan_target}"
-                else:
-                    # No Docker image — scan filesystem for dependency vulnerabilities
-                    scan_target = work_dir
-                    trivy_cmd = ["trivy", "fs", "--format", "json", "--output", trivy_report_path, scan_target]
-                    scan_mode_msg = f"filesystem scan on {os.path.basename(work_dir)}"
-                
-                result = subprocess.run(
-                    trivy_cmd,
-                    capture_output=True, text=True, timeout=300
-                )
-                if result.returncode != 0 and "No such image" not in result.stderr:
-                    raise Exception(result.stderr)
-                self.update_stage(pipeline.id, "trivy_scan", StageStatus.SUCCESS,
-                                f"Trivy {scan_mode_msg} completed")
-            except FileNotFoundError:
-                self.update_stage(pipeline.id, "trivy_scan", StageStatus.FAILED,
-                                error="Trivy not installed")
-                raise Exception("Trivy not installed")
-            except Exception as e:
-                self.update_stage(pipeline.id, "trivy_scan", StageStatus.FAILED, error=str(e))
-                raise
+            if scanners.get('trivy', True):
+                self.update_stage(pipeline.id, "trivy_scan", StageStatus.RUNNING)
+
+                try:
+                    trivy_common_flags = [
+                        "--format", "json",
+                        "--timeout", f"{TRIVY_TIMEOUT_SECONDS}s",
+                        "--scanners", "vuln",
+                        "--no-progress",
+                        "--quiet",
+                    ]
+
+                    if built_image_name:
+                        # Scan the built Docker image
+                        scan_target = built_image_name
+                        trivy_cmd = [
+                            "trivy", "image", *trivy_common_flags,
+                            "--output", trivy_report_path, scan_target,
+                        ]
+                        scan_mode_msg = f"image scan for {scan_target}"
+                    else:
+                        # No Docker image — scan filesystem for dependency vulnerabilities
+                        scan_target = work_dir
+                        trivy_cmd = [
+                            "trivy", "fs", *trivy_common_flags,
+                            "--skip-dirs", ".git",
+                            "--skip-dirs", "node_modules",
+                            "--skip-dirs", "venv",
+                            "--skip-dirs", ".venv",
+                            "--skip-dirs", "__pycache__",
+                            "--skip-dirs", "dist",
+                            "--skip-dirs", "build",
+                            "--output", trivy_report_path, scan_target,
+                        ]
+                        scan_mode_msg = f"filesystem scan on {os.path.basename(work_dir)}"
+
+                    result = subprocess.run(
+                        trivy_cmd,
+                        capture_output=True,
+                        text=True,
+                        timeout=TRIVY_TIMEOUT_SECONDS + 30,  # small buffer over Trivy's internal timeout
+                    )
+                    if result.returncode != 0 and "No such image" not in result.stderr:
+                        raise Exception(result.stderr)
+                    self.update_stage(pipeline.id, "trivy_scan", StageStatus.SUCCESS,
+                                    f"Trivy {scan_mode_msg} completed")
+                except subprocess.TimeoutExpired:
+                    msg = f"Trivy {scan_mode_msg} timed out after {TRIVY_TIMEOUT_SECONDS}s"
+                    self.update_stage(pipeline.id, "trivy_scan", StageStatus.FAILED, error=msg)
+                    logger.warning(msg)
+                    # Continue pipeline even if Trivy timed out
+                except FileNotFoundError:
+                    self.update_stage(pipeline.id, "trivy_scan", StageStatus.FAILED,
+                                    error="Trivy not installed")
+                    raise Exception("Trivy not installed")
+                except Exception as e:
+                    self.update_stage(pipeline.id, "trivy_scan", StageStatus.FAILED, error=str(e))
+                    raise
+            else:
+                self.update_stage(pipeline.id, "trivy_scan", StageStatus.SKIPPED, "Disabled by Scan Preferences")
             
             # Stage 6: DAST Scan (only if Docker image was built)
-            if built_image_name:
+            if built_image_name and scanners.get('dast', True) and not fast_scan:
                 self.update_stage(pipeline.id, "dast_scan", StageStatus.RUNNING)
                 try:
                     dockerfile_path = os.path.join(work_dir, "Dockerfile")
@@ -360,8 +394,10 @@ class PipelineExecutor:
                     logger.warning(f"DAST scan failed: {e}")
                     dast_report = {}
             else:
-                self.update_stage(pipeline.id, "dast_scan", StageStatus.SKIPPED,
-                                "No Docker image — DAST scan requires a running application")
+                reason = "Disabled by Scan Preferences" if not scanners.get('dast', True) else "Fast Scan Mode enabled"
+                if not built_image_name:
+                    reason = "No Docker image — DAST scan requires a running application"
+                self.update_stage(pipeline.id, "dast_scan", StageStatus.SKIPPED, reason)
                 dast_report = {}
             
             # Stage 7: Policy Evaluation
@@ -376,6 +412,7 @@ class PipelineExecutor:
                 )
                 pipeline.vulnerability_summary = vuln_summary
                 pipeline.security_score = vuln_summary.get('security_score', 0)
+                pipeline.max_cvss_score = vuln_summary.get('max_cvss_score', 0.0)
                 self.update_stage(pipeline.id, "policy_check", StageStatus.SUCCESS,
                                 f"Security Score: {pipeline.security_score}/100")
             except Exception as e:
@@ -399,6 +436,7 @@ class PipelineExecutor:
             start = datetime.fromisoformat(pipeline.started_at)
             end = datetime.fromisoformat(pipeline.finished_at)
             pipeline.duration_seconds = (end - start).total_seconds()
+            self._notify_update(pipeline)
             
         except Exception as e:
             pipeline.status = PipelineStatus.FAILED
@@ -407,15 +445,9 @@ class PipelineExecutor:
                 start = datetime.fromisoformat(pipeline.started_at)
                 end = datetime.fromisoformat(pipeline.finished_at)
                 pipeline.duration_seconds = (end - start).total_seconds()
+            self._notify_update(pipeline)
         
         finally:
-            # Update history
-            for i, p in enumerate(self.pipeline_history):
-                if p['id'] == pipeline.id:
-                    self.pipeline_history[i] = pipeline.to_dict()
-                    break
-            self._save_pipelines()
-            
             # Cleanup
             if cleanup_dir and os.path.exists(work_dir):
                 shutil.rmtree(work_dir, ignore_errors=True)
@@ -462,6 +494,7 @@ class PipelineExecutor:
             'dast_low': 0,
             'languages_detected': [],
             'tools_used': [],
+            'max_cvss_score': 0.0,
         }
         
         # Try unified SAST report first, then fall back to Bandit-only
@@ -475,6 +508,12 @@ class PipelineExecutor:
                 summary['sast_high'] = metrics.get('high', 0)
                 summary['sast_medium'] = metrics.get('medium', 0)
                 summary['sast_low'] = metrics.get('low', 0)
+                
+                # CVSS tracking for SAST
+                if summary['sast_high'] > 0: summary['max_cvss_score'] = max(summary['max_cvss_score'], 8.0)
+                elif summary['sast_medium'] > 0: summary['max_cvss_score'] = max(summary['max_cvss_score'], 5.5)
+                elif summary['sast_low'] > 0: summary['max_cvss_score'] = max(summary['max_cvss_score'], 2.0)
+                
                 # Backward compat
                 summary['bandit_issues'] = summary['sast_issues']
                 summary['bandit_high'] = summary['sast_high']
@@ -506,6 +545,11 @@ class PipelineExecutor:
                             summary['low'] += 1
                             summary['sast_low'] += 1
                             summary['bandit_low'] += 1
+                    
+                    # CVSS tracking for Bandit Fallback
+                    if summary['bandit_high'] > 0: summary['max_cvss_score'] = max(summary['max_cvss_score'], 8.0)
+                    elif summary['bandit_medium'] > 0: summary['max_cvss_score'] = max(summary['max_cvss_score'], 5.5)
+                    elif summary['bandit_low'] > 0: summary['max_cvss_score'] = max(summary['max_cvss_score'], 2.0)
         except Exception as e:
             print(f"Error reading SAST/Bandit report: {e}")
         
@@ -513,14 +557,24 @@ class PipelineExecutor:
         try:
             with open(trivy_path, 'r') as f:
                 trivy_data = json.load(f)
-                results = trivy_data.get('Results', [])
                 
-                for result in results:
-                    vulns = result.get('Vulnerabilities', []) or []
-                    summary['trivy_vulns'] += len(vulns)
-                    
-                    for vuln in vulns:
-                        severity = vuln.get('Severity', '').upper()
+                for result in trivy_data.get('Results', []):
+                    for vuln in result.get('Vulnerabilities', []):
+                        severity = vuln.get('Severity', 'UNKNOWN').upper()
+                        
+                        # Extract CVSS
+                        cvss_data = vuln.get("CVSS", {})
+                        v_cvss = 0.0
+                        for vendor, scores in cvss_data.items():
+                            if "V3Score" in scores: v_cvss = max(v_cvss, scores.get("V3Score", 0.0))
+                            elif "V2Score" in scores: v_cvss = max(v_cvss, scores.get("V2Score", 0.0))
+                        if v_cvss == 0.0:
+                            if severity == 'CRITICAL': v_cvss = 9.5
+                            elif severity == 'HIGH': v_cvss = 8.0
+                            elif severity == 'MEDIUM': v_cvss = 5.5
+                            elif severity == 'LOW': v_cvss = 2.0
+                        summary['max_cvss_score'] = max(summary['max_cvss_score'], v_cvss)
+                        
                         if severity == 'CRITICAL':
                             summary['critical'] += 1
                             summary['trivy_critical'] += 1
@@ -549,12 +603,15 @@ class PipelineExecutor:
                         if sev == 'CRITICAL':
                             summary['secrets_critical'] += 1
                             summary['critical'] += 1
+                            summary['max_cvss_score'] = max(summary['max_cvss_score'], 9.5)
                         elif sev == 'HIGH':
                             summary['secrets_high'] += 1
                             summary['high'] += 1
+                            summary['max_cvss_score'] = max(summary['max_cvss_score'], 8.0)
                         else:
                             summary['secrets_medium'] += 1
                             summary['medium'] += 1
+                            summary['max_cvss_score'] = max(summary['max_cvss_score'], 5.5)
             except Exception as e:
                 print(f"Error reading Gitleaks report: {e}")
         
@@ -571,12 +628,15 @@ class PipelineExecutor:
                         if risk == 'HIGH':
                             summary['dast_high'] += 1
                             summary['high'] += 1
+                            summary['max_cvss_score'] = max(summary['max_cvss_score'], 8.0)
                         elif risk == 'MEDIUM':
                             summary['dast_medium'] += 1
                             summary['medium'] += 1
+                            summary['max_cvss_score'] = max(summary['max_cvss_score'], 5.5)
                         elif risk == 'LOW':
                             summary['dast_low'] += 1
                             summary['low'] += 1
+                            summary['max_cvss_score'] = max(summary['max_cvss_score'], 2.0)
             except Exception as e:
                 print(f"Error reading DAST report: {e}")
         
@@ -604,80 +664,93 @@ class PipelineExecutor:
         dast_medium_impact = min(10, summary['dast_medium'] * 2)
         dast_low_impact = min(3, summary['dast_low'] * 1)
         
-        total_penalty = (code_high_impact + code_medium_impact + code_low_impact +
+        severity_penalty = (code_high_impact + code_medium_impact + code_low_impact +
                          image_critical_impact + image_high_impact + image_medium_impact + image_low_impact +
                          secrets_critical_impact + secrets_high_impact + secrets_medium_impact +
                          dast_high_impact + dast_medium_impact + dast_low_impact)
+        
+        cvss_penalty = summary['max_cvss_score'] * 3.5
+        total_penalty = (severity_penalty * 0.65) + cvss_penalty
         
         score = 100 - total_penalty
         summary['security_score'] = max(0, min(100, int(score)))
         
         return summary
     
-    def _load_policy(self) -> Dict[str, Any]:
-        """Load policy settings from dashboard config"""
+    def _load_policy(self, policy_dict: Dict[str, Any] = None) -> Dict[str, Any]:
+        """Return policy settings.
+
+        Precedence:
+          1. ``policy_dict`` passed in by the caller (e.g. read from DB).
+          2. Legacy JSON file on disk (backward compat for standalone use).
+          3. Built-in defaults.
+        """
         default_policy = {
             "minScore": 70,
             "blockCritical": True,
             "blockHigh": False,
             "maxCriticalVulns": 0,
             "maxHighVulns": 5,
-            "autoBlock": True
+            "autoBlock": True,
+            "blockOnSecrets": True,
+            "blockOnDastHigh": False,
         }
+        if policy_dict:
+            return {**default_policy, **policy_dict}
+        # Fallback: read from legacy JSON file (standalone / CI usage)
         policy_path = Path(self.reports_dir).parent.parent / "dashboard" / "data" / "policy.json"
         try:
             if policy_path.exists():
                 with open(policy_path) as f:
-                    return json.load(f)
+                    return {**default_policy, **json.load(f)}
         except Exception as e:
-            print(f"Error loading policy: {e}")
+            logger.warning(f"Could not load policy file: {e}")
         return default_policy
     
-    def _evaluate_deployment(self, score: int, summary: Dict[str, Any]) -> bool:
-        """Evaluate if deployment should be allowed based on policy settings"""
-        policy = self._load_policy()
-        
+    def _evaluate_deployment(self, score: int, summary: Dict[str, Any],
+                             policy_dict: Dict[str, Any] = None) -> bool:
+        """Evaluate if deployment should be allowed based on policy settings."""
+        policy = self._load_policy(policy_dict)
+
         # If auto-blocking is disabled, always allow
         if not policy.get("autoBlock", True):
             return True
-        
+
         # Check minimum score
-        min_score = policy.get("minScore", 70)
-        if score < min_score:
+        if score < policy.get("minScore", 70):
             return False
-        
-        # Check critical vulnerabilities (only if policy says to block)
+
+        # Check critical vulnerabilities
         if policy.get("blockCritical", True):
-            max_critical = policy.get("maxCriticalVulns", 0)
-            if summary.get('critical', 0) > max_critical:
+            if summary.get('critical', 0) > policy.get("maxCriticalVulns", 0):
                 return False
-        
-        # Check high vulnerabilities (only if policy says to block)
+
+        # Check high vulnerabilities
         if policy.get("blockHigh", False):
-            max_high = policy.get("maxHighVulns", 5)
-            if summary.get('high', 0) > max_high:
+            if summary.get('high', 0) > policy.get("maxHighVulns", 5):
                 return False
-        
-        # Block on secrets if policy says so (default: block)
+
+        # Block on secrets
         if policy.get("blockOnSecrets", True):
             if summary.get('secrets_found', 0) > 0:
                 return False
-        
-        # Block on DAST high findings if policy says so (default: don't block)
+
+        # Block on DAST high findings
         if policy.get("blockOnDastHigh", False):
             if summary.get('dast_high', 0) > 0:
                 return False
-        
+
         return True
     
-    def _generate_decision_report(self, pipeline: PipelineRun):
-        """Generate security decision JSON report"""
-        policy = self._load_policy()
+    def _generate_decision_report(self, pipeline: PipelineRun,
+                                   policy_dict: Dict[str, Any] = None):
+        """Generate security decision JSON report."""
+        policy = self._load_policy(policy_dict)
         min_score = policy.get("minScore", 70)
-        
+
         decision_report = {
             "pipeline_id": pipeline.id,
-            "timestamp": datetime.now().isoformat(),
+            "timestamp": datetime.utcnow().isoformat(),
             "repository": pipeline.repo_name,
             "branch": pipeline.branch,
             "commit": pipeline.commit_sha,
@@ -685,17 +758,24 @@ class PipelineExecutor:
             "is_deployable": pipeline.is_deployable,
             "vulnerability_summary": pipeline.vulnerability_summary,
             "decision": "APPROVED" if pipeline.is_deployable else "BLOCKED",
-            "reasons": []
+            "reasons": [],
         }
-        
+
         if not pipeline.is_deployable:
-            if pipeline.security_score < min_score:
-                decision_report["reasons"].append(f"Security score ({pipeline.security_score}) below threshold ({min_score})")
-            if policy.get("blockCritical", True) and pipeline.vulnerability_summary.get('critical', 0) > policy.get("maxCriticalVulns", 0):
-                decision_report["reasons"].append(f"Critical vulnerabilities found: {pipeline.vulnerability_summary['critical']}")
-            if policy.get("blockHigh", False) and pipeline.vulnerability_summary.get('high', 0) > policy.get("maxHighVulns", 5):
-                decision_report["reasons"].append(f"Too many high vulnerabilities: {pipeline.vulnerability_summary['high']}")
-        
+            if (pipeline.security_score or 0) < min_score:
+                decision_report["reasons"].append(
+                    f"Security score ({pipeline.security_score}) below threshold ({min_score})"
+                )
+            vuln = pipeline.vulnerability_summary or {}
+            if policy.get("blockCritical", True) and vuln.get('critical', 0) > policy.get("maxCriticalVulns", 0):
+                decision_report["reasons"].append(
+                    f"Critical vulnerabilities found: {vuln['critical']}"
+                )
+            if policy.get("blockHigh", False) and vuln.get('high', 0) > policy.get("maxHighVulns", 5):
+                decision_report["reasons"].append(
+                    f"Too many high vulnerabilities: {vuln['high']}"
+                )
+
         decision_path = os.path.join(self.reports_dir, "security_decision.json")
         with open(decision_path, 'w') as f:
             json.dump(decision_report, f, indent=2)
@@ -704,32 +784,58 @@ class PipelineExecutor:
         """Get a specific pipeline run"""
         if pipeline_id in self.current_runs:
             return self.current_runs[pipeline_id].to_dict()
-        for p in self.pipeline_history:
-            if p['id'] == pipeline_id:
-                return p
-        return None
-    
-    def get_pipelines(self, limit: int = 20) -> list:
-        """Get recent pipeline runs"""
-        return self.pipeline_history[:limit]
-    
-    def get_latest_pipeline(self) -> Optional[Dict]:
-        """Get the most recent pipeline run"""
-        if self.pipeline_history:
-            return self.pipeline_history[0]
         return None
 
 
-def run_pipeline_async(executor: PipelineExecutor, pipeline: PipelineRun, 
-                       repo_url: str = None, target_dir: str = None, image_name: str = None):
-    """Run pipeline in a background thread"""
+def run_pipeline_async(executor: PipelineExecutor, pipeline: PipelineRun,
+                       repo_url: str = None, target_dir: str = None,
+                       image_name: str = None, policy_dict: Dict[str, Any] = None):
+    """Run a pipeline in a background thread."""
     thread = threading.Thread(
         target=executor.run_pipeline,
-        args=(pipeline, repo_url, target_dir, image_name)
+        args=(pipeline, repo_url, target_dir, image_name),
+        daemon=True,
     )
-    thread.daemon = True
     thread.start()
     return thread
+
+
+def run_pipeline_background(
+    repo_url: str,
+    branch: str = "main",
+    run_trivy: bool = True,
+    callback=None,
+) -> str:
+    """Start a standalone pipeline in a background thread and return the pipeline_id.
+
+    Args:
+        repo_url:  GitHub repository URL to scan.
+        branch:    Branch to scan.
+        run_trivy: Whether to include Trivy scanning (requires Docker).
+        callback:  Optional callable(PipelineResult) invoked when scan completes.
+
+    Returns:
+        The pipeline_id string (8-char UUID prefix).
+    """
+    pipeline_id = str(uuid.uuid4())[:8]
+
+    def _worker():
+        try:
+            result = run_pipeline(repo_url=repo_url, branch=branch, run_trivy=run_trivy)
+            result.pipeline_id = pipeline_id
+            if callback:
+                callback(result)
+        except Exception as e:
+            logger.error(f"run_pipeline_background failed for {repo_url}: {e}")
+            if callback:
+                result = PipelineResult()
+                result.pipeline_id = pipeline_id
+                result.error = str(e)
+                callback(result)
+
+    thread = threading.Thread(target=_worker, daemon=True)
+    thread.start()
+    return pipeline_id
 
 # =============================================================================
 # STANDALONE PIPELINE FUNCTIONS FOR EXTERNAL REPO SCANNING

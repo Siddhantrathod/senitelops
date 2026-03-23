@@ -59,34 +59,34 @@
   --text-heading: #111827;
 
   --card-shadow: 0 1px 3px rgba(0, 0, 0, 0.06), 0 1px 2px rgba(0, 0, 0, 0.04);
-  --card-hover-shadow: 0 10px 25px rgba(0, 0, 0, 0.08), 0 0 20px rgba(124, 58, 237, 0.04);
-  --glow-sm: 0 0 10px rgba(124, 58, 237, 0.08);
-  --glow: 0 0 20px rgba(124, 58, 237, 0.10);
-  --glow-lg: 0 0 40px rgba(124, 58, 237, 0.12);
-  --glow-lime: 0 0 20px rgba(22, 163, 74, 0.15);
+  --card-hover-shadow: 0 10px 25px rgba(0, 0, 0, 0.08), 0 0 20px rgba(250, 129, 18, 0.12);
+  --glow-sm: 0 0 10px rgba(250, 129, 18, 0.14);
+  --glow: 0 0 20px rgba(250, 129, 18, 0.2);
+  --glow-lg: 0 0 40px rgba(250, 129, 18, 0.22);
+  --glow-lime: 0 0 20px rgba(34, 34, 34, 0.2);
   --inner-glow: inset 0 1px 0 0 rgba(0, 0, 0, 0.03);
 
   --scrollbar-thumb: rgba(0, 0, 0, 0.12);
   --scrollbar-hover: rgba(0, 0, 0, 0.22);
-  --grid-pattern: rgba(124, 58, 237, 0.03);
+  --grid-pattern: rgba(250, 129, 18, 0.05);
   --chart-grid: rgba(0, 0, 0, 0.07);
   --chart-text: #6b7280;
 
   /* Accent colors */
-  --violet: #7c3aed;
-  --violet-dim: rgba(124, 58, 237, 0.08);
-  --lime: #16a34a;
-  --lime-dim: rgba(22, 163, 74, 0.10);
+  --emerald: #FA8112;
+  --emerald-dim: rgba(250, 129, 18, 0.14);
+  --lime: #222222;
+  --lime-dim: rgba(34, 34, 34, 0.12);
   --neon-cyan: #0891b2;
   --neon-red: #ef4444;
   --neon-amber: #d97706;
   --neon-magenta: #c026d3;
   --neon-green: #16a34a;
 
-  --gradient-violet: linear-gradient(135deg, #7c3aed 0%, #a78bfa 100%);
+  --gradient-emerald: linear-gradient(135deg, #FA8112 0%, #E26F07 100%);
   --gradient-danger: linear-gradient(135deg, #ef4444 0%, #dc2626 100%);
   --gradient-warning: linear-gradient(135deg, #d97706 0%, #b45309 100%);
-  --gradient-success: linear-gradient(135deg, #16a34a 0%, #15803d 100%);
+  --gradient-success: linear-gradient(135deg, #FA8112 0%, #222222 100%);
 }
 
 /* Dark theme */
@@ -130,33 +130,33 @@ html.dark {
   --text-heading: #ffffff;
 
   --card-shadow: 0 4px 24px -4px rgba(0, 0, 0, 0.4);
-  --card-hover-shadow: 0 8px 32px -4px rgba(0, 0, 0, 0.5), 0 0 20px rgba(168, 85, 247, 0.1);
-  --glow-sm: 0 0 10px rgba(168, 85, 247, 0.15);
-  --glow: 0 0 20px rgba(168, 85, 247, 0.2);
-  --glow-lg: 0 0 40px rgba(168, 85, 247, 0.25);
-  --glow-lime: 0 0 20px rgba(92, 230, 10, 0.2);
+  --card-hover-shadow: 0 8px 32px -4px rgba(0, 0, 0, 0.5), 0 0 20px rgba(250, 129, 18, 0.2);
+  --glow-sm: 0 0 10px rgba(250, 129, 18, 0.2);
+  --glow: 0 0 20px rgba(250, 129, 18, 0.26);
+  --glow-lg: 0 0 40px rgba(250, 129, 18, 0.32);
+  --glow-lime: 0 0 20px rgba(34, 34, 34, 0.28);
   --inner-glow: inset 0 1px 0 0 rgba(255, 255, 255, 0.05);
 
   --scrollbar-thumb: rgba(255, 255, 255, 0.08);
   --scrollbar-hover: rgba(255, 255, 255, 0.15);
-  --grid-pattern: rgba(168, 85, 247, 0.03);
+  --grid-pattern: rgba(250, 129, 18, 0.06);
   --chart-grid: rgba(255, 255, 255, 0.04);
   --chart-text: #64748b;
 
-  --violet: #a855f7;
-  --violet-dim: rgba(168, 85, 247, 0.15);
-  --lime: #5ce60a;
-  --lime-dim: rgba(92, 230, 10, 0.15);
+  --emerald: #FA8112;
+  --emerald-dim: rgba(250, 129, 18, 0.22);
+  --lime: #F5E7C6;
+  --lime-dim: rgba(245, 231, 198, 0.22);
   --neon-cyan: #00f0ff;
   --neon-red: #ff3b5c;
   --neon-amber: #ffb800;
   --neon-magenta: #ff00e5;
   --neon-green: #00ff88;
 
-  --gradient-violet: linear-gradient(135deg, #9333ea 0%, #c084fc 100%);
+  --gradient-emerald: linear-gradient(135deg, #FA8112 0%, #E26F07 100%);
   --gradient-danger: linear-gradient(135deg, #ff3b5c 0%, #ff1744 100%);
   --gradient-warning: linear-gradient(135deg, #ffb800 0%, #ff9100 100%);
-  --gradient-success: linear-gradient(135deg, #5ce60a 0%, #00ff88 100%);
+  --gradient-success: linear-gradient(135deg, #FA8112 0%, #F5E7C6 100%);
 }
 
 /* ===========================
@@ -170,6 +170,26 @@ body {
   background: rgb(var(--surface-primary));
   color: rgb(var(--steel-100));
   min-height: 100vh;
+}
+
+select {
+  appearance: none;
+  -webkit-appearance: none;
+  -moz-appearance: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='14' height='14' viewBox='0 0 24 24' fill='none' stroke='%2394a3b8' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 0.85rem center;
+  background-size: 0.85rem;
+  padding-right: 2.4rem;
+}
+
+select:focus {
+  outline: none;
+}
+
+select option {
+  background: rgb(var(--surface-secondary));
+  color: rgb(var(--steel-100));
 }
 
 /* Smooth theme transition on all elements */
@@ -231,12 +251,12 @@ a, button, [class*="animate-"], svg, path, .recharts-wrapper *, input, textarea,
   }
 
   .glass-card-hover:hover {
-    border-color: rgba(168, 85, 247, 0.2);
+    border-color: rgba(250, 129, 18, 0.3);
     box-shadow: var(--card-hover-shadow);
   }
 
   .gradient-text {
-    @apply bg-clip-text text-transparent bg-gradient-to-r from-violet-400 to-fuchsia-400;
+    @apply bg-clip-text text-transparent bg-gradient-to-r from-emerald-400 to-emerald-400;
   }
 
   .stat-card {
@@ -256,7 +276,7 @@ a, button, [class*="animate-"], svg, path, .recharts-wrapper *, input, textarea,
     left: 0;
     right: 0;
     height: 1px;
-    background: var(--card-gradient, var(--gradient-violet));
+    background: var(--card-gradient, var(--gradient-emerald));
   }
 
   .nav-link {
@@ -270,7 +290,7 @@ a, button, [class*="animate-"], svg, path, .recharts-wrapper *, input, textarea,
   }
 
   .nav-link.active {
-    @apply bg-violet-500/10 text-violet-400 border border-violet-500/20;
+    @apply bg-emerald-500/10 text-emerald-400 border border-emerald-500/20;
   }
 
   .badge {
@@ -294,7 +314,7 @@ a, button, [class*="animate-"], svg, path, .recharts-wrapper *, input, textarea,
   }
 
   .badge-info {
-    @apply bg-violet-500/10 text-violet-400 border-violet-500/20;
+    @apply bg-emerald-500/10 text-emerald-400 border-emerald-500/20;
   }
 
   .table-row {
@@ -306,12 +326,12 @@ a, button, [class*="animate-"], svg, path, .recharts-wrapper *, input, textarea,
   }
 
   .btn-primary {
-    @apply px-4 py-2 bg-gradient-to-r from-violet-600 to-violet-500 text-white rounded-lg font-medium border border-violet-400/20;
+    @apply px-4 py-2 bg-gradient-to-r from-emerald-600 to-emerald-500 text-white rounded-lg font-medium border border-emerald-400/20;
     box-shadow: var(--glow-sm);
   }
 
   .btn-primary:hover {
-    @apply from-violet-500 to-violet-400;
+    @apply from-emerald-500 to-emerald-400;
     box-shadow: var(--glow);
   }
 
@@ -435,19 +455,19 @@ html:not(.dark) .bg-white\/20 { background-color: rgba(0, 0, 0, 0.10) !important
 
 @keyframes pulse-glow {
   0%, 100% {
-    box-shadow: 0 0 20px rgba(168, 85, 247, 0.2);
+    box-shadow: 0 0 20px rgba(16, 185, 129, 0.2);
   }
   50% {
-    box-shadow: 0 0 40px rgba(168, 85, 247, 0.4);
+    box-shadow: 0 0 40px rgba(16, 185, 129, 0.4);
   }
 }
 
 @keyframes neonPulse {
   0%, 100% {
-    text-shadow: 0 0 10px rgba(168, 85, 247, 0.5), 0 0 20px rgba(168, 85, 247, 0.3);
+    text-shadow: 0 0 10px rgba(16, 185, 129, 0.5), 0 0 20px rgba(16, 185, 129, 0.3);
   }
   50% {
-    text-shadow: 0 0 20px rgba(168, 85, 247, 0.8), 0 0 40px rgba(168, 85, 247, 0.5);
+    text-shadow: 0 0 20px rgba(16, 185, 129, 0.8), 0 0 40px rgba(16, 185, 129, 0.5);
   }
 }
 
@@ -465,6 +485,23 @@ html:not(.dark) .bg-white\/20 { background-color: rgba(0, 0, 0, 0.10) !important
 
 .animate-neon-pulse {
   animation: neonPulse 2s ease-in-out infinite;
+}
+
+html.no-animations *,
+html.no-animations *::before,
+html.no-animations *::after {
+  animation: none !important;
+  transition-duration: 0ms !important;
+}
+
+html[data-density='compact'] .glass-card,
+html[data-density='compact'] .stat-card {
+  padding: 1rem;
+}
+
+html[data-density='compact'] .nav-link {
+  padding-top: 0.55rem;
+  padding-bottom: 0.55rem;
 }
 
 /* ===========================

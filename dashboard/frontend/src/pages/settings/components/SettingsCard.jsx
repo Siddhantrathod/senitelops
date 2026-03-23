@@ -7,8 +7,8 @@ export default function SettingsCard({ title, description, icon: Icon, children,
         <div className="flex items-center justify-between mb-6 pb-4 border-b border-theme-subtle">
           <div className="flex items-center gap-3">
             {Icon && (
-              <div className="p-2 rounded-lg bg-violet-500/10 border border-violet-500/20">
-                <Icon className="w-5 h-5 text-violet-400" />
+              <div className="p-2 rounded-lg bg-emerald-500/10 border border-emerald-500/20">
+                <Icon className="w-5 h-5 text-emerald-400" />
               </div>
             )}
             <div>

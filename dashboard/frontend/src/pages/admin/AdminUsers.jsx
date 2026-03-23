@@ -12,12 +12,12 @@ import {
   updateAdminUser,
   deleteAdminUser,
   resetAdminUserPassword,
+  fetchAdminUserDetails,
 } from '../../services/api'
 
 const ROLE_OPTIONS = [
   { value: 'admin', label: 'Admin', icon: ShieldAlert },
   { value: 'user', label: 'User', icon: Users },
-  { value: 'viewer', label: 'Viewer', icon: Globe },
 ]
 
 export default function AdminUsers() {
@@ -29,6 +29,7 @@ export default function AdminUsers() {
   const [editModal, setEditModal] = useState({ open: false, user: null })
   const [deleteModal, setDeleteModal] = useState({ open: false, user: null })
   const [resetPwModal, setResetPwModal] = useState({ open: false, user: null })
+  const [detailsModal, setDetailsModal] = useState({ open: false, data: null })
   const [editForm, setEditForm] = useState({ role: '', email: '' })
   const [newPassword, setNewPassword] = useState('')
   const [actionLoading, setActionLoading] = useState(false)
@@ -42,19 +43,20 @@ export default function AdminUsers() {
   // Filtered data
   const filteredUsers = (users || []).filter(u => {
     if (roleFilter !== 'all' && u.role !== roleFilter) return false
-    if (authFilter !== 'all' && u.auth_type !== authFilter) return false
+    const auth = u.authProvider || u.auth_type
+    if (authFilter !== 'all' && auth !== authFilter) return false
     return true
   })
 
-  // Stats
-  const totalUsers = users?.length || 0
-  const admins = users?.filter(u => u.role === 'admin').length || 0
-  const googleUsers = users?.filter(u => u.auth_type === 'google').length || 0
-  const recent7d = users?.filter(u => {
+  // Stats (driven by filtered results)
+  const totalUsers = filteredUsers.length
+  const admins = filteredUsers.filter(u => u.role === 'admin').length
+  const googleUsers = filteredUsers.filter(u => (u.authProvider === 'google' || u.auth_type === 'google')).length
+  const recent7d = filteredUsers.filter(u => {
     if (!u.created_at) return false
     const d = new Date(u.created_at)
     return (Date.now() - d.getTime()) < 7 * 86400 * 1000
-  }).length || 0
+  }).length
 
   // Handlers
   const openEdit = (user) => {
@@ -106,6 +108,19 @@ export default function AdminUsers() {
     setActionLoading(false)
   }
 
+  const handleUserClick = async (user) => {
+    setDetailsModal({ open: true, data: null })
+    setActionLoading(true)
+    try {
+      const resp = await fetchAdminUserDetails(user.id)
+      setDetailsModal({ open: true, data: resp })
+    } catch (err) {
+      showMsg(err.response?.data?.error || 'Failed to fetch details', 'error')
+      setDetailsModal({ open: false, data: null })
+    }
+    setActionLoading(false)
+  }
+
   const columns = [
     {
       key: 'username',
@@ -116,7 +131,7 @@ export default function AdminUsers() {
           <div className={cn(
             'w-9 h-9 rounded-xl flex items-center justify-center text-white text-sm font-bold',
             row.role === 'admin' ? 'bg-gradient-to-br from-red-500 to-orange-500' :
-            row.role === 'user' ? 'bg-gradient-to-br from-violet-500 to-blue-500' :
+            row.role === 'user' ? 'bg-gradient-to-br from-emerald-500 to-emerald-500' :
             'bg-gradient-to-br from-steel-500 to-steel-600'
           )}>
             {row.username?.charAt(0).toUpperCase()}
@@ -135,19 +150,22 @@ export default function AdminUsers() {
       render: (row) => <StatusBadge status={row.role} />,
     },
     {
-      key: 'auth_type',
+      key: 'authProvider',
       label: 'Auth',
       sortable: true,
-      render: (row) => (
-        <div className="flex items-center gap-1.5">
-          {row.auth_type === 'google' ? (
-            <Globe className="w-3.5 h-3.5 text-blue-400" />
-          ) : (
-            <Lock className="w-3.5 h-3.5 text-steel-400" />
-          )}
-          <span className="text-xs text-steel-300 font-mono">{row.auth_type || 'local'}</span>
-        </div>
-      ),
+      render: (row) => {
+        const auth = row.authProvider || row.auth_type || 'local'
+        return (
+          <div className="flex items-center gap-1.5">
+            {auth === 'google' ? (
+              <Globe className="w-3.5 h-3.5 text-emerald-400" />
+            ) : (
+              <Lock className="w-3.5 h-3.5 text-steel-400" />
+            )}
+            <span className="text-xs text-steel-300 font-mono">{auth}</span>
+          </div>
+        )
+      },
     },
     {
       key: 'created_at',
@@ -206,7 +224,7 @@ export default function AdminUsers() {
 
       {/* KPI cards */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-        <KpiCard label="Total Users" value={totalUsers} icon={Users} accent="violet" />
+        <KpiCard label="Total Users" value={totalUsers} icon={Users} accent="blue" />
         <KpiCard label="Admins" value={admins} icon={ShieldAlert} accent="red" />
         <KpiCard label="Google Auth" value={googleUsers} icon={Globe} accent="blue" />
         <KpiCard label="New (7d)" value={recent7d} icon={UserPlus} accent="lime"
@@ -219,14 +237,14 @@ export default function AdminUsers() {
           <Filter className="w-3.5 h-3.5" /> Filters:
         </div>
         <div className="flex items-center gap-1.5">
-          {['all', 'admin', 'user', 'viewer'].map(r => (
+          {['all', 'admin', 'user'].map(r => (
             <button
               key={r}
               onClick={() => setRoleFilter(r)}
               className={cn(
                 'px-3 py-1.5 rounded-lg text-xs font-medium transition-colors border',
                 roleFilter === r
-                  ? 'bg-violet-500/15 border-violet-500/30 text-violet-400'
+                  ? 'bg-emerald-500/15 border-emerald-500/30 text-emerald-400'
                   : 'border-white/[0.06] text-steel-400 hover:text-steel-200 hover:bg-white/[0.04]'
               )}
             >
@@ -243,7 +261,7 @@ export default function AdminUsers() {
               className={cn(
                 'px-3 py-1.5 rounded-lg text-xs font-medium transition-colors border',
                 authFilter === a
-                  ? 'bg-blue-500/15 border-blue-500/30 text-blue-400'
+                  ? 'bg-emerald-500/15 border-emerald-500/30 text-emerald-400'
                   : 'border-white/[0.06] text-steel-400 hover:text-steel-200 hover:bg-white/[0.04]'
               )}
             >
@@ -261,11 +279,12 @@ export default function AdminUsers() {
         searchKeys={['username', 'email', 'role']}
         pageSize={10}
         emptyMessage="No users match the current filters"
+        onRowClick={handleUserClick}
         actions={(row) => (
           <div className="flex items-center gap-1 justify-end">
             <button
               onClick={(e) => { e.stopPropagation(); openEdit(row) }}
-              className="p-2 rounded-lg text-steel-400 hover:text-violet-400 hover:bg-violet-500/10 transition-colors"
+              className="p-2 rounded-lg text-steel-400 hover:text-emerald-400 hover:bg-emerald-500/10 transition-colors"
               title="Edit user"
             >
               <Edit3 className="w-4 h-4" />
@@ -309,7 +328,7 @@ export default function AdminUsers() {
                   className={cn(
                     'flex items-center justify-center gap-2 px-4 py-3 rounded-xl border text-sm font-medium transition-all',
                     editForm.role === opt.value
-                      ? 'bg-violet-500/15 border-violet-500/30 text-violet-400'
+                      ? 'bg-emerald-500/15 border-emerald-500/30 text-emerald-400'
                       : 'border-white/[0.08] text-steel-400 hover:border-white/[0.15] hover:text-steel-200'
                   )}
                 >
@@ -396,6 +415,134 @@ export default function AdminUsers() {
           </button>
           <button onClick={handleResetPassword} disabled={actionLoading} className="btn-primary text-sm px-4 py-2">
             {actionLoading ? 'Resetting...' : 'Reset Password'}
+          </button>
+        </div>
+      </Modal>
+
+      {/* User Details Modal */}
+      <Modal
+        open={detailsModal.open}
+        onClose={() => setDetailsModal({ open: false, data: null })}
+        title="User Overview"
+        description={detailsModal.data ? `Platform usage for "${detailsModal.data.user.username}"` : 'Loading details...'}
+        size="md"
+      >
+        <div className="py-2">
+          {actionLoading && !detailsModal.data ? (
+            <div className="flex justify-center py-8">
+              <div className="w-8 h-8 rounded-full border-2 border-emerald-500 border-t-transparent animate-spin" />
+            </div>
+          ) : detailsModal.data ? (
+            <div className="space-y-6">
+              <div className="grid grid-cols-2 lg:grid-cols-3 gap-4">
+                <div className="glass-card p-4 border-emerald-500/20">
+                  <div className="flex items-center gap-2 text-emerald-400 mb-2">
+                    <Globe className="w-4 h-4" />
+                    <span className="text-xs font-bold uppercase tracking-wider">Repositories</span>
+                  </div>
+                  <p className="text-2xl font-bold text-steel-50">{detailsModal.data.stats.repositories}</p>
+                </div>
+                <div className="glass-card p-4 border-blue-500/20">
+                  <div className="flex items-center gap-2 text-blue-400 mb-2">
+                    <Users className="w-4 h-4" />
+                    <span className="text-xs font-bold uppercase tracking-wider">Pipeline Runs</span>
+                  </div>
+                  <p className="text-2xl font-bold text-steel-50">{detailsModal.data.stats.pipeline_runs}</p>
+                </div>
+                <div className="glass-card p-4 border-red-500/20 col-span-2 lg:col-span-1">
+                  <div className="flex items-center gap-2 text-red-400 mb-2">
+                    <ShieldAlert className="w-4 h-4" />
+                    <span className="text-xs font-bold uppercase tracking-wider">Total Vulns</span>
+                  </div>
+                  <p className="text-2xl font-bold text-steel-50">{detailsModal.data.stats.vulnerabilities_found}</p>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                <div className="p-5 bg-white/[0.02] rounded-xl border border-white/[0.06]">
+                  <h4 className="flex items-center gap-2 text-xs font-bold text-steel-300 uppercase tracking-wider mb-4 border-b border-white/[0.06] pb-2">
+                    <Users className="w-4 h-4 text-emerald-400" /> Identity Details
+                  </h4>
+                  <div className="space-y-4 text-sm">
+                    <div className="flex flex-col gap-1">
+                      <span className="text-steel-500 text-xs uppercase tracking-wider">Full Name</span>
+                      <span className="text-steel-100 font-medium">{detailsModal.data.user.fullName || '—'}</span>
+                    </div>
+                    <div className="flex flex-col gap-1">
+                      <span className="text-steel-500 text-xs uppercase tracking-wider">Email Address</span>
+                      <span className="text-steel-100 font-mono text-xs break-all">{detailsModal.data.user.email || '—'}</span>
+                    </div>
+                    <div className="flex flex-col gap-1">
+                      <span className="text-steel-500 text-xs uppercase tracking-wider">Phone Number</span>
+                      <span className="text-steel-100 font-mono text-xs">{detailsModal.data.user.phone || '—'}</span>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="p-5 bg-white/[0.02] rounded-xl border border-white/[0.06]">
+                  <h4 className="flex items-center gap-2 text-xs font-bold text-steel-300 uppercase tracking-wider mb-4 border-b border-white/[0.06] pb-2">
+                    <ShieldAlert className="w-4 h-4 text-emerald-400" /> Platform Access
+                  </h4>
+                  <div className="space-y-4 text-sm">
+                    <div className="flex flex-col gap-1">
+                      <span className="text-steel-500 text-xs uppercase tracking-wider">Organization</span>
+                      <span className="text-steel-100">{detailsModal.data.user.organization || '—'}</span>
+                    </div>
+                    <div className="flex flex-col gap-1">
+                      <span className="text-steel-500 text-xs uppercase tracking-wider">Role Title</span>
+                      <span className="text-steel-100">{detailsModal.data.user.roleTitle || '—'}</span>
+                    </div>
+                    <div className="flex flex-col gap-1">
+                      <span className="text-steel-500 text-xs uppercase tracking-wider">Platform Role</span>
+                      <div className="flex items-center gap-2 pt-1">
+                        <StatusBadge status={detailsModal.data.user.role} />
+                      </div>
+                    </div>
+                    <div className="flex flex-col gap-1">
+                      <span className="text-steel-500 text-xs uppercase tracking-wider">Auth Method</span>
+                      <span className="text-steel-100 font-mono uppercase text-xs">
+                        {detailsModal.data.user.auth_type || 'local'}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Repositories List */}
+              <div className="p-5 bg-white/[0.02] rounded-xl border border-white/[0.06]">
+                <h4 className="flex items-center gap-2 text-xs font-bold text-steel-300 uppercase tracking-wider mb-4 border-b border-white/[0.06] pb-2">
+                  <Globe className="w-4 h-4 text-blue-400" /> Connected Repositories
+                </h4>
+                {detailsModal.data.repositories_list?.length > 0 ? (
+                  <div className="space-y-2 max-h-[160px] overflow-y-auto pr-2 custom-scrollbar">
+                    {detailsModal.data.repositories_list.map((repo, i) => (
+                      <div key={i} className="flex flex-col sm:flex-row sm:items-center justify-between p-3 rounded-lg bg-black/20 border border-white/[0.04] hover:border-emerald-500/30 transition-colors gap-2">
+                        <div className="truncate">
+                          <p className="text-sm font-semibold text-steel-100 truncate">{repo.name || 'Unnamed Repo'}</p>
+                          <a href={repo.url} target="_blank" rel="noopener noreferrer" className="text-[10px] text-blue-400 hover:text-blue-300 truncate block">
+                            {repo.url}
+                          </a>
+                        </div>
+                        <span className="px-2 py-1 rounded bg-white/[0.05] text-[10px] font-mono text-steel-400 whitespace-nowrap">
+                          {repo.branch || 'main'}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="py-6 text-center border border-dashed border-white/[0.1] rounded-lg">
+                    <p className="text-sm text-steel-500">No repositories connected</p>
+                  </div>
+                )}
+              </div>
+            </div>
+          ) : (
+            <div className="text-center text-red-400 py-8">Failed to load details</div>
+          )}
+        </div>
+        <div className="flex justify-end mt-6 pt-4 border-t border-white/[0.06]">
+          <button onClick={() => setDetailsModal({ open: false, data: null })} className="btn-secondary text-sm px-4 py-2">
+            Close
           </button>
         </div>
       </Modal>

@@ -16,7 +16,7 @@ const variants = {
   },
   info: {
     icon: Info,
-    className: 'bg-blue-500/10 border-blue-500/30 text-blue-400',
+    className: 'bg-emerald-500/10 border-emerald-500/30 text-emerald-400',
   },
 }
 

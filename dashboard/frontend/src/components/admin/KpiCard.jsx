@@ -2,10 +2,10 @@ import { cn } from '../../utils/helpers'
 import { TrendingUp, TrendingDown, Minus } from 'lucide-react'
 
 const accentMap = {
-  violet: {
-    card: 'from-violet-500/10 to-violet-500/5 border-violet-500/20',
-    icon: 'bg-violet-500/15 text-violet-400',
-    value: 'text-violet-400',
+  blue: {
+    card: 'from-emerald-500/10 to-emerald-500/5 border-emerald-500/20',
+    icon: 'bg-emerald-500/15 text-emerald-400',
+    value: 'text-emerald-400',
   },
   lime: {
     card: 'from-lime-500/10 to-lime-500/5 border-lime-500/20',
@@ -21,11 +21,6 @@ const accentMap = {
     card: 'from-amber-500/10 to-amber-500/5 border-amber-500/20',
     icon: 'bg-amber-500/15 text-amber-400',
     value: 'text-amber-400',
-  },
-  blue: {
-    card: 'from-blue-500/10 to-blue-500/5 border-blue-500/20',
-    icon: 'bg-blue-500/15 text-blue-400',
-    value: 'text-blue-400',
   },
   cyan: {
     card: 'from-cyan-500/10 to-cyan-500/5 border-cyan-500/20',
@@ -43,12 +38,12 @@ export default function KpiCard({
   label,
   value,
   icon: Icon,
-  accent = 'violet',
+  accent = 'blue',
   trend = null,     // { value: 12, direction: 'up' | 'down' | 'flat', label: 'vs last 7d' }
   suffix = '',
   className,
 }) {
-  const colors = accentMap[accent] || accentMap.violet
+  const colors = accentMap[accent] || accentMap.blue
 
   const TrendIcon = trend?.direction === 'up' ? TrendingUp
     : trend?.direction === 'down' ? TrendingDown

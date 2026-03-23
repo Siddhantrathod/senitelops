@@ -1,10 +1,10 @@
 import { useState, useCallback } from 'react'
-import { User, Mail, Building2, Globe2, Clock, Languages, Camera, Save, RotateCcw } from 'lucide-react'
+import { User, Mail, Building2, Clock, Languages, Camera, Save, RotateCcw, Briefcase, Phone } from 'lucide-react'
 import { useAuth } from '../../../context/AuthContext'
 import { SettingsCard, FormField, SettingsSkeleton } from '../components'
 import { TextInput, Select } from '../components/FormInputs'
 import { useSettings } from '../hooks/useSettings'
-import { fetchProfile, updateProfile } from '../services/settingsApi'
+import { fetchProfile, updateProfile, uploadAvatar } from '../services/settingsApi'
 
 const TIMEZONES = [
   { value: 'UTC', label: 'UTC' },
@@ -30,10 +30,12 @@ const LANGUAGES = [
 ]
 
 const DEFAULTS = {
+  username: '',
   fullName: '',
   email: '',
   organization: '',
-  defaultRepoUrl: '',
+  roleTitle: '',
+  phone: '',
   timezone: 'UTC',
   preferredLanguage: 'en',
   avatarUrl: '',
@@ -43,23 +45,32 @@ export default function ProfileTab({ showToast }) {
   const { user } = useAuth()
   const { data, loading, saving, dirty, update, save, reset } = useSettings(fetchProfile, updateProfile, {
     ...DEFAULTS,
+    username: user?.username || '',
     fullName: user?.fullName || user?.username || '',
     email: user?.email || '',
     organization: user?.organization || '',
   })
   const [avatarPreview, setAvatarPreview] = useState(null)
 
-  const handleAvatarChange = useCallback((e) => {
+  const handleAvatarChange = useCallback(async (e) => {
     const file = e.target.files?.[0]
     if (!file) return
     if (file.size > 2 * 1024 * 1024) {
       showToast('Image must be under 2MB', 'error')
       return
     }
-    const reader = new FileReader()
-    reader.onloadend = () => setAvatarPreview(reader.result)
-    reader.readAsDataURL(file)
-  }, [showToast])
+
+    try {
+      const response = await uploadAvatar(file)
+      if (response?.avatarUrl) {
+        setAvatarPreview(response.avatarUrl)
+        update('avatarUrl', response.avatarUrl)
+        window.dispatchEvent(new CustomEvent('sentinelops:profile-updated', { detail: { avatarUrl: response.avatarUrl } }))
+      }
+    } catch {
+      showToast('Failed to upload avatar', 'error')
+    }
+  }, [showToast, update])
 
   const handleSave = async () => {
     if (!data.fullName?.trim()) {
@@ -67,6 +78,11 @@ export default function ProfileTab({ showToast }) {
       return
     }
     const result = await save()
+    if (result.success) {
+      localStorage.setItem('user_tz', data.timezone || 'UTC')
+      localStorage.setItem('user_lang', data.preferredLanguage || 'en')
+      window.dispatchEvent(new CustomEvent('sentinelops:profile-updated', { detail: data }))
+    }
     showToast(result.success ? 'Profile updated successfully' : result.error, result.success ? 'success' : 'error')
   }
 
@@ -93,7 +109,7 @@ export default function ProfileTab({ showToast }) {
           <div className="flex-1 space-y-1">
             <h3 className="text-lg font-semibold text-steel-50">{data.fullName || user?.username}</h3>
             <p className="text-sm text-steel-400 font-mono">{data.email}</p>
-            <span className="inline-block px-2.5 py-0.5 rounded-full text-xs font-semibold bg-violet-500/10 text-violet-400 border border-violet-500/20 mt-1">
+            <span className="inline-block px-2.5 py-0.5 rounded-full text-xs font-semibold bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 mt-1">
               {user?.role || 'user'}
             </span>
           </div>
@@ -112,6 +128,30 @@ export default function ProfileTab({ showToast }) {
             <TextInput value={data.email} disabled />
           </FormField>
 
+          <FormField label="Role Title">
+            <div className="relative">
+              <Briefcase className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-steel-500" />
+              <TextInput
+                value={data.roleTitle}
+                onChange={(e) => update('roleTitle', e.target.value)}
+                placeholder="Security Engineer / DevOps Lead"
+                className="pl-10"
+              />
+            </div>
+          </FormField>
+
+          <FormField label="Phone Number">
+            <div className="relative">
+              <Phone className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-steel-500" />
+              <TextInput
+                value={data.phone}
+                onChange={(e) => update('phone', e.target.value)}
+                placeholder="+91 98xxxxxx"
+                className="pl-10"
+              />
+            </div>
+          </FormField>
+
           <FormField label="Organization">
             <div className="relative">
               <Building2 className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-steel-500" />
@@ -119,18 +159,6 @@ export default function ProfileTab({ showToast }) {
                 value={data.organization}
                 onChange={(e) => update('organization', e.target.value)}
                 placeholder="Your company or team"
-                className="pl-10"
-              />
-            </div>
-          </FormField>
-
-          <FormField label="Default Repository URL">
-            <div className="relative">
-              <Globe2 className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-steel-500" />
-              <TextInput
-                value={data.defaultRepoUrl}
-                onChange={(e) => update('defaultRepoUrl', e.target.value)}
-                placeholder="https://github.com/org/repo"
                 className="pl-10"
               />
             </div>

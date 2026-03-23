@@ -7,7 +7,7 @@ import {
   ResponsiveContainer,
   Tooltip,
 } from 'recharts'
-import { CHART_COLORS } from '../../utils/helpers'
+import { getChartPalette, isAnimationsEnabled } from '../../utils/appearance'
 
 const CustomTooltip = ({ active, payload }) => {
   if (active && payload && payload.length) {
@@ -24,6 +24,9 @@ const CustomTooltip = ({ active, payload }) => {
 }
 
 export default function SecurityRadarChart({ data, title, height = 350 }) {
+  const palette = getChartPalette()
+  const animate = isAnimationsEnabled()
+
   return (
     <div className="glass-card p-6">
       {title && (
@@ -45,11 +48,11 @@ export default function SecurityRadarChart({ data, title, height = 350 }) {
           <Radar
             name="Security Score"
             dataKey="score"
-            stroke={CHART_COLORS.primary}
-            fill={CHART_COLORS.primary}
+            stroke={palette.primary}
+            fill={palette.primary}
             fillOpacity={0.15}
             strokeWidth={2}
-            animationDuration={800}
+            animationDuration={animate ? 800 : 0}
           />
           <Tooltip content={<CustomTooltip />} />
         </RadarChart>

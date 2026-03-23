@@ -23,9 +23,9 @@ const DEFAULTS = {
 }
 
 const SCANNERS = [
-  { key: 'sast', label: 'SAST (Semgrep)', desc: 'Static application security testing', icon: Bug, color: 'text-violet-400', bgColor: 'bg-violet-500/10' },
+  { key: 'sast', label: 'SAST (Semgrep)', desc: 'Static application security testing', icon: Bug, color: 'text-emerald-400', bgColor: 'bg-emerald-500/10' },
   { key: 'dast', label: 'DAST (ZAP)', desc: 'Dynamic application security testing', icon: Globe2, color: 'text-cyan-400', bgColor: 'bg-cyan-500/10' },
-  { key: 'trivy', label: 'Trivy', desc: 'Container & dependency vulnerability scanning', icon: Container, color: 'text-blue-400', bgColor: 'bg-blue-500/10' },
+  { key: 'trivy', label: 'Trivy', desc: 'Container & dependency vulnerability scanning', icon: Container, color: 'text-emerald-400', bgColor: 'bg-emerald-500/10' },
   { key: 'gitleaks', label: 'Gitleaks', desc: 'Secret detection in source code', icon: KeyRound, color: 'text-amber-400', bgColor: 'bg-amber-500/10' },
 ]
 
@@ -68,7 +68,7 @@ export default function ScanPreferencesTab({ showToast }) {
               className={cn(
                 'flex items-center justify-between p-4 rounded-xl border transition-all',
                 data.scanners?.[scanner.key]
-                  ? 'bg-theme-base border-violet-500/20'
+                  ? 'bg-theme-base border-emerald-500/20'
                   : 'bg-theme-base border-theme-subtle opacity-60'
               )}
             >

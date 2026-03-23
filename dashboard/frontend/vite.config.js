@@ -12,4 +12,10 @@ export default defineConfig({
       },
     },
   },
+  // In production, VITE_API_URL is set on Vercel to point to the Railway backend
+  // e.g. VITE_API_URL=https://api.senitelops.com
+  define: {
+    'import.meta.env.VITE_API_URL': JSON.stringify(process.env.VITE_API_URL || '')
+  }
 })
+

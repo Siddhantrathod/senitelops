@@ -2,38 +2,37 @@ import { useState, useEffect, useCallback } from 'react'
 import {
   Users, Shield, GitBranch, CheckCircle, XCircle, Gauge, RefreshCw,
   AlertTriangle, KeyRound, Activity, Clock, Wifi, Server,
-  Container, FileCode, Globe, TrendingUp, Zap,
+  Container, FileCode, Globe, TrendingUp, Zap, Settings,
+  MessageSquare, Send, X, ExternalLink,
 } from 'lucide-react'
-import {
-  PieChart, Pie, Cell, ResponsiveContainer, Tooltip,
-  LineChart, Line, XAxis, YAxis, CartesianGrid, Area, AreaChart,
-  BarChart, Bar, Legend,
-} from 'recharts'
 import { cn } from '../../utils/helpers'
-import { KpiCard, StatusBadge, SkeletonCard, SkeletonChart } from '../../components/admin'
+import { KpiCard, StatusBadge, SkeletonCard } from '../../components/admin'
 import {
   fetchAdminStats,
   fetchAdminOverviewAnalytics,
+  fetchAdminFeedbacks,
+  replyAdminFeedback,
 } from '../../services/api'
+import { notyf } from '../../utils/notifications'
 
-const SEVERITY_COLORS = { CRITICAL: '#ef4444', HIGH: '#f97316', MEDIUM: '#eab308', LOW: '#22c55e' }
-const SCANNER_COLORS = { SAST: '#8b5cf6', Trivy: '#06b6d4', DAST: '#f97316', Gitleaks: '#ec4899' }
-const DEPLOY_COLORS = { passed: '#84cc16', blocked: '#ef4444' }
+const ALL_NEWS = [
+  { id: 1, title: 'New CVE-2024-3094 Backdoor in XZ Utils', source: 'CISA', time: '2h ago', type: 'critical', url: 'https://www.cisa.gov/news-events/alerts/2024/03/29/reported-supply-chain-compromise-affecting-xz-utils-data-compression' },
+  { id: 2, title: 'GitHub rotating compromised SSH keys', source: 'GitHub Blog', time: '5h ago', type: 'high', url: 'https://github.blog/security/' },
+  { id: 3, title: 'NPM registry flooded with crypto-stealing packages', source: 'The Hacker News', time: '12h ago', type: 'medium', url: 'https://thehackernews.com/search/label/npm' },
+  { id: 4, title: 'AWS patching critical IAM vulnerability', source: 'AWS Security', time: '1d ago', type: 'high', url: 'https://aws.amazon.com/security/security-bulletins/' },
+  { id: 5, title: 'Rust standard library path traversal flaw fixed', source: 'RustSec', time: '2d ago', type: 'medium', url: 'https://rustsec.org/advisories/' },
+  { id: 6, title: 'Google Chrome zero-day actively exploited', source: 'Google Threat Intel', time: '3h ago', type: 'critical', url: 'https://chromereleases.googleblog.com/' },
+  { id: 7, title: 'Docker warns of malicious images in Docker Hub', source: 'Docker Security', time: '8h ago', type: 'high', url: 'https://www.docker.com/blog/security/' },
+  { id: 8, title: 'Node.js security updates released for 20.x, 22.x', source: 'Node.js', time: '14h ago', type: 'low', url: 'https://nodejs.org/en/blog/vulnerability' },
+  { id: 9, title: 'OpenSSH critical RCE vulnerability CVE-2024-6387 (regreSSHion)', source: 'Qualys', time: '6h ago', type: 'critical', url: 'https://www.qualys.com/2024/07/01/cve-2024-6387/regresshion.txt' },
+  { id: 10, title: 'Python 3.12 security patch closes injection flaw', source: 'Python Security', time: '1d ago', type: 'medium', url: 'https://python-security.readthedocs.io/vulnerabilities.html' },
+  { id: 11, title: 'OWASP Top 10 2025 preview released', source: 'OWASP', time: '3d ago', type: 'low', url: 'https://owasp.org/www-project-top-ten/' },
+  { id: 12, title: 'Kubernetes privilege escalation via node annotation', source: 'K8s Security', time: '18h ago', type: 'high', url: 'https://kubernetes.io/docs/reference/issues-security/official-cve-feed/' },
+]
 
-function ChartTooltip({ active, payload, label }) {
-  if (!active || !payload?.length) return null
-  return (
-    <div className="bg-surface-secondary/95 backdrop-blur-xl border border-theme-strong rounded-xl px-4 py-3 shadow-2xl">
-      <p className="text-xs text-steel-400 font-mono mb-1.5">{label}</p>
-      {payload.map((entry, i) => (
-        <div key={i} className="flex items-center gap-2 text-sm">
-          <span className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: entry.color }} />
-          <span className="text-steel-300">{entry.name}:</span>
-          <span className="text-steel-50 font-mono font-bold">{entry.value}</span>
-        </div>
-      ))}
-    </div>
-  )
+function getRandomNews() {
+  const shuffled = [...ALL_NEWS].sort(() => 0.5 - Math.random())
+  return shuffled.slice(0, 4)
 }
 
 function ScannerStatus({ name, icon: Icon, status }) {
@@ -54,6 +53,49 @@ export default function AdminOverview() {
   const [stats, setStats] = useState(null)
   const [analytics, setAnalytics] = useState(null)
   const [loading, setLoading] = useState(true)
+  const [news, setNews] = useState(getRandomNews())
+  const [refreshingNews, setRefreshingNews] = useState(false)
+
+  // Feedback state
+  const [feedbacks, setFeedbacks] = useState([])
+  const [feedbackLoading, setFeedbackLoading] = useState(false)
+  const [replyTarget, setReplyTarget] = useState(null) // feedback being replied to
+  const [replyText, setReplyText] = useState('')
+  const [replying, setReplying] = useState(false)
+
+  const refreshNews = () => {
+    setRefreshingNews(true)
+    setTimeout(() => {
+      setNews(getRandomNews())
+      setRefreshingNews(false)
+    }, 600)
+  }
+
+  const loadFeedbacks = useCallback(async () => {
+    setFeedbackLoading(true)
+    try {
+      const data = await fetchAdminFeedbacks()
+      setFeedbacks(data)
+    } catch (err) {
+      console.error('Failed to load feedbacks:', err)
+    }
+    setFeedbackLoading(false)
+  }, [])
+
+  const handleReplySubmit = async () => {
+    if (!replyText.trim() || !replyTarget) return
+    setReplying(true)
+    try {
+      await replyAdminFeedback(replyTarget.id, replyText)
+      notyf.success('Reply sent successfully!')
+      setReplyTarget(null)
+      setReplyText('')
+      loadFeedbacks()
+    } catch (err) {
+      notyf.error(err.response?.data?.error || 'Failed to send reply')
+    }
+    setReplying(false)
+  }
 
   const loadAll = useCallback(async () => {
     setLoading(true)
@@ -71,6 +113,7 @@ export default function AdminOverview() {
   }, [])
 
   useEffect(() => { loadAll() }, [loadAll])
+  useEffect(() => { loadFeedbacks() }, [loadFeedbacks])
 
   if (loading) {
     return (
@@ -82,11 +125,11 @@ export default function AdminOverview() {
           </div>
         </div>
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-          {Array.from({ length: 8 }).map((_, i) => <SkeletonCard key={i} />)}
+          {Array.from({ length: 4 }).map((_, i) => <SkeletonCard key={i} />)}
         </div>
         <div className="grid md:grid-cols-2 gap-6">
-          <SkeletonChart />
-          <SkeletonChart />
+          <div className="h-64 bg-white/[0.02] border border-white/[0.04] rounded-2xl animate-pulse" />
+          <div className="h-64 bg-white/[0.02] border border-white/[0.04] rounded-2xl animate-pulse" />
         </div>
       </div>
     )
@@ -106,15 +149,6 @@ export default function AdminOverview() {
   const deployPassRate = pStats.total > 0 ? Math.round((pStats.deployable / pStats.total) * 100) : 0
   const failRate24h = pStats.total > 0 ? Math.round((pStats.failed / pStats.total) * 100) : 0
 
-  const vulnDistribution = analytics?.vulnDistribution || [
-    { name: 'Critical', value: analytics?.criticalCount || 0 },
-    { name: 'High', value: analytics?.highCount || 0 },
-    { name: 'Medium', value: analytics?.mediumCount || 0 },
-    { name: 'Low', value: analytics?.lowCount || 0 },
-  ]
-  const vulnTrend = analytics?.vulnTrend || []
-  const secretTrend = analytics?.secretTrend || []
-  const deployTrend = analytics?.deployTrend || []
   const systemHealth = analytics?.systemHealth || {}
 
   return (
@@ -135,124 +169,142 @@ export default function AdminOverview() {
 
       {/* KPI Cards */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-        <KpiCard label="Total Users" value={uStats.total} icon={Users} accent="violet"
-          trend={{ value: 12, direction: 'up', label: 'vs 7d' }} />
-        <KpiCard label="Active Repos" value={config.repo_url ? 1 : 0} icon={GitBranch} accent="blue" />
-        <KpiCard label="Pipeline Runs" value={pStats.total} icon={Activity} accent="cyan"
-          trend={{ value: 8, direction: 'up', label: '30d' }} />
-        <KpiCard label="Deploy Pass Rate" value={deployPassRate} suffix="%" icon={CheckCircle}
-          accent={deployPassRate >= 70 ? 'lime' : deployPassRate >= 40 ? 'amber' : 'red'}
-          trend={{ value: 3, direction: deployPassRate >= 50 ? 'up' : 'down', label: 'vs prev' }} />
+        <KpiCard label="Total Platform Users" value={uStats.total} icon={Users} accent="blue"
+          trend={{ value: 1, direction: 'up', label: 'vs last month' }} />
+        <KpiCard label="Connected Repositories" value={config.repo_url ? 1 : 0} icon={GitBranch} accent="indigo" />
+        <KpiCard label="Pipeline Executions" value={pStats.total} icon={Activity} accent="cyan" />
         <KpiCard label="Avg Security Score" value={pStats.avg_security_score} icon={Gauge}
-          accent={pStats.avg_security_score >= 70 ? 'lime' : pStats.avg_security_score >= 40 ? 'amber' : 'red'}
-          trend={{ value: 5, direction: 'up', label: 'avg' }} />
-        <KpiCard label="Critical Vulns" value={analytics?.criticalCount || 0} icon={AlertTriangle}
-          accent="red" trend={analytics?.criticalTrend || null} />
-        <KpiCard label="Secrets Detected" value={analytics?.totalSecrets || 0} icon={KeyRound}
-          accent="orange" trend={analytics?.secretsTrend || null} />
-        <KpiCard label="Failed Pipelines" value={pStats.failed} icon={XCircle} accent="red"
-          trend={{ value: failRate24h, direction: pStats.failed > 0 ? 'up' : 'flat', label: '24h' }} />
+          accent={pStats.avg_security_score >= 80 ? 'lime' : pStats.avg_security_score >= 60 ? 'amber' : 'red'} />
       </div>
 
-      {/* Charts */}
+      {/* News and Feedbacks */}
       <div className="grid md:grid-cols-2 gap-6">
-        {/* Vulnerability Distribution */}
-        <div className="glass-card p-6">
-          <h3 className="text-lg font-semibold text-steel-50 flex items-center gap-2 mb-4">
-            <Shield className="w-5 h-5 text-red-400" /> Vulnerability Distribution
-          </h3>
-          {vulnDistribution.some(d => d.value > 0) ? (
-            <ResponsiveContainer width="100%" height={260}>
-              <PieChart>
-                <Pie data={vulnDistribution} cx="50%" cy="50%" innerRadius={60} outerRadius={100}
-                  paddingAngle={4} dataKey="value" stroke="none">
-                  {vulnDistribution.map((_, idx) => (
-                    <Cell key={idx} fill={Object.values(SEVERITY_COLORS)[idx] || '#6b7280'} />
-                  ))}
-                </Pie>
-                <Tooltip content={<ChartTooltip />} />
-                <Legend verticalAlign="bottom" formatter={(val) => <span className="text-xs text-steel-300 font-mono">{val}</span>} />
-              </PieChart>
-            </ResponsiveContainer>
-          ) : (
-            <div className="h-64 flex items-center justify-center text-steel-500 text-sm">No vulnerability data — run a scan first</div>
-          )}
-        </div>
-
-        {/* Vulnerability Trend */}
-        <div className="glass-card p-6">
-          <h3 className="text-lg font-semibold text-steel-50 flex items-center gap-2 mb-4">
-            <TrendingUp className="w-5 h-5 text-violet-400" /> Vulnerability Trend (30d)
-          </h3>
-          {vulnTrend.length > 0 ? (
-            <ResponsiveContainer width="100%" height={260}>
-              <LineChart data={vulnTrend}>
-                <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.06)" />
-                <XAxis dataKey="date" tick={{ fontSize: 10, fill: '#64748b' }} tickLine={false} axisLine={false} />
-                <YAxis tick={{ fontSize: 10, fill: '#64748b' }} tickLine={false} axisLine={false} />
-                <Tooltip content={<ChartTooltip />} />
-                <Legend formatter={(val) => <span className="text-xs text-steel-300 font-mono">{val}</span>} />
-                <Line type="monotone" dataKey="SAST" stroke={SCANNER_COLORS.SAST} strokeWidth={2} dot={false} />
-                <Line type="monotone" dataKey="Trivy" stroke={SCANNER_COLORS.Trivy} strokeWidth={2} dot={false} />
-                <Line type="monotone" dataKey="DAST" stroke={SCANNER_COLORS.DAST} strokeWidth={2} dot={false} />
-              </LineChart>
-            </ResponsiveContainer>
-          ) : (
-            <div className="h-64 flex items-center justify-center text-steel-500 text-sm">Trend data appears after multiple scans</div>
-          )}
-        </div>
-
-        {/* Secret Detection */}
-        <div className="glass-card p-6">
-          <h3 className="text-lg font-semibold text-steel-50 flex items-center gap-2 mb-4">
-            <KeyRound className="w-5 h-5 text-orange-400" /> Secret Detection Trend
-          </h3>
-          {secretTrend.length > 0 ? (
-            <ResponsiveContainer width="100%" height={260}>
-              <BarChart data={secretTrend}>
-                <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.06)" />
-                <XAxis dataKey="date" tick={{ fontSize: 10, fill: '#64748b' }} tickLine={false} axisLine={false} />
-                <YAxis tick={{ fontSize: 10, fill: '#64748b' }} tickLine={false} axisLine={false} />
-                <Tooltip content={<ChartTooltip />} />
-                <Bar dataKey="secrets" fill="#f97316" radius={[4, 4, 0, 0]} name="Secrets" />
-              </BarChart>
-            </ResponsiveContainer>
-          ) : (
-            <div className="h-64 flex items-center justify-center text-steel-500 text-sm">No secret detection data yet</div>
-          )}
-        </div>
-
-        {/* Deployment Decisions */}
-        <div className="glass-card p-6">
-          <h3 className="text-lg font-semibold text-steel-50 flex items-center gap-2 mb-4">
-            <Zap className="w-5 h-5 text-lime-400" /> Deployment Decisions
-          </h3>
-          {deployTrend.length > 0 ? (
-            <ResponsiveContainer width="100%" height={260}>
-              <AreaChart data={deployTrend}>
-                <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.06)" />
-                <XAxis dataKey="date" tick={{ fontSize: 10, fill: '#64748b' }} tickLine={false} axisLine={false} />
-                <YAxis tick={{ fontSize: 10, fill: '#64748b' }} tickLine={false} axisLine={false} />
-                <Tooltip content={<ChartTooltip />} />
-                <Legend formatter={(val) => <span className="text-xs text-steel-300 font-mono">{val}</span>} />
-                <Area type="monotone" dataKey="passed" stackId="1" stroke={DEPLOY_COLORS.passed} fill={DEPLOY_COLORS.passed} fillOpacity={0.2} name="Passed" />
-                <Area type="monotone" dataKey="blocked" stackId="1" stroke={DEPLOY_COLORS.blocked} fill={DEPLOY_COLORS.blocked} fillOpacity={0.2} name="Blocked" />
-              </AreaChart>
-            </ResponsiveContainer>
-          ) : (
-            <div className="h-64 flex items-center justify-center">
-              <div className="grid grid-cols-2 gap-6 w-full">
-                <div className="text-center p-6 bg-lime-500/5 rounded-xl border border-lime-500/20">
-                  <p className="text-4xl font-black text-lime-400 font-mono">{pStats.deployable}</p>
-                  <p className="text-xs text-steel-400 mt-2 uppercase font-semibold tracking-wider">Approved</p>
+        {/* Security News Widget */}
+        <div className="glass-card p-6 flex flex-col h-full">
+          <div className="flex items-center justify-between mb-4">
+            <h3 className="text-lg font-semibold text-steel-50 flex items-center gap-2">
+              <Globe className="w-5 h-5 text-blue-400" /> Security News & Advisories
+            </h3>
+            <button 
+              onClick={refreshNews} 
+              disabled={refreshingNews}
+              className="p-1.5 rounded-lg text-steel-400 hover:text-steel-100 hover:bg-white/[0.06] transition-all disabled:opacity-50"
+              title="Refresh News"
+            >
+              <RefreshCw className={cn("w-4 h-4", refreshingNews && "animate-spin")} />
+            </button>
+          </div>
+          <div className="space-y-3 flex-1 overflow-y-auto pr-1">
+            {news.map(item => (
+              <div key={item.id} className="p-3 rounded-xl bg-black/20 border border-white/[0.04] hover:border-blue-500/30 transition-colors group">
+                <div className="flex justify-between items-start gap-2 mb-1">
+                  <a
+                    href={item.url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-sm font-semibold text-steel-100 group-hover:text-blue-400 transition-colors line-clamp-1 flex items-center gap-1 hover:underline"
+                  >
+                    {item.title}
+                    <ExternalLink className="w-3 h-3 shrink-0 opacity-0 group-hover:opacity-100 transition-opacity" />
+                  </a>
+                  <StatusBadge 
+                    status={item.type === 'critical' ? 'critical' : item.type === 'high' ? 'high' : 'info'} 
+                    size="sm"
+                  />
                 </div>
-                <div className="text-center p-6 bg-red-500/5 rounded-xl border border-red-500/20">
-                  <p className="text-4xl font-black text-red-400 font-mono">{pStats.blocked}</p>
-                  <p className="text-xs text-steel-400 mt-2 uppercase font-semibold tracking-wider">Blocked</p>
+                <div className="flex items-center justify-between text-xs text-steel-500 font-mono">
+                  <span>{item.source}</span>
+                  <span>{item.time}</span>
                 </div>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {/* Feedback & Management Component */}
+        <div className="glass-card p-6 flex flex-col h-full">
+          <div className="flex items-center justify-between mb-4">
+            <h3 className="text-lg font-semibold text-steel-50 flex items-center gap-2">
+              <MessageSquare className="w-5 h-5 text-amber-400" /> Feedback & Management
+            </h3>
+            <button onClick={loadFeedbacks} className="p-1.5 rounded-lg text-steel-400 hover:text-steel-100 hover:bg-white/[0.06] transition-all" title="Refresh">
+              <RefreshCw className={cn('w-4 h-4', feedbackLoading && 'animate-spin')} />
+            </button>
+          </div>
+
+          {/* Admin Reply Dialog */}
+          {replyTarget && (
+            <div className="mb-4 p-4 rounded-xl bg-blue-500/5 border border-blue-500/20">
+              <p className="text-xs text-blue-300 font-mono mb-1">Replying to: <span className="font-bold">{replyTarget.username || 'User'}</span></p>
+              <p className="text-xs text-steel-300 italic mb-3 line-clamp-2">"{replyTarget.message}"</p>
+              <textarea
+                value={replyText}
+                onChange={e => setReplyText(e.target.value)}
+                rows={2}
+                placeholder="Type your reply..."
+                className="w-full bg-black/20 border border-white/[0.08] rounded-lg p-2 text-xs text-steel-100 placeholder:text-steel-600 focus:outline-none focus:border-blue-500/50 resize-none mb-2"
+              />
+              <div className="flex gap-2">
+                <button
+                  onClick={handleReplySubmit}
+                  disabled={replying || !replyText.trim()}
+                  className="flex items-center gap-1.5 px-3 py-1.5 bg-blue-500/20 hover:bg-blue-500/30 text-blue-400 font-semibold text-xs rounded-lg transition-colors border border-blue-500/30 disabled:opacity-50"
+                >
+                  <Send className="w-3 h-3" /> {replying ? 'Sending...' : 'Send Reply'}
+                </button>
+                <button
+                  onClick={() => { setReplyTarget(null); setReplyText('') }}
+                  className="flex items-center gap-1.5 px-3 py-1.5 bg-white/[0.04] hover:bg-white/[0.08] text-steel-300 text-xs rounded-lg transition-colors"
+                >
+                  <X className="w-3 h-3" /> Cancel
+                </button>
               </div>
             </div>
           )}
+
+          <div className="space-y-3 flex-1 overflow-y-auto pr-1">
+            {feedbackLoading && (
+              <div className="text-center text-xs text-steel-500 font-mono py-4">Loading feedback...</div>
+            )}
+            {!feedbackLoading && feedbacks.length === 0 && (
+              <div className="text-center py-8">
+                <MessageSquare className="w-10 h-10 text-steel-600 mx-auto mb-2" />
+                <p className="text-sm text-steel-500">No user feedback yet</p>
+              </div>
+            )}
+            {feedbacks.map(fb => (
+              <div key={fb.id} className="p-4 rounded-xl bg-white/[0.02] border border-white/[0.06] hover:border-white/[0.10] transition-colors">
+                <div className="flex items-center justify-between mb-2">
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs font-bold text-steel-200">{fb.username || 'User'}</span>
+                    <span className="text-[10px] text-steel-600 font-mono">{fb.email}</span>
+                  </div>
+                  <span className={cn('text-[10px] font-semibold px-2 py-0.5 rounded-full border',
+                    fb.status === 'reviewed'
+                      ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20'
+                      : 'bg-amber-500/10 text-amber-400 border-amber-500/20'
+                  )}>
+                    {fb.status.toUpperCase()}
+                  </span>
+                </div>
+                <p className="text-xs text-steel-300 italic mb-3 line-clamp-2">"{fb.message}"</p>
+                {fb.admin_reply && (
+                  <div className="mb-3 p-2 bg-blue-500/5 border-l-2 border-blue-500/40 rounded-r text-xs text-blue-300">
+                    <span className="font-bold not-italic block mb-0.5">Admin replied:</span>
+                    {fb.admin_reply}
+                  </div>
+                )}
+                {fb.status !== 'reviewed' && (
+                  <button
+                    onClick={() => { setReplyTarget(fb); setReplyText('') }}
+                    className="text-[10px] font-mono uppercase px-2 py-1 rounded bg-blue-500/10 hover:bg-blue-500/20 text-blue-400 transition-colors border border-blue-500/20"
+                  >
+                    Review & Reply
+                  </button>
+                )}
+              </div>
+            ))}
+          </div>
         </div>
       </div>
 
@@ -282,7 +334,7 @@ export default function AdminOverview() {
             <div className="space-y-3">
               <div className="flex items-center justify-between p-3 rounded-xl bg-white/[0.02] border border-white/[0.06]">
                 <div className="flex items-center gap-3">
-                  <div className="p-2 rounded-lg bg-blue-500/15 text-blue-400"><Container className="w-4 h-4" /></div>
+                  <div className="p-2 rounded-lg bg-emerald-500/15 text-emerald-400"><Container className="w-4 h-4" /></div>
                   <span className="text-sm text-steel-200">Docker Daemon</span>
                 </div>
                 <StatusBadge status={systemHealth.docker || 'online'} dot />
@@ -298,7 +350,7 @@ export default function AdminOverview() {
               </div>
               <div className="flex items-center justify-between p-3 rounded-xl bg-white/[0.02] border border-white/[0.06]">
                 <div className="flex items-center gap-3">
-                  <div className="p-2 rounded-lg bg-violet-500/15 text-violet-400"><Activity className="w-4 h-4" /></div>
+                  <div className="p-2 rounded-lg bg-emerald-500/15 text-emerald-400"><Activity className="w-4 h-4" /></div>
                   <div>
                     <span className="text-sm text-steel-200 block">API Latency</span>
                     <span className="text-xs text-steel-500 font-mono">{systemHealth.apiLatency || '< 100ms'}</span>
@@ -331,57 +383,45 @@ export default function AdminOverview() {
       </div>
 
       {/* Quick Info Panels */}
-      <div className="grid md:grid-cols-3 gap-6">
+      <div className="grid md:grid-cols-2 gap-6">
         <div className="glass-card p-6">
-          <h3 className="text-sm font-bold text-steel-400 uppercase tracking-wider mb-4 font-mono">User Distribution</h3>
-          <div className="grid grid-cols-3 gap-3">
-            <div className="text-center p-3 bg-violet-500/5 rounded-xl border border-violet-500/20">
-              <p className="text-2xl font-black text-violet-400 font-mono">{uStats.admins}</p>
-              <p className="text-[10px] text-steel-400 mt-1 uppercase font-semibold tracking-wider">Admin</p>
+          <h3 className="text-sm font-bold text-steel-400 uppercase tracking-wider mb-4 font-mono flex items-center gap-2">
+            <Users className="w-4 h-4 text-emerald-400" /> User Distribution
+          </h3>
+          <div className="grid grid-cols-2 gap-6">
+            <div className="text-center p-5 bg-emerald-500/5 rounded-xl border border-emerald-500/20">
+              <p className="text-3xl font-black text-emerald-400 font-mono">{uStats.admins}</p>
+              <p className="text-xs text-steel-400 mt-2 uppercase font-semibold tracking-wider">Admins</p>
             </div>
-            <div className="text-center p-3 bg-blue-500/5 rounded-xl border border-blue-500/20">
-              <p className="text-2xl font-black text-blue-400 font-mono">{uStats.users}</p>
-              <p className="text-[10px] text-steel-400 mt-1 uppercase font-semibold tracking-wider">Users</p>
-            </div>
-            <div className="text-center p-3 bg-steel-500/5 rounded-xl border border-steel-500/20">
-              <p className="text-2xl font-black text-steel-400 font-mono">{uStats.viewers}</p>
-              <p className="text-[10px] text-steel-400 mt-1 uppercase font-semibold tracking-wider">Viewers</p>
+            <div className="text-center p-5 bg-cyan-500/5 rounded-xl border border-cyan-500/20">
+              <p className="text-3xl font-black text-cyan-400 font-mono">{uStats.users}</p>
+              <p className="text-xs text-steel-400 mt-2 uppercase font-semibold tracking-wider">Users</p>
             </div>
           </div>
         </div>
+
         <div className="glass-card p-6">
-          <h3 className="text-sm font-bold text-steel-400 uppercase tracking-wider mb-4 font-mono">Project Config</h3>
-          <div className="space-y-3">
-            <div className="flex items-center justify-between">
-              <span className="text-xs text-steel-500">Repository</span>
-              <span className="text-xs text-steel-200 font-mono truncate max-w-[180px]">{config.repo_url || '—'}</span>
+          <h3 className="text-sm font-bold text-steel-400 uppercase tracking-wider mb-4 font-mono flex items-center gap-2">
+            <AlertTriangle className="w-4 h-4 text-red-400" /> Critical Security Stats
+          </h3>
+          <div className="space-y-4">
+            <div className="flex items-center justify-between p-3 rounded-lg bg-red-500/5 border border-red-500/20">
+              <div className="flex items-center gap-3">
+                <div className="p-2 bg-red-500/20 text-red-400 rounded-md">
+                  <AlertTriangle className="w-4 h-4" />
+                </div>
+                <span className="text-sm text-steel-200">Critical Vulnerabilities</span>
+              </div>
+              <span className="text-xl font-bold font-mono text-red-400">{analytics?.criticalCount || 0}</span>
             </div>
-            <div className="flex items-center justify-between">
-              <span className="text-xs text-steel-500">Branch</span>
-              <span className="text-xs text-steel-200 font-mono">{config.branch}</span>
-            </div>
-            <div className="flex items-center justify-between">
-              <span className="text-xs text-steel-500">Auto Scan</span>
-              <StatusBadge status={config.auto_scan ? 'active' : 'offline'} />
-            </div>
-          </div>
-        </div>
-        <div className="glass-card p-6">
-          <h3 className="text-sm font-bold text-steel-400 uppercase tracking-wider mb-4 font-mono">Security Policy</h3>
-          <div className="space-y-3">
-            <div className="flex items-center justify-between">
-              <span className="text-xs text-steel-500">Min Score</span>
-              <span className={cn('text-sm font-bold font-mono',
-                policy.minScore >= 80 ? 'text-lime-400' : policy.minScore >= 60 ? 'text-amber-400' : 'text-red-400'
-              )}>{policy.minScore}</span>
-            </div>
-            <div className="flex items-center justify-between">
-              <span className="text-xs text-steel-500">Block Critical</span>
-              <StatusBadge status={policy.blockCritical ? 'active' : 'offline'} />
-            </div>
-            <div className="flex items-center justify-between">
-              <span className="text-xs text-steel-500">Auto Block</span>
-              <StatusBadge status={policy.autoBlock ? 'active' : 'offline'} />
+            <div className="flex items-center justify-between p-3 rounded-lg bg-orange-500/5 border border-orange-500/20">
+              <div className="flex items-center gap-3">
+                <div className="p-2 bg-orange-500/20 text-orange-400 rounded-md">
+                  <KeyRound className="w-4 h-4" />
+                </div>
+                <span className="text-sm text-steel-200">Exposed Secrets</span>
+              </div>
+              <span className="text-xl font-bold font-mono text-orange-400">{analytics?.totalSecrets || 0}</span>
             </div>
           </div>
         </div>

@@ -7,7 +7,7 @@ export default function ConfirmationModal({ open, onClose, onConfirm, title, mes
   const variants = {
     danger: 'bg-red-500 hover:bg-red-600 text-white',
     warning: 'bg-amber-500 hover:bg-amber-600 text-white',
-    primary: 'bg-violet-500 hover:bg-violet-600 text-white',
+    primary: 'bg-emerald-500 hover:bg-emerald-600 text-white',
   }
 
   return (

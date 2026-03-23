@@ -55,6 +55,9 @@ def calculate_score(bandit_report, trivy_report, sast_report=None,
     """
     reasons = []
 
+    # Initialize CVSS tracking
+    max_cvss_score = 0.0
+
     # SAST: count code issues by severity (unified or bandit-only)
     sast_high = 0
     sast_medium = 0
@@ -72,8 +75,12 @@ def calculate_score(bandit_report, trivy_report, sast_report=None,
         tools_used = [t for t, info in sast_report.get("tools_used", {}).items() if info.get("success")]
         if sast_high > 0:
             reasons.append(f"{sast_high} HIGH issues in code (SAST: {', '.join(tools_used)})")
+            max_cvss_score = max(max_cvss_score, 8.0)
         if sast_medium > 0:
             reasons.append(f"{sast_medium} MEDIUM issues in code (SAST)")
+            max_cvss_score = max(max_cvss_score, 5.5)
+        if sast_low > 0:
+            max_cvss_score = max(max_cvss_score, 2.0)
     elif bandit_report:
         # Fallback: Bandit-only
         for r in bandit_report.get("results", []):
@@ -86,8 +93,12 @@ def calculate_score(bandit_report, trivy_report, sast_report=None,
                 sast_low += 1
         if sast_high > 0:
             reasons.append(f"{sast_high} HIGH issues in code (SAST)")
+            max_cvss_score = max(max_cvss_score, 8.0)
         if sast_medium > 0:
             reasons.append(f"{sast_medium} MEDIUM issues in code (SAST)")
+            max_cvss_score = max(max_cvss_score, 5.5)
+        if sast_low > 0:
+            max_cvss_score = max(max_cvss_score, 2.0)
 
     # Trivy: count image/dependency vulns by severity
     trivy_critical = 0
@@ -97,7 +108,26 @@ def calculate_score(bandit_report, trivy_report, sast_report=None,
     if trivy_report:
         for res in trivy_report.get("Results", []):
             for v in (res.get("Vulnerabilities") or []):
-                sev = v.get("Severity")
+                sev = v.get("Severity", "").upper()
+                
+                # Extract exact CVSS if available
+                cvss_data = v.get("CVSS", {})
+                v_cvss = 0.0
+                for vendor, scores in cvss_data.items():
+                    if "V3Score" in scores:
+                        v_cvss = max(v_cvss, scores.get("V3Score", 0.0))
+                    elif "V2Score" in scores:
+                        v_cvss = max(v_cvss, scores.get("V2Score", 0.0))
+                
+                # Fallback mapping
+                if v_cvss == 0.0:
+                    if sev == "CRITICAL": v_cvss = 9.5
+                    elif sev == "HIGH": v_cvss = 8.0
+                    elif sev == "MEDIUM": v_cvss = 5.5
+                    elif sev == "LOW": v_cvss = 2.0
+                
+                max_cvss_score = max(max_cvss_score, v_cvss)
+
                 if sev == "CRITICAL":
                     trivy_critical += 1
                 elif sev == "HIGH":
@@ -127,6 +157,10 @@ def calculate_score(bandit_report, trivy_report, sast_report=None,
             else:
                 secrets_medium += 1
         secrets_total = secrets_critical + secrets_high + secrets_medium
+        if secrets_critical > 0: max_cvss_score = max(max_cvss_score, 9.5)
+        elif secrets_high > 0: max_cvss_score = max(max_cvss_score, 8.0)
+        elif secrets_medium > 0: max_cvss_score = max(max_cvss_score, 5.5)
+        
         if secrets_total > 0:
             reasons.append(f"{secrets_total} hardcoded secret(s) detected (Gitleaks)")
 
@@ -147,8 +181,12 @@ def calculate_score(bandit_report, trivy_report, sast_report=None,
         dast_total = dast_high + dast_medium + dast_low
         if dast_high > 0:
             reasons.append(f"{dast_high} HIGH-risk DAST alerts (ZAP)")
+            max_cvss_score = max(max_cvss_score, 8.0)
         if dast_medium > 0:
             reasons.append(f"{dast_medium} MEDIUM-risk DAST alerts (ZAP)")
+            max_cvss_score = max(max_cvss_score, 5.5)
+        if dast_low > 0:
+            max_cvss_score = max(max_cvss_score, 2.0)
 
     # Code vulns: full weight (max code penalty: 25 + 10 + 5 = 40)
     code_high_impact = min(25, sast_high * 8)
@@ -171,15 +209,20 @@ def calculate_score(bandit_report, trivy_report, sast_report=None,
     dast_medium_impact = min(10, dast_medium * 2)
     dast_low_impact = min(3, dast_low * 1)
 
-    total_penalty = (code_high_impact + code_medium_impact + code_low_impact +
+    severity_penalty = (code_high_impact + code_medium_impact + code_low_impact +
                      image_critical_impact + image_high_impact + image_medium_impact + image_low_impact +
                      secrets_critical_impact + secrets_high_impact + secrets_medium_impact +
                      dast_high_impact + dast_medium_impact + dast_low_impact)
+    
+    # Hybrid calculation: Weight the CVSS heavily, alongside the counts
+    cvss_penalty = max_cvss_score * 3.5  # up to 35 points scaled penalty
+    total_penalty = (severity_penalty * 0.65) + cvss_penalty # 65% weight to severity counts
+    
     score = max(0, 100 - total_penalty)
 
     critical_count = trivy_critical + secrets_critical
     high_count = sast_high + trivy_high + secrets_high + dast_high
-    return score, reasons, critical_count, high_count, secrets_total, dast_high
+    return score, reasons, critical_count, high_count, secrets_total, dast_high, max_cvss_score
 
 def main():
     print("=" * 60)
@@ -219,10 +262,11 @@ def main():
         print(f"\U0001f310 DAST (ZAP): {dast_alerts} alert(s) found")
 
     # Calculate security score
-    score, reasons, critical_count, high_count, secrets_total, dast_high_count = calculate_score(
+    results = calculate_score(
         bandit_report, trivy_report, sast_report=sast_report,
         gitleaks_report=gitleaks_report, dast_report=dast_report
     )
+    score, reasons, critical_count, high_count, secrets_total, dast_high_count, max_cvss_score = results
 
     # Load policy from dashboard
     policy = load_policy()
@@ -246,7 +290,8 @@ def main():
     print(f"   - Auto Block: {auto_block}")
     
     print(f"\n\U0001f4ca Scan Results:")
-    print(f"   - Security Score: {score}")
+    print(f"   - Security Score: {score:.1f}")
+    print(f"   - Max CVSS Score: {max_cvss_score:.1f}")
     print(f"   - Critical Vulnerabilities: {critical_count}")
     print(f"   - High Vulnerabilities: {high_count}")
     print(f"   - Secrets Detected: {secrets_total}")
@@ -299,6 +344,7 @@ def main():
 
     decision = {
         "security_score": score,
+        "max_cvss_score": max_cvss_score,
         "deployment_allowed": deployment_allowed,
         "critical_count": critical_count,
         "high_count": high_count,

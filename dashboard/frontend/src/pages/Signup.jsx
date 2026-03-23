@@ -1,8 +1,8 @@
 import { useState } from 'react'
 import { Navigate, useNavigate, Link } from 'react-router-dom'
-import { Shield, User, Lock, Eye, EyeOff, AlertCircle, ArrowRight, Building, Briefcase, Phone } from 'lucide-react'
+import { Shield, User, Lock, Eye, EyeOff, AlertCircle, ArrowRight, Building, Briefcase, Phone, GitBranch, Globe2, Languages, Clock } from 'lucide-react'
 import { useAuth } from '../context/AuthContext'
-import { getGoogleAuthUrl } from '../services/api'
+import { getGoogleAuthUrl, requestSignupOtp } from '../services/api'
 
 const GoogleIcon = () => (
   <svg className="w-5 h-5" viewBox="0 0 24 24">
@@ -13,24 +13,28 @@ const GoogleIcon = () => (
   </svg>
 )
 
-const inputClass = 'w-full py-2.5 bg-theme-input text-steel-50 rounded-xl border border-theme-strong focus:border-violet-500/50 focus:ring-1 focus:ring-violet-500/30 outline-none transition-all placeholder-theme font-mono text-sm'
+const inputClass = 'w-full py-2.5 bg-theme-input text-steel-50 rounded-xl border border-theme-strong focus:border-emerald-500/50 focus:ring-1 focus:ring-emerald-500/30 outline-none transition-all placeholder-theme font-mono text-sm'
 
 export default function Signup() {
   const { isAuthenticated, loading, signup } = useAuth()
   const navigate = useNavigate()
   const [formData, setFormData] = useState({
     username: '', email: '', fullName: '', organization: '',
-    roleTitle: '', phone: '', password: '', confirmPassword: '',
+    roleTitle: '', phone: '', password: '', confirmPassword: '', otp: '',
+    defaultRepoUrl: '', defaultBranch: 'main', preferredLanguage: 'en', timezone: 'UTC',
   })
   const [showPassword, setShowPassword] = useState(false)
   const [error, setError] = useState('')
   const [fieldErrors, setFieldErrors] = useState([])
   const [isLoading, setIsLoading] = useState(false)
+  const [otpSent, setOtpSent] = useState(false)
+  const [otpSending, setOtpSending] = useState(false)
+  const [otpCooldown, setOtpCooldown] = useState(0)
 
   if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-surface">
-        <div className="animate-spin w-8 h-8 border-2 border-violet-500 border-t-transparent rounded-full" />
+        <div className="animate-spin w-8 h-8 border-2 border-emerald-500 border-t-transparent rounded-full" />
       </div>
     )
   }
@@ -38,7 +42,12 @@ export default function Signup() {
   if (isAuthenticated) return <Navigate to="/dashboard" replace />
 
   const handleChange = (e) => {
-    setFormData({ ...formData, [e.target.name]: e.target.value })
+    const next = { ...formData, [e.target.name]: e.target.value }
+    if (e.target.name === 'email') {
+      next.otp = ''
+      setOtpSent(false)
+    }
+    setFormData(next)
     if (error) setError('')
     if (fieldErrors.length) setFieldErrors([])
   }
@@ -50,11 +59,17 @@ export default function Signup() {
     if (formData.password !== formData.confirmPassword) { setError('Passwords do not match'); return }
     if (formData.password.length < 6) { setError('Password must be at least 6 characters'); return }
     if (formData.username.length < 3) { setError('Username must be at least 3 characters'); return }
+    if (!otpSent) { setError('Verify your email with OTP before creating account'); return }
+    if (!formData.otp || formData.otp.trim().length !== 6) { setError('Enter a valid 6-digit OTP'); return }
     setIsLoading(true)
     const result = await signup({
       username: formData.username, email: formData.email, password: formData.password,
       fullName: formData.fullName, organization: formData.organization,
-      roleTitle: formData.roleTitle, phone: formData.phone,
+      roleTitle: formData.roleTitle, phone: formData.phone, otp: formData.otp,
+      defaultRepoUrl: formData.defaultRepoUrl,
+      defaultBranch: formData.defaultBranch,
+      preferredLanguage: formData.preferredLanguage,
+      timezone: formData.timezone,
     })
     if (result.success) {
       navigate('/login', { state: { message: result.message || 'Account created successfully! Please sign in.' } })
@@ -65,13 +80,45 @@ export default function Signup() {
     setIsLoading(false)
   }
 
+  const startOtpCooldown = (seconds = 60) => {
+    setOtpCooldown(seconds)
+    const timer = setInterval(() => {
+      setOtpCooldown((prev) => {
+        if (prev <= 1) {
+          clearInterval(timer)
+          return 0
+        }
+        return prev - 1
+      })
+    }, 1000)
+  }
+
+  const handleSendOtp = async () => {
+    setError('')
+    if (!formData.email) {
+      setError('Enter your email first')
+      return
+    }
+
+    setOtpSending(true)
+    try {
+      await requestSignupOtp(formData.email)
+      setOtpSent(true)
+      startOtpCooldown(60)
+    } catch (err) {
+      setError(err.response?.data?.error || 'Failed to send OTP')
+    } finally {
+      setOtpSending(false)
+    }
+  }
+
   const handleGoogleSignup = () => { window.location.href = getGoogleAuthUrl() }
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-surface px-4 py-12 relative">
       {/* Background decoration */}
       <div className="absolute inset-0 overflow-hidden">
-        <div className="absolute -top-40 -right-40 w-80 h-80 bg-violet-500/10 rounded-full blur-3xl" />
+        <div className="absolute -top-40 -right-40 w-80 h-80 bg-emerald-500/10 rounded-full blur-3xl" />
         <div className="absolute -bottom-40 -left-40 w-80 h-80 bg-purple-500/10 rounded-full blur-3xl" />
         <div className="absolute inset-0 grid-bg opacity-30" />
       </div>
@@ -80,7 +127,7 @@ export default function Signup() {
         {/* Logo */}
         <div className="text-center mb-8">
           <Link to="/" className="inline-block">
-            <div className="inline-flex items-center justify-center w-16 h-16 rounded-2xl bg-gradient-to-br from-violet-500 to-violet-600 shadow-glow-sm mb-4">
+            <div className="inline-flex items-center justify-center w-16 h-16 rounded-2xl bg-gradient-to-br from-emerald-500 to-emerald-600 shadow-glow-sm mb-4">
               <Shield className="w-8 h-8 text-white" />
             </div>
           </Link>
@@ -144,7 +191,40 @@ export default function Signup() {
                 <label className="block text-steel-300 font-medium mb-1.5 text-sm">Email <span className="text-red-400">*</span></label>
                 <input type="email" name="email" value={formData.email} onChange={handleChange}
                   className={`${inputClass} px-4`} placeholder="john@company.com" required />
+                <div className="mt-2">
+                  <button
+                    type="button"
+                    onClick={handleSendOtp}
+                    disabled={otpSending || otpCooldown > 0}
+                    className="btn-secondary w-full text-xs disabled:opacity-50"
+                  >
+                    {otpSending
+                      ? 'Sending OTP...'
+                      : otpCooldown > 0
+                        ? `Resend OTP in ${otpCooldown}s`
+                        : otpSent
+                          ? 'Resend OTP'
+                          : 'Send OTP'}
+                  </button>
+                </div>
               </div>
+            </div>
+
+            <div>
+              <label className="block text-steel-300 font-medium mb-1.5 text-sm">Email OTP <span className="text-red-400">*</span></label>
+              <input
+                type="text"
+                name="otp"
+                value={formData.otp}
+                onChange={handleChange}
+                className={`${inputClass} px-4`}
+                placeholder="6-digit verification code"
+                maxLength={6}
+                required
+              />
+              <p className="text-xs text-steel-500 mt-1">
+                {otpSent ? 'OTP sent to your email. It expires in 10 minutes.' : 'Send OTP to verify your email before signup.'}
+              </p>
             </div>
 
             {/* Organization & Role */}
@@ -174,6 +254,56 @@ export default function Signup() {
                 <Phone className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-steel-600" />
                 <input type="tel" name="phone" value={formData.phone} onChange={handleChange}
                   className={`${inputClass} pl-11 pr-4`} placeholder="+1 (555) 000-0000" />
+              </div>
+            </div>
+
+            {/* Main Repository Configuration */}
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="block text-steel-300 font-medium mb-1.5 text-sm">Default Repository URL</label>
+                <div className="relative">
+                  <Globe2 className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-steel-600" />
+                  <input type="text" name="defaultRepoUrl" value={formData.defaultRepoUrl} onChange={handleChange}
+                    className={`${inputClass} pl-11 pr-4`} placeholder="https://github.com/org/repo" />
+                </div>
+              </div>
+              <div>
+                <label className="block text-steel-300 font-medium mb-1.5 text-sm">Default Branch</label>
+                <div className="relative">
+                  <GitBranch className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-steel-600" />
+                  <input type="text" name="defaultBranch" value={formData.defaultBranch} onChange={handleChange}
+                    className={`${inputClass} pl-11 pr-4`} placeholder="main" />
+                </div>
+              </div>
+            </div>
+
+            {/* Locale Preferences */}
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="block text-steel-300 font-medium mb-1.5 text-sm">Preferred Language</label>
+                <div className="relative">
+                  <Languages className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-steel-600" />
+                  <select name="preferredLanguage" value={formData.preferredLanguage} onChange={handleChange} className={`${inputClass} pl-11 pr-4`}>
+                    <option value="en">English</option>
+                    <option value="es">Spanish</option>
+                    <option value="fr">French</option>
+                    <option value="de">German</option>
+                    <option value="ja">Japanese</option>
+                    <option value="hi">Hindi</option>
+                  </select>
+                </div>
+              </div>
+              <div>
+                <label className="block text-steel-300 font-medium mb-1.5 text-sm">Timezone</label>
+                <div className="relative">
+                  <Clock className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-steel-600" />
+                  <select name="timezone" value={formData.timezone} onChange={handleChange} className={`${inputClass} pl-11 pr-4`}>
+                    <option value="UTC">UTC</option>
+                    <option value="Asia/Kolkata">Asia/Kolkata</option>
+                    <option value="America/New_York">America/New_York</option>
+                    <option value="Europe/London">Europe/London</option>
+                  </select>
+                </div>
               </div>
             </div>
 
@@ -217,7 +347,7 @@ export default function Signup() {
           <div className="mt-6 pt-6 border-t border-theme text-center">
             <p className="text-steel-500 text-sm">
               Already have an account?{' '}
-              <Link to="/login" className="font-semibold text-violet-400 hover:text-violet-300">Sign in</Link>
+              <Link to="/login" className="font-semibold text-emerald-400 hover:text-emerald-300">Sign in</Link>
             </p>
           </div>
         </div>

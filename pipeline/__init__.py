@@ -1,5 +1,11 @@
 # Pipeline module for SentinelOps
-from .pipeline_executor import PipelineExecutor, run_pipeline_async, PipelineStatus, StageStatus
+from .pipeline_executor import (
+    PipelineExecutor,
+    run_pipeline_async,
+    run_pipeline_background,
+    PipelineStatus,
+    StageStatus,
+)
 from .sast_scanner import (
     run_sast_scan,
     detect_languages,

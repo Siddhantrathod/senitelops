@@ -7,7 +7,7 @@ import {
   Tooltip,
   ResponsiveContainer,
 } from 'recharts'
-import { CHART_COLORS } from '../../utils/helpers'
+import { getChartPalette, isAnimationsEnabled } from '../../utils/appearance'
 
 const CustomTooltip = ({ active, payload, label }) => {
   if (active && payload && payload.length) {
@@ -32,7 +32,9 @@ const CustomTooltip = ({ active, payload, label }) => {
 }
 
 export default function TrendChart({ data, title, height = 300, dataKeys = ['vulnerabilities'] }) {
-  const colors = [CHART_COLORS.primary, CHART_COLORS.secondary, CHART_COLORS.success]
+  const palette = getChartPalette()
+  const animate = isAnimationsEnabled()
+  const colors = [palette.primary, palette.secondary, palette.success]
 
   return (
     <div className="glass-card p-6">
@@ -70,7 +72,7 @@ export default function TrendChart({ data, title, height = 300, dataKeys = ['vul
               stroke={colors[index]}
               strokeWidth={2}
               fill={`url(#gradient-${key})`}
-              animationDuration={800}
+              animationDuration={animate ? 800 : 0}
             />
           ))}
         </AreaChart>

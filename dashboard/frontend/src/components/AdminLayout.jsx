@@ -22,10 +22,8 @@ import { useAuth } from '../context/AuthContext'
 import { useTheme } from '../context/ThemeContext'
 
 const adminNav = [
-  { name: 'Overview', href: '/admin', icon: LayoutDashboard, end: true },
+  { name: 'Platform Analysis', href: '/admin', icon: LayoutDashboard, end: true },
   { name: 'Users', href: '/admin/users', icon: Users },
-  { name: 'Pipelines', href: '/admin/pipelines', icon: GitBranch },
-  { name: 'Vulnerabilities', href: '/admin/vulnerabilities', icon: AlertTriangle },
   { name: 'Settings', href: '/admin/settings', icon: Settings },
   { name: 'Logs', href: '/admin/logs', icon: FileText },
 ]
@@ -103,20 +101,6 @@ export default function AdminLayout() {
             </NavLink>
           ))}
 
-          {/* Separator & back link */}
-          <div className="pt-4 border-t border-theme mt-4">
-            <p className="px-4 py-2 text-[10px] font-semibold text-steel-500 uppercase tracking-[0.2em] font-mono">
-              Navigation
-            </p>
-            <NavLink
-              to="/dashboard"
-              className="nav-link"
-              onClick={() => setSidebarOpen(false)}
-            >
-              <ArrowLeft className="w-5 h-5" />
-              Back to Dashboard
-            </NavLink>
-          </div>
         </nav>
 
         {/* Admin badge card */}
@@ -136,7 +120,7 @@ export default function AdminLayout() {
       {/* Main Content */}
       <div className="lg:pl-72">
         {/* Top Header */}
-        <header className="sticky top-0 z-30 bg-surface/80 dark:bg-surface/70 backdrop-blur-2xl border-b border-theme">
+        <header className="sticky top-0 z-[60] bg-surface/80 dark:bg-surface/70 backdrop-blur-2xl border-b border-theme">
           <div className="flex items-center justify-between px-6 py-4">
             <div className="flex items-center gap-4">
               <button
@@ -158,7 +142,7 @@ export default function AdminLayout() {
               {/* Theme Toggle */}
               <button
                 onClick={toggleTheme}
-                className="relative p-2.5 rounded-xl border border-theme hover:border-violet-500/30 bg-theme-hover hover:bg-violet-500/10 transition-all duration-300 group"
+                className="relative p-2.5 rounded-xl border border-theme hover:border-emerald-500/30 bg-theme-hover hover:bg-emerald-500/10 transition-all duration-300 group"
                 title={isDark ? 'Switch to light mode' : 'Switch to dark mode'}
               >
                 <div className="relative w-5 h-5 overflow-hidden">
@@ -167,7 +151,7 @@ export default function AdminLayout() {
                     isDark ? 'rotate-90 scale-0 opacity-0' : 'rotate-0 scale-100 opacity-100'
                   )} />
                   <Moon className={cn(
-                    'w-5 h-5 text-violet-400 absolute inset-0 transition-all duration-500',
+                    'w-5 h-5 text-emerald-400 absolute inset-0 transition-all duration-500',
                     isDark ? 'rotate-0 scale-100 opacity-100' : '-rotate-90 scale-0 opacity-0'
                   )} />
                 </div>
@@ -205,16 +189,6 @@ export default function AdminLayout() {
                         </span>
                       </div>
                       <div className="p-2">
-                        <button
-                          onClick={() => {
-                            setShowUserMenu(false)
-                            navigate('/dashboard')
-                          }}
-                          className="flex items-center gap-3 w-full px-3 py-2 text-steel-300 hover:text-violet-600 dark:hover:text-violet-400 hover:bg-violet-500/10 rounded-lg transition-colors"
-                        >
-                          <ArrowLeft className="w-4 h-4" />
-                          Back to Dashboard
-                        </button>
                         <button
                           onClick={() => {
                             setShowUserMenu(false)

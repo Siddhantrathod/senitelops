@@ -22,7 +22,7 @@ export default function ToggleSwitch({ checked, onChange, disabled = false, size
         s.track,
         'rounded-full peer transition-colors duration-200',
         'bg-steel-600/40 dark:bg-white/[0.12]',
-        'peer-checked:bg-violet-500',
+        'peer-checked:bg-emerald-500',
         `after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:${s.thumb} after:transition-all`,
         s.translate
       )} />

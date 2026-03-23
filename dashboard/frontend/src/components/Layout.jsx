@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Outlet, NavLink, useLocation } from 'react-router-dom'
 import {
   Shield,
@@ -21,8 +21,13 @@ import {
 import { cn } from '../utils/helpers'
 import { useAuth } from '../context/AuthContext'
 import { useTheme } from '../context/ThemeContext'
+import { useLanguage } from '../context/LanguageContext'
 import NotificationDropdown from './NotificationDropdown'
-
+import { triggerPipeline } from '../services/api'
+import { fetchAppearancePrefs, fetchProfile } from '../pages/settings/services/settingsApi'
+import { applyAppearancePrefs } from '../utils/appearance'
+import { Notyf } from 'notyf'
+import 'notyf/notyf.min.css'
 const navigation = [
   { name: 'Dashboard', href: '/dashboard', icon: LayoutDashboard },
   { name: 'Pipeline', href: '/dashboard/pipeline', icon: GitBranch },
@@ -38,6 +43,58 @@ export default function Layout() {
   const location = useLocation()
   const { user, logout, isAdmin } = useAuth()
   const { theme, toggleTheme, isDark } = useTheme()
+  const { t } = useLanguage()
+  const [profileData, setProfileData] = useState(null)
+
+  const [isScanning, setIsScanning] = useState(false)
+
+  useEffect(() => {
+    const token = localStorage.getItem('token')
+    if (!token) return
+    fetchAppearancePrefs()
+      .then((prefs) => applyAppearancePrefs(prefs))
+      .catch(() => {})
+
+    fetchProfile()
+      .then((profile) => setProfileData(profile))
+      .catch(() => {})
+
+    const profileHandler = (event) => {
+      if (event?.detail) {
+        setProfileData((prev) => ({ ...(prev || {}), ...event.detail }))
+      } else {
+        fetchProfile().then((profile) => setProfileData(profile)).catch(() => {})
+      }
+    }
+    window.addEventListener('sentinelops:profile-updated', profileHandler)
+    return () => window.removeEventListener('sentinelops:profile-updated', profileHandler)
+  }, [])
+
+  const handleRunScan = async () => {
+    try {
+      setIsScanning(true)
+      const notyf = new Notyf({ duration: 4000, position: { x: 'right', y: 'bottom' } })
+      
+      const profile = await fetchProfile()
+      if (!profile || !profile.defaultRepoUrl) {
+        notyf.error('No Default Repository URL set. Please configure it in Settings.')
+        setIsScanning(false)
+        return
+      }
+
+      await triggerPipeline({
+        repo_url: profile.defaultRepoUrl,
+        branch: (profile.defaultBranch || 'main').trim() || 'main',
+      })
+      notyf.success('Pipeline triggered successfully!')
+    } catch (error) {
+      console.error(error)
+      const notyf = new Notyf()
+      notyf.error(error.response?.data?.error || 'Failed to trigger pipeline.')
+    } finally {
+      setIsScanning(false)
+    }
+  }
 
   const getBreadcrumb = () => {
     const path = location.pathname
@@ -70,7 +127,7 @@ export default function Layout() {
       >
         {/* Logo */}
         <div className="flex items-center gap-3 px-6 py-6 border-b border-theme">
-          <div className="flex items-center justify-center w-10 h-10 rounded-xl bg-gradient-to-br from-violet-600 to-violet-400 shadow-glow-sm">
+          <div className="flex items-center justify-center w-10 h-10 rounded-xl bg-gradient-to-br from-emerald-600 to-emerald-400 shadow-glow-sm">
             <Shield className="w-6 h-6 text-white" />
           </div>
           <div>
@@ -100,7 +157,7 @@ export default function Layout() {
               onClick={() => setSidebarOpen(false)}
             >
               <item.icon className="w-5 h-5" />
-              {item.name}
+              {t(item.name)}
             </NavLink>
           ))}
 
@@ -135,8 +192,12 @@ export default function Layout() {
             <p className="text-xs text-steel-400 mb-3 font-mono">
               Last scan: Today at 10:30 AM
             </p>
-            <button className="btn-primary w-full text-sm">
-              Run Full Scan
+            <button 
+              className="btn-primary w-full text-sm"
+              onClick={handleRunScan}
+              disabled={isScanning}
+            >
+              {isScanning ? 'Scanning...' : 'Run Full Scan'}
             </button>
           </div>
         </div>
@@ -167,7 +228,7 @@ export default function Layout() {
               {/* Theme Toggle */}
               <button
                 onClick={toggleTheme}
-                className="relative p-2.5 rounded-xl border border-theme hover:border-violet-500/30 bg-theme-hover hover:bg-violet-500/10 transition-all duration-300 group"
+                className="relative p-2.5 rounded-xl border border-theme hover:border-emerald-500/30 bg-theme-hover hover:bg-emerald-500/10 transition-all duration-300 group"
                 title={isDark ? 'Switch to light mode' : 'Switch to dark mode'}
               >
                 <div className="relative w-5 h-5 overflow-hidden">
@@ -176,7 +237,7 @@ export default function Layout() {
                     isDark ? 'rotate-90 scale-0 opacity-0' : 'rotate-0 scale-100 opacity-100'
                   )} />
                   <Moon className={cn(
-                    'w-5 h-5 text-violet-400 absolute inset-0 transition-all duration-500',
+                    'w-5 h-5 text-emerald-400 absolute inset-0 transition-all duration-500',
                     isDark ? 'rotate-0 scale-100 opacity-100' : '-rotate-90 scale-0 opacity-0'
                   )} />
                 </div>
@@ -191,13 +252,17 @@ export default function Layout() {
                   onClick={() => setShowUserMenu(!showUserMenu)}
                   className="flex items-center gap-3 hover:opacity-80 transition-opacity"
                 >
-                  <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-violet-500 to-violet-600 flex items-center justify-center text-white shadow-glow-sm">
-                    <span className="text-sm font-semibold">
-                      {user?.username?.charAt(0).toUpperCase() || 'U'}
-                    </span>
+                  <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-emerald-500 to-emerald-600 flex items-center justify-center text-white shadow-glow-sm">
+                    {profileData?.avatarUrl ? (
+                      <img src={profileData.avatarUrl} alt="Profile" className="w-full h-full object-cover rounded-xl" />
+                    ) : (
+                      <span className="text-sm font-semibold">
+                        {user?.username?.charAt(0).toUpperCase() || 'U'}
+                      </span>
+                    )}
                   </div>
                   <div className="hidden sm:block text-left">
-                    <p className="text-sm font-medium text-steel-200">{user?.username || 'User'}</p>
+                    <p className="text-sm font-medium text-steel-200">{profileData?.fullName || user?.username || 'User'}</p>
                     <p className="text-xs text-steel-500">{user?.email || ''}</p>
                   </div>
                 </button>
@@ -214,7 +279,7 @@ export default function Layout() {
                         <p className="text-steel-100 font-medium">{user?.username}</p>
                         <p className="text-steel-500 text-sm">{user?.email}</p>
                         {isAdmin() && (
-                          <span className="inline-block mt-2 px-2 py-1 text-xs bg-violet-500/10 text-violet-400 rounded-lg font-medium border border-violet-500/20">
+                          <span className="inline-block mt-2 px-2 py-1 text-xs bg-emerald-500/10 text-emerald-400 rounded-lg font-medium border border-emerald-500/20">
                             Admin
                           </span>
                         )}
@@ -223,7 +288,7 @@ export default function Layout() {
                         <NavLink
                           to="/dashboard/settings"
                           onClick={() => setShowUserMenu(false)}
-                          className="flex items-center gap-3 px-3 py-2 text-steel-300 hover:text-violet-600 dark:hover:text-violet-400 hover:bg-violet-500/10 rounded-lg transition-colors"
+                          className="flex items-center gap-3 px-3 py-2 text-steel-300 hover:text-emerald-600 dark:hover:text-emerald-400 hover:bg-emerald-500/10 rounded-lg transition-colors"
                         >
                           <User className="w-4 h-4" />
                           Profile Settings
