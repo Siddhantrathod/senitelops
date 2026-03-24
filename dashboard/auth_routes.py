@@ -180,7 +180,7 @@ def _verify_otp(email: str, code: str) -> tuple[bool, str]:
 @auth_bp.route("/signup/request-otp", methods=["POST"])
 def request_signup_otp():
     """Send a 6-digit OTP to the given email for signup verification."""
-    data = request.get_json(silent=True) or {}
+    data = request.get_json(force=True, silent=True) or {}
     email = (data.get("email") or "").strip()
 
     if not email:
@@ -206,7 +206,7 @@ def signup():
     from models import User, UserSettings  # noqa: PLC0415
     from database import db               # noqa: PLC0415
 
-    data = request.get_json(silent=True) or {}
+    data = request.get_json(force=True, silent=True) or {}
 
     email    = (data.get("email") or "").strip().lower()
     username = (data.get("username") or "").strip()
