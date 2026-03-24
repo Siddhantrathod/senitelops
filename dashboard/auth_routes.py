@@ -22,26 +22,48 @@ auth_bp = Blueprint("auth_bp", __name__)
 # ---------------------------------------------------------------------------
 
 def _send_resend_email(to: str, subject: str, html: str) -> bool:
-    api_key = os.getenv("RESEND_API_KEY", "")
-    email_from = os.getenv("EMAIL_FROM", "onboarding@resend.dev")
+    api_key = os.getenv("RESEND_API_KEY", "").strip()
+    email_from = os.getenv("EMAIL_FROM", "onboarding@resend.dev").strip()
+
+    # Detailed Railway log so you can see exactly what's happening
+    current_app.logger.info(
+        "[OTP] Attempting email delivery → to=%s  from=%s  key_set=%s",
+        to, email_from, bool(api_key),
+    )
 
     if not api_key:
-        current_app.logger.error("RESEND_API_KEY is not set – cannot send email")
+        current_app.logger.error(
+            "[OTP] RESEND_API_KEY is not set in Railway env vars – email cannot be sent"
+        )
         return False
 
     try:
         import resend  # type: ignore
         resend.api_key = api_key
-        result = resend.Emails.send({
+
+        params: dict = {
             "from": email_from,
             "to": [to],
             "subject": subject,
             "html": html,
-        })
-        current_app.logger.info("Resend OK to %s: %s", to, result)
+        }
+
+        # Resend SDK v2 uses resend.Emails.SendParams; v1 accepts a plain dict.
+        # We try v2 first and fall back to v1.
+        try:
+            send_params = resend.Emails.SendParams(**params)
+            result = resend.Emails.send(send_params)
+        except (AttributeError, TypeError):
+            result = resend.Emails.send(params)
+
+        current_app.logger.info("[OTP] Resend delivery OK to %s: %s", to, result)
         return True
+
     except Exception as exc:
-        current_app.logger.error("Resend FAILED to %s: %s", to, exc)
+        current_app.logger.error(
+            "[OTP] Resend delivery FAILED: to=%s  from=%s  error=%s",
+            to, email_from, exc,
+        )
         return False
 
 
