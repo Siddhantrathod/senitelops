@@ -415,15 +415,16 @@ def _send_email(to_email: str, subject: str, body_text: str) -> bool:
         try:
             import resend
             resend.api_key = RESEND_API_KEY
-            resend.Emails.send({
+            result = resend.Emails.send({
                 "from": EMAIL_FROM,
                 "to": [to_email],
                 "subject": subject,
                 "text": body_text,
             })
+            app.logger.info(f"Resend delivery OK to {to_email}: {result}")
             return True
         except Exception as exc:
-            app.logger.warning(f"Resend delivery failed to {to_email}: {exc}")
+            app.logger.error(f"Resend delivery FAILED to {to_email}: {exc}")
             return False
 
     # --- SMTP fallback ---
