@@ -378,44 +378,16 @@ def get_full_user_info(user_id):
         }
     return None
 
-
+@app.route("/health")
+def health():
+    return {"status": "ok", "service": "sentinelops-backend"}, 200
 # ====================================================================
 # HELPER: notifications
 # ====================================================================
 
-# Resend API key (takes priority over SMTP when set)
-RESEND_API_KEY = os.environ.get("RESEND_API_KEY", "")
-EMAIL_FROM = os.environ.get("EMAIL_FROM", SMTP_FROM or "")
-
-
-def _email_enabled() -> bool:
-    # Resend takes priority
-    if RESEND_API_KEY and EMAIL_FROM:
-        return True
-    # Fallback: SMTP
-    return bool(SMTP_HOST and SMTP_FROM)
-
-
 def _send_email(to_email: str, subject: str, body_text: str) -> bool:
     if not to_email:
         return False
-
-    # --- Resend SDK ---
-    if RESEND_API_KEY and EMAIL_FROM:
-        try:
-            import resend
-            resend.api_key = RESEND_API_KEY
-            result = resend.Emails.send({
-                "from": EMAIL_FROM,
-                "to": [to_email],
-                "subject": subject,
-                "text": body_text,
-            })
-            app.logger.info(f"Resend delivery OK to {to_email}: {result}")
-            return True
-        except Exception as exc:
-            app.logger.error(f"Resend delivery FAILED to {to_email}: {exc}")
-            return False
 
     # --- SMTP fallback ---
     if not SMTP_HOST or not SMTP_FROM:
