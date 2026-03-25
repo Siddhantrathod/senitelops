@@ -1,33 +1,33 @@
 {
-  "pipeline_id": "e2f126e2",
-  "timestamp": "2026-03-22T06:06:50.641564",
-  "repository": "security-crawl-maze",
-  "branch": "master",
+  "pipeline_id": "3751841c",
+  "timestamp": "2026-03-25T19:47:42.472934",
+  "repository": "sentinelops-vulnerable-app",
+  "branch": "main",
   "commit": "manual",
-  "security_score": 44,
+  "security_score": 37,
   "is_deployable": false,
   "vulnerability_summary": {
     "critical": 0,
-    "high": 10,
-    "medium": 29,
-    "low": 15,
-    "total": 54,
-    "sast_issues": 0,
-    "bandit_issues": 0,
+    "high": 5,
+    "medium": 15,
+    "low": 13,
+    "total": 33,
+    "sast_issues": 6,
+    "bandit_issues": 6,
     "trivy_vulns": 0,
     "secrets_found": 0,
     "dast_alerts": 21,
-    "security_score": 44,
-    "sast_high": 0,
-    "sast_medium": 0,
-    "sast_low": 0,
-    "bandit_high": 0,
-    "bandit_medium": 0,
-    "bandit_low": 0,
+    "security_score": 37,
+    "sast_high": 2,
+    "sast_medium": 2,
+    "sast_low": 2,
+    "bandit_high": 2,
+    "bandit_medium": 2,
+    "bandit_low": 2,
     "trivy_critical": 0,
-    "trivy_high": 10,
-    "trivy_medium": 22,
-    "trivy_low": 5,
+    "trivy_high": 3,
+    "trivy_medium": 6,
+    "trivy_low": 1,
     "secrets_critical": 0,
     "secrets_high": 0,
     "secrets_medium": 0,
@@ -35,15 +35,15 @@
     "dast_medium": 7,
     "dast_low": 10,
     "languages_detected": [
-      "python",
-      "javascript",
-      "typescript"
+      "python"
     ],
-    "tools_used": [],
-    "max_cvss_score": 8.8
+    "tools_used": [
+      "bandit"
+    ],
+    "max_cvss_score": 8.2
   },
   "decision": "BLOCKED",
   "reasons": [
-    "Security score (44) below threshold (70)"
+    "Security score (37) below threshold (70)"
   ]
 }
