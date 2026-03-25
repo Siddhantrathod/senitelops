@@ -77,13 +77,19 @@ app.secret_key = os.environ.get(
     "JWT_SECRET_KEY", "sentinelops-secret-key-change-in-production"
 )
 
-# CORS: restrict to allowed origins read from env (comma-separated list)
-# Set ALLOWED_ORIGINS on Railway to your Vercel URL, e.g.:
-#   ALLOWED_ORIGINS=https://senitelops.vercel.app
-# Until that is set, all origins are allowed so the deploy can be tested.
+# CORS: automatically allow all Vercel preview & prod URLs + Railway testing
+# For production lock-down, set ALLOWED_ORIGINS=https://yourdomain.com
 _raw_origins = os.environ.get("ALLOWED_ORIGINS", "*")
 if _raw_origins.strip() == "*":
-    CORS(app, origins="*", supports_credentials=False)
+    # Allow all Vercel URLs (including preview deployments) for dev/staging
+    def cors_origin_matcher(origin):
+        return (
+            origin == "http://localhost:3000"  # local dev
+            or origin == "http://localhost:5000"  # local Flask
+            or ".vercel.app" in origin  # all Vercel preview & prod
+            or ".railway.app" in origin  # Railway testing
+        )
+    CORS(app, origins=cors_origin_matcher, supports_credentials=True)
 else:
     _allowed_origins = [o.strip() for o in _raw_origins.split(",") if o.strip()]
     CORS(app, origins=_allowed_origins, supports_credentials=True)
