@@ -249,9 +249,20 @@ class PipelineExecutor:
             self.update_stage(pipeline.id, "build", StageStatus.RUNNING)
             dockerfile_path = os.path.join(work_dir, "Dockerfile")
             has_dockerfile = os.path.exists(dockerfile_path)
+            docker_available = shutil.which("docker") is not None
             built_image_name = None
             
-            if has_dockerfile:
+            if not has_dockerfile:
+                self.update_stage(pipeline.id, "build", StageStatus.SKIPPED,
+                                "No Dockerfile found — Trivy will scan filesystem instead")
+            elif not docker_available:
+                self.update_stage(
+                    pipeline.id,
+                    "build",
+                    StageStatus.SKIPPED,
+                    "Docker CLI not installed — skipping image build and continuing with filesystem scans"
+                )
+            else:
                 try:
                     build_image = image_name or f"sentinelops-scan-{pipeline.id}"
                     result = subprocess.run(
@@ -268,12 +279,17 @@ class PipelineExecutor:
                     self.update_stage(pipeline.id, "build", StageStatus.FAILED, 
                                     error="Docker build timed out after 900 seconds — continuing with filesystem scans")
                     logger.warning("⚠ Docker build timed out — pipeline will continue without image scans")
+                except FileNotFoundError:
+                    self.update_stage(
+                        pipeline.id,
+                        "build",
+                        StageStatus.SKIPPED,
+                        "Docker CLI not installed — skipping image build and continuing with filesystem scans"
+                    )
+                    logger.warning("⚠ Docker CLI not installed — skipping image build")
                 except Exception as e:
                     self.update_stage(pipeline.id, "build", StageStatus.FAILED, error=str(e))
                     logger.warning(f"⚠ Docker build failed: {e} — continuing with filesystem scans")
-            else:
-                self.update_stage(pipeline.id, "build", StageStatus.SKIPPED, 
-                                "No Dockerfile found — Trivy will scan filesystem instead")
             
             # Stage 3: Multi-Language SAST Scan
             if scanners.get('sast', True):
