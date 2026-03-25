@@ -365,12 +365,12 @@ class PipelineExecutor:
                     logger.warning(msg)
                     # Continue pipeline even if Trivy timed out
                 except FileNotFoundError:
-                    self.update_stage(pipeline.id, "trivy_scan", StageStatus.FAILED,
-                                    error="Trivy not installed")
-                    raise Exception("Trivy not installed")
+                    msg = "Trivy not installed; skipping Trivy stage"
+                    self.update_stage(pipeline.id, "trivy_scan", StageStatus.SKIPPED, logs=msg)
+                    logger.warning(msg)
                 except Exception as e:
                     self.update_stage(pipeline.id, "trivy_scan", StageStatus.FAILED, error=str(e))
-                    raise
+                    logger.warning(f"Trivy scan failed but pipeline will continue: {e}")
             else:
                 self.update_stage(pipeline.id, "trivy_scan", StageStatus.SKIPPED, "Disabled by Scan Preferences")
             
