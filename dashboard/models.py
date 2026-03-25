@@ -271,26 +271,6 @@ class Notification(db.Model):
 
 
 # ---------------------------------------------------------------------------
-# Email OTP (signup verification)
-# ---------------------------------------------------------------------------
-
-class EmailOTP(db.Model):
-    __tablename__ = "email_otps"
-
-    id = db.Column(db.Integer, primary_key=True, autoincrement=True)
-    email = db.Column(db.String(120), nullable=False, index=True)
-    purpose = db.Column(db.String(50), nullable=False, default="signup", index=True)
-    otp_hash = db.Column(db.String(128), nullable=False)
-    expires_at = db.Column(db.DateTime, nullable=False)
-    used = db.Column(db.Boolean, nullable=False, default=False, index=True)
-    attempts = db.Column(db.Integer, nullable=False, default=0)
-    created_at = db.Column(db.DateTime, nullable=False, default=utcnow, index=True)
-
-    def __repr__(self):
-        return f"<EmailOTP {self.email!r} purpose={self.purpose!r} used={self.used}>"
-
-
-# ---------------------------------------------------------------------------
 # Pipeline  (one row per pipeline run)
 # ---------------------------------------------------------------------------
 

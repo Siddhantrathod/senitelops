@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { Navigate, useNavigate, Link } from 'react-router-dom'
 import { Shield, User, Lock, Eye, EyeOff, AlertCircle, ArrowRight, Building, Briefcase, Phone, GitBranch, Globe2, Languages, Clock } from 'lucide-react'
 import { useAuth } from '../context/AuthContext'
-import { getGoogleAuthUrl, requestSignupOtp } from '../services/api'
+import { getGoogleAuthUrl } from '../services/api'
 
 const GoogleIcon = () => (
   <svg className="w-5 h-5" viewBox="0 0 24 24">
@@ -20,16 +20,13 @@ export default function Signup() {
   const navigate = useNavigate()
   const [formData, setFormData] = useState({
     username: '', email: '', fullName: '', organization: '',
-    roleTitle: '', phone: '', password: '', confirmPassword: '', otp: '',
+    roleTitle: '', phone: '', password: '', confirmPassword: '',
     defaultRepoUrl: '', defaultBranch: 'main', preferredLanguage: 'en', timezone: 'UTC',
   })
   const [showPassword, setShowPassword] = useState(false)
   const [error, setError] = useState('')
   const [fieldErrors, setFieldErrors] = useState([])
   const [isLoading, setIsLoading] = useState(false)
-  const [otpSent, setOtpSent] = useState(false)
-  const [otpSending, setOtpSending] = useState(false)
-  const [otpCooldown, setOtpCooldown] = useState(0)
 
   if (loading) {
     return (
@@ -42,12 +39,7 @@ export default function Signup() {
   if (isAuthenticated) return <Navigate to="/dashboard" replace />
 
   const handleChange = (e) => {
-    const next = { ...formData, [e.target.name]: e.target.value }
-    if (e.target.name === 'email') {
-      next.otp = ''
-      setOtpSent(false)
-    }
-    setFormData(next)
+    setFormData({ ...formData, [e.target.name]: e.target.value })
     if (error) setError('')
     if (fieldErrors.length) setFieldErrors([])
   }
@@ -59,13 +51,11 @@ export default function Signup() {
     if (formData.password !== formData.confirmPassword) { setError('Passwords do not match'); return }
     if (formData.password.length < 6) { setError('Password must be at least 6 characters'); return }
     if (formData.username.length < 3) { setError('Username must be at least 3 characters'); return }
-    if (!otpSent) { setError('Verify your email with OTP before creating account'); return }
-    if (!formData.otp || formData.otp.trim().length !== 6) { setError('Enter a valid 6-digit OTP'); return }
     setIsLoading(true)
     const result = await signup({
       username: formData.username, email: formData.email, password: formData.password,
       fullName: formData.fullName, organization: formData.organization,
-      roleTitle: formData.roleTitle, phone: formData.phone, otp: formData.otp,
+      roleTitle: formData.roleTitle, phone: formData.phone,
       defaultRepoUrl: formData.defaultRepoUrl,
       defaultBranch: formData.defaultBranch,
       preferredLanguage: formData.preferredLanguage,
@@ -78,38 +68,6 @@ export default function Signup() {
       if (result.errors) setFieldErrors(result.errors)
     }
     setIsLoading(false)
-  }
-
-  const startOtpCooldown = (seconds = 60) => {
-    setOtpCooldown(seconds)
-    const timer = setInterval(() => {
-      setOtpCooldown((prev) => {
-        if (prev <= 1) {
-          clearInterval(timer)
-          return 0
-        }
-        return prev - 1
-      })
-    }, 1000)
-  }
-
-  const handleSendOtp = async () => {
-    setError('')
-    if (!formData.email) {
-      setError('Enter your email first')
-      return
-    }
-
-    setOtpSending(true)
-    try {
-      await requestSignupOtp(formData.email)
-      setOtpSent(true)
-      startOtpCooldown(60)
-    } catch (err) {
-      setError(err.response?.data?.error || 'Failed to send OTP')
-    } finally {
-      setOtpSending(false)
-    }
   }
 
   const handleGoogleSignup = () => { window.location.href = getGoogleAuthUrl() }
@@ -191,40 +149,7 @@ export default function Signup() {
                 <label className="block text-steel-300 font-medium mb-1.5 text-sm">Email <span className="text-red-400">*</span></label>
                 <input type="email" name="email" value={formData.email} onChange={handleChange}
                   className={`${inputClass} px-4`} placeholder="john@company.com" required />
-                <div className="mt-2">
-                  <button
-                    type="button"
-                    onClick={handleSendOtp}
-                    disabled={otpSending || otpCooldown > 0}
-                    className="btn-secondary w-full text-xs disabled:opacity-50"
-                  >
-                    {otpSending
-                      ? 'Sending OTP...'
-                      : otpCooldown > 0
-                        ? `Resend OTP in ${otpCooldown}s`
-                        : otpSent
-                          ? 'Resend OTP'
-                          : 'Send OTP'}
-                  </button>
-                </div>
               </div>
-            </div>
-
-            <div>
-              <label className="block text-steel-300 font-medium mb-1.5 text-sm">Email OTP <span className="text-red-400">*</span></label>
-              <input
-                type="text"
-                name="otp"
-                value={formData.otp}
-                onChange={handleChange}
-                className={`${inputClass} px-4`}
-                placeholder="6-digit verification code"
-                maxLength={6}
-                required
-              />
-              <p className="text-xs text-steel-500 mt-1">
-                {otpSent ? 'OTP sent to your email. It expires in 10 minutes.' : 'Send OTP to verify your email before signup.'}
-              </p>
             </div>
 
             {/* Organization & Role */}

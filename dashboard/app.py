@@ -69,6 +69,10 @@ except ImportError:
 # Flask application
 # ---------------------------------------------------------------------------
 app = Flask(__name__)
+from auth_routes import auth_bp
+
+app.register_blueprint(auth_bp, url_prefix="/api/auth")
+
 app.secret_key = os.environ.get(
     "JWT_SECRET_KEY", "sentinelops-secret-key-change-in-production"
 )
@@ -86,18 +90,6 @@ else:
 
 # Frontend base URL (used for OAuth redirects)
 FRONTEND_URL = os.environ.get("FRONTEND_URL", "http://localhost:3000")
-
-
-# Email / OTP settings
-SMTP_HOST = os.environ.get("SMTP_HOST", "")
-SMTP_PORT = int(os.environ.get("SMTP_PORT", "587"))
-SMTP_USER = os.environ.get("SMTP_USER", "")
-SMTP_PASSWORD = os.environ.get("SMTP_PASSWORD", "")
-SMTP_FROM = os.environ.get("SMTP_FROM", SMTP_USER or "")
-SMTP_USE_TLS = os.environ.get("SMTP_USE_TLS", "true").lower() == "true"
-SMTP_USE_SSL = os.environ.get("SMTP_USE_SSL", "false").lower() == "true"
-EMAIL_OTP_EXPIRY_MINUTES = int(os.environ.get("EMAIL_OTP_EXPIRY_MINUTES", "10"))
-EMAIL_OTP_COOLDOWN_SECONDS = int(os.environ.get("EMAIL_OTP_COOLDOWN_SECONDS", "60"))
 
 # ---------------------------------------------------------------------------
 # Database (SQLAlchemy + Flask-Migrate)
@@ -136,7 +128,6 @@ from models import (  # noqa: E402
     Vulnerability,
     Secret,
     UserSettings,
-    EmailOTP,
     ApiToken,
     WebhookLog,
     SystemLog,
@@ -312,7 +303,7 @@ def _recover_orphaned_queued_pipelines():
 GITHUB_WEBHOOK_SECRET = os.environ.get("GITHUB_WEBHOOK_SECRET", "your-webhook-secret")
 ALLOW_UNVERIFIED_WEBHOOKS = os.environ.get("ALLOW_UNVERIFIED_WEBHOOKS", "false").lower() == "true"
 
-# Email / OTP configuration
+# Email configuration
 SMTP_HOST = os.environ.get("SMTP_HOST", "")
 SMTP_PORT = int(os.environ.get("SMTP_PORT", "587"))
 SMTP_USER = os.environ.get("SMTP_USER", "")
@@ -320,9 +311,6 @@ SMTP_PASSWORD = os.environ.get("SMTP_PASSWORD", "")
 SMTP_FROM = os.environ.get("SMTP_FROM", SMTP_USER or "no-reply@sentinelops.local")
 SMTP_USE_TLS = os.environ.get("SMTP_USE_TLS", "true").lower() == "true"
 SMTP_USE_SSL = os.environ.get("SMTP_USE_SSL", "false").lower() == "true"
-
-EMAIL_OTP_EXPIRY_MINUTES = int(os.environ.get("EMAIL_OTP_EXPIRY_MINUTES", "10"))
-EMAIL_OTP_COOLDOWN_SECONDS = int(os.environ.get("EMAIL_OTP_COOLDOWN_SECONDS", "60"))
 
 
 # ====================================================================
@@ -563,84 +551,6 @@ def add_notification(
         db.session.commit()
 
     return created
-
-
-def _otp_hash(email: str, code: str) -> str:
-    seed = f"{email.lower()}:{code}:{app.config['JWT_SECRET_KEY']}"
-    return hashlib.sha256(seed.encode("utf-8")).hexdigest()
-
-
-def _issue_signup_otp(email: str) -> tuple[bool, str]:
-    normalized = (email or "").strip().lower()
-    if not normalized:
-        return False, "Email is required"
-
-    recent = (
-        EmailOTP.query
-        .filter_by(email=normalized, purpose="signup")
-        .order_by(EmailOTP.created_at.desc())
-        .first()
-    )
-    if recent:
-        elapsed = (utcnow() - recent.created_at).total_seconds()
-        if elapsed < EMAIL_OTP_COOLDOWN_SECONDS:
-            wait_for = max(1, EMAIL_OTP_COOLDOWN_SECONDS - int(elapsed))
-            return False, f"Please wait {wait_for}s before requesting another OTP"
-
-    code = f"{_secrets.randbelow(1000000):06d}"
-    expires_at = utcnow() + timedelta(minutes=EMAIL_OTP_EXPIRY_MINUTES)
-    otp_row = EmailOTP(
-        email=normalized,
-        purpose="signup",
-        otp_hash=_otp_hash(normalized, code),
-        expires_at=expires_at,
-        used=False,
-        attempts=0,
-    )
-    db.session.add(otp_row)
-    db.session.commit()
-
-    sent = _send_email(
-        normalized,
-        "Your SentinelOps signup verification code",
-        (
-            f"Your OTP code is: {code}\n"
-            f"This code expires in {EMAIL_OTP_EXPIRY_MINUTES} minutes.\n"
-            "If you did not request this code, you can ignore this email."
-        ),
-    )
-
-    if not sent:
-        return False, "OTP could not be delivered. Configure SMTP settings and try again."
-    return True, "OTP sent successfully"
-
-
-def _verify_signup_otp(email: str, otp_code: str) -> tuple[bool, str]:
-    normalized = (email or "").strip().lower()
-    otp_code = (otp_code or "").strip()
-    if not normalized or not otp_code:
-        return False, "Email and OTP are required"
-
-    otp_row = (
-        EmailOTP.query
-        .filter_by(email=normalized, purpose="signup", used=False)
-        .order_by(EmailOTP.created_at.desc())
-        .first()
-    )
-    if not otp_row:
-        return False, "No OTP found. Please request a new OTP."
-    if otp_row.expires_at < utcnow():
-        return False, "OTP expired. Please request a new OTP."
-
-    otp_row.attempts = int(otp_row.attempts or 0) + 1
-    is_valid = otp_row.otp_hash == _otp_hash(normalized, otp_code)
-    if not is_valid:
-        db.session.commit()
-        return False, "Invalid OTP"
-
-    otp_row.used = True
-    db.session.commit()
-    return True, "OTP verified"
 
 
 def _severity_counts(items, key: str) -> Dict[str, int]:
@@ -884,7 +794,6 @@ def signup():
     username = data.get("username", "").strip()
     email = data.get("email", "").strip().lower()
     password = data.get("password", "")
-    otp_code = data.get("otp", "").strip()
     full_name = data.get("fullName", "").strip()
     organization = data.get("organization", "").strip()
     role_title = data.get("roleTitle", "").strip()
@@ -913,8 +822,6 @@ def signup():
         errors.append("Password must be at least 6 characters")
     if not full_name:
         errors.append("Full name is required")
-    if not otp_code:
-        errors.append("OTP is required")
     if default_repo_url:
         is_valid_repo, repo_error = validate_repo_url(default_repo_url)
         if not is_valid_repo:
@@ -926,10 +833,6 @@ def signup():
         return jsonify({"error": "Username already exists"}), 409
     if User.query.filter(db.func.lower(User.email) == email.lower()).first():
         return jsonify({"error": "Email already exists"}), 409
-
-    valid_otp, otp_message = _verify_signup_otp(email, otp_code)
-    if not valid_otp:
-        return jsonify({"error": otp_message}), 400
 
     new_user = User(
         username=username,
@@ -980,24 +883,6 @@ def signup():
             "fullName": new_user.full_name,
         },
     }), 201
-
-
-@app.route("/api/auth/signup/request-otp", methods=["POST"])
-def signup_request_otp():
-    data = request.get_json() or {}
-    email = (data.get("email") or "").strip().lower()
-
-    if not email:
-        return jsonify({"error": "Email is required"}), 400
-    if not re.match(r"^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$", email):
-        return jsonify({"error": "Invalid email format"}), 400
-    if User.query.filter(db.func.lower(User.email) == email.lower()).first():
-        return jsonify({"error": "Email already exists"}), 409
-
-    ok, message = _issue_signup_otp(email)
-    if not ok:
-        return jsonify({"error": message}), 400
-    return jsonify({"message": message})
 
 
 @app.route("/api/auth/register", methods=["POST"])

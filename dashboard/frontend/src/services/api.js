@@ -289,16 +289,6 @@ export const signupUser = async (userData) => {
   }
 }
 
-export const requestSignupOtp = async (email) => {
-  try {
-    const response = await api.post('/auth/signup/request-otp', { email })
-    return response.data
-  } catch (error) {
-    console.error('Error requesting signup OTP:', error)
-    throw error
-  }
-}
-
 export const getGoogleAuthUrl = () => {
   // Always needs an absolute URL for the OAuth redirect
   const backendBase = import.meta.env.VITE_API_URL || ''

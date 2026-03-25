@@ -2,195 +2,19 @@
 auth_routes.py – Blueprint mounted at /api/auth
 
 Routes matching what the frontend expects:
-  POST /api/auth/signup/request-otp  → send OTP email
-  POST /api/auth/signup              → create account (verifies OTP inline)
+  POST /api/auth/signup              → create account
 """
 from __future__ import annotations
 
-import hashlib
-import os
-import secrets
-from datetime import datetime, timedelta, timezone
-
 import bcrypt
-from flask import Blueprint, current_app, jsonify, request
+from flask import Blueprint, jsonify, request
 
 auth_bp = Blueprint("auth_bp", __name__)
-
-# ---------------------------------------------------------------------------
-# Resend email helper
-# ---------------------------------------------------------------------------
-
-def _send_resend_email(to: str, subject: str, html: str) -> bool:
-    api_key = os.getenv("RESEND_API_KEY", "").strip()
-    email_from = os.getenv("EMAIL_FROM", "onboarding@resend.dev").strip()
-
-    # Detailed Railway log so you can see exactly what's happening
-    current_app.logger.info(
-        "[OTP] Attempting email delivery → to=%s  from=%s  key_set=%s",
-        to, email_from, bool(api_key),
-    )
-
-    if not api_key:
-        current_app.logger.error(
-            "[OTP] RESEND_API_KEY is not set in Railway env vars – email cannot be sent"
-        )
-        return False
-
-    try:
-        import resend  # type: ignore
-        resend.api_key = api_key
-
-        params: dict = {
-            "from": email_from,
-            "to": [to],
-            "subject": subject,
-            "html": html,
-        }
-
-        # Resend SDK v2 uses resend.Emails.SendParams; v1 accepts a plain dict.
-        # We try v2 first and fall back to v1.
-        try:
-            send_params = resend.Emails.SendParams(**params)
-            result = resend.Emails.send(send_params)
-        except (AttributeError, TypeError):
-            result = resend.Emails.send(params)
-
-        current_app.logger.info("[OTP] Resend delivery OK to %s: %s", to, result)
-        return True
-
-    except Exception as exc:
-        current_app.logger.error(
-            "[OTP] Resend delivery FAILED: to=%s  from=%s  error=%s",
-            to, email_from, exc,
-        )
-        return False
-
-
-# ---------------------------------------------------------------------------
-# OTP helpers – use the EmailOTP DB model (imported lazily to avoid circular
-# imports since models are loaded after the app is created)
-# ---------------------------------------------------------------------------
-
-OTP_EXPIRY_MINUTES = int(os.getenv("EMAIL_OTP_EXPIRY_MINUTES", "10"))
-OTP_COOLDOWN_SECONDS = int(os.getenv("EMAIL_OTP_COOLDOWN_SECONDS", "60"))
-OTP_MAX_ATTEMPTS = 5
-
-
-def _utcnow() -> datetime:
-    return datetime.now(timezone.utc).replace(tzinfo=None)
-
-
-def _otp_hash(email: str, code: str) -> str:
-    seed = f"{email.lower()}:{code}:{os.getenv('JWT_SECRET_KEY', 'sentinelops-secret')}"
-    return hashlib.sha256(seed.encode()).hexdigest()
-
-
-def _issue_otp(email: str) -> tuple[bool, str]:
-    from models import EmailOTP  # noqa: PLC0415
-    from database import db      # noqa: PLC0415
-
-    normalized = email.strip().lower()
-
-    # Cooldown check
-    recent = (
-        EmailOTP.query
-        .filter_by(email=normalized, purpose="signup")
-        .order_by(EmailOTP.created_at.desc())
-        .first()
-    )
-    if recent:
-        elapsed = (_utcnow() - recent.created_at).total_seconds()
-        if elapsed < OTP_COOLDOWN_SECONDS:
-            wait = max(1, OTP_COOLDOWN_SECONDS - int(elapsed))
-            return False, f"Please wait {wait}s before requesting another OTP"
-
-    code = f"{secrets.randbelow(1_000_000):06d}"
-    otp_row = EmailOTP(
-        email=normalized,
-        purpose="signup",
-        otp_hash=_otp_hash(normalized, code),
-        expires_at=_utcnow() + timedelta(minutes=OTP_EXPIRY_MINUTES),
-        used=False,
-        attempts=0,
-    )
-    db.session.add(otp_row)
-    db.session.commit()
-
-    sent = _send_resend_email(
-        normalized,
-        "Your SentinelOps Verification Code",
-        f"""
-        <div style="font-family:sans-serif;max-width:480px;margin:auto">
-          <h2 style="color:#10b981">SentinelOps Email Verification</h2>
-          <p>Your one-time verification code is:</p>
-          <h1 style="letter-spacing:8px;color:#111;background:#f3f4f6;
-                     padding:16px 24px;border-radius:8px;display:inline-block">{code}</h1>
-          <p>This code expires in <strong>{OTP_EXPIRY_MINUTES} minutes</strong>.</p>
-          <p style="color:#888;font-size:12px">If you didn't request this, ignore this email.</p>
-        </div>
-        """,
-    )
-
-    if not sent:
-        # Roll back the DB row so the user can retry immediately
-        db.session.delete(otp_row)
-        db.session.commit()
-        return False, "OTP could not be delivered. Check that RESEND_API_KEY and EMAIL_FROM are set correctly in Railway."
-
-    return True, "OTP sent successfully"
-
-
-def _verify_otp(email: str, code: str) -> tuple[bool, str]:
-    from models import EmailOTP  # noqa: PLC0415
-    from database import db      # noqa: PLC0415
-
-    normalized = email.strip().lower()
-    code = code.strip()
-
-    otp_row = (
-        EmailOTP.query
-        .filter_by(email=normalized, purpose="signup", used=False)
-        .order_by(EmailOTP.created_at.desc())
-        .first()
-    )
-    if not otp_row:
-        return False, "No OTP found. Please request a new one."
-    if otp_row.expires_at < _utcnow():
-        return False, "OTP expired. Please request a new one."
-
-    otp_row.attempts = int(otp_row.attempts or 0) + 1
-    if otp_row.attempts > OTP_MAX_ATTEMPTS:
-        db.session.commit()
-        return False, "Too many attempts. Please request a new OTP."
-
-    if otp_row.otp_hash != _otp_hash(normalized, code):
-        db.session.commit()
-        return False, "Invalid OTP."
-
-    otp_row.used = True
-    db.session.commit()
-    return True, "OTP verified"
 
 
 # ---------------------------------------------------------------------------
 # Routes
 # ---------------------------------------------------------------------------
-
-@auth_bp.route("/signup/request-otp", methods=["POST"])
-def request_signup_otp():
-    """Send a 6-digit OTP to the given email for signup verification."""
-    data = request.get_json(force=True, silent=True) or {}
-    email = (data.get("email") or "").strip()
-
-    if not email:
-        return jsonify({"error": "Email is required"}), 400
-
-    ok, msg = _issue_otp(email)
-    if not ok:
-        return jsonify({"error": msg}), 429 if "wait" in msg else 500
-
-    return jsonify({"message": msg}), 200
 
 
 @auth_bp.route("/signup", methods=["POST"])
@@ -198,9 +22,9 @@ def signup():
     """
     Create a new user account.
 
-    Expects JSON:
-      email, password, username, otp (6-digit code)
-      + optional: fullName, organization, roleTitle, phone,
+        Expects JSON:
+            email, password, username
+            + optional: fullName, organization, roleTitle, phone,
                   defaultRepoUrl, defaultBranch, preferredLanguage, timezone
     """
     from models import User, UserSettings  # noqa: PLC0415
@@ -208,10 +32,9 @@ def signup():
 
     data = request.get_json(force=True, silent=True) or {}
 
-    email    = (data.get("email") or "").strip().lower()
+    email = (data.get("email") or "").strip().lower()
     username = (data.get("username") or "").strip()
     password = data.get("password") or ""
-    otp_code = (data.get("otp") or "").strip()
 
     # --- Basic validation ---
     errors: list[str] = []
@@ -221,15 +44,8 @@ def signup():
         errors.append("Username must be at least 3 characters")
     if not password or len(password) < 6:
         errors.append("Password must be at least 6 characters")
-    if not otp_code or len(otp_code) != 6:
-        errors.append("A 6-digit OTP is required")
     if errors:
         return jsonify({"error": errors[0], "errors": errors}), 400
-
-    # --- Verify OTP ---
-    otp_ok, otp_msg = _verify_otp(email, otp_code)
-    if not otp_ok:
-        return jsonify({"error": otp_msg}), 400
 
     # --- Uniqueness checks ---
     if User.query.filter(db.func.lower(User.username) == username.lower()).first():
