@@ -59,7 +59,7 @@ def signup():
         username=username,
         email=email,
         password_hash=pw_hash,
-        role="user",
+        role="viewer",
         full_name=(data.get("fullName") or "").strip(),
         organization=(data.get("organization") or "").strip(),
         role_title=(data.get("roleTitle") or "").strip(),
