@@ -84,13 +84,11 @@ def signup():
         repo_prefs["defaultBranch"] = data["defaultBranch"]
 
     if prefs or repo_prefs:
-        settings_data: dict = {}
-        if prefs:
-            settings_data["profile"] = prefs
-        if repo_prefs:
-            settings_data["repository"] = repo_prefs
-
-        settings = UserSettings(user_id=new_user.id, settings=settings_data)
+        settings = UserSettings(user_id=new_user.id)
+        profile_data: dict = {}
+        profile_data.update(prefs)
+        profile_data.update(repo_prefs)
+        settings.set_section("profile", profile_data)
         db.session.add(settings)
 
     db.session.commit()

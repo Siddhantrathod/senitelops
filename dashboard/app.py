@@ -33,7 +33,8 @@ from typing import Dict, Optional
 import threading
 import queue
 
-import bcrypt
+import bcrypt as pybcrypt
+from flask_bcrypt import Bcrypt
 from dotenv import load_dotenv
 
 # ---------------------------------------------------------------------------
@@ -69,6 +70,7 @@ except ImportError:
 # Flask application
 # ---------------------------------------------------------------------------
 app = Flask(__name__)
+password_bcrypt = Bcrypt(app)
 from auth_routes import auth_bp
 
 app.register_blueprint(auth_bp, url_prefix="/api/auth")
@@ -747,7 +749,7 @@ def login():
     if user.auth_provider == "google" and not user.password_hash:
         return jsonify({"error": "This account uses Google Sign-In. Please login with Google."}), 401
 
-    if not bcrypt.checkpw(password.encode("utf-8"), user.password_hash.encode("utf-8")):
+    if not password_bcrypt.check_password_hash(user.password_hash, password):
         return jsonify({"error": "Invalid credentials"}), 401
 
     user.last_login_at = utcnow()
@@ -819,7 +821,7 @@ def register():
     new_user = User(
         username=username,
         email=email,
-        password_hash=bcrypt.hashpw(password.encode("utf-8"), bcrypt.gensalt()).decode("utf-8"),
+        password_hash=pybcrypt.hashpw(password.encode("utf-8"), pybcrypt.gensalt()).decode("utf-8"),
         role=role,
         full_name=full_name,
         organization=organization,
@@ -972,13 +974,13 @@ def change_password():
     if not user.password_hash:
         return jsonify({"error": "Password not set for this account"}), 400
 
-    if not bcrypt.checkpw(current_password.encode("utf-8"), user.password_hash.encode("utf-8")):
+    if not pybcrypt.checkpw(current_password.encode("utf-8"), user.password_hash.encode("utf-8")):
         return jsonify({"error": "Current password is incorrect"}), 401
 
     if len(new_password) < 6:
         return jsonify({"error": "New password must be at least 6 characters"}), 400
 
-    user.password_hash = bcrypt.hashpw(new_password.encode("utf-8"), bcrypt.gensalt()).decode("utf-8")
+    user.password_hash = pybcrypt.hashpw(new_password.encode("utf-8"), pybcrypt.gensalt()).decode("utf-8")
     db.session.commit()
 
     return jsonify({"message": "Password changed successfully"})
@@ -2622,7 +2624,7 @@ def admin_reset_password(user_id):
     if not user:
         return jsonify({"error": "User not found"}), 404
 
-    user.password_hash = bcrypt.hashpw(new_password.encode("utf-8"), bcrypt.gensalt()).decode("utf-8")
+    user.password_hash = pybcrypt.hashpw(new_password.encode("utf-8"), pybcrypt.gensalt()).decode("utf-8")
     db.session.commit()
     return jsonify({"message": f"Password reset for '{user.username}'"})
 
