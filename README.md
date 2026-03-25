@@ -80,6 +80,12 @@ And make sure start command keeps the tool path available:
 export PATH="$PWD/dashboard/.tools/bin:$PATH" && gunicorn dashboard.app:app --bind 0.0.0.0:$PORT
 ```
 
+If your host does not support Docker-in-Docker, set a public app URL for DAST:
+
+```bash
+DAST_TARGET_URL=https://your-app-url.example.com
+```
+
 > DAST full scan needs Docker + ZAP. On platforms without Docker support, SentinelOps automatically falls back to lightweight header checks.
 
 ### 5. Start the frontend

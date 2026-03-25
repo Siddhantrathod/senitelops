@@ -363,7 +363,10 @@ class PipelineExecutor:
                             "--skip-dirs", "build",
                             "--output", trivy_report_path, scan_target,
                         ]
-                        scan_mode_msg = f"filesystem scan on {os.path.basename(work_dir)}"
+                        scan_mode_msg = (
+                            f"filesystem scan on {os.path.basename(work_dir)} "
+                            "(dependency source scan; base-image OS CVEs require Docker image scan)"
+                        )
 
                     result = subprocess.run(
                         trivy_cmd,
@@ -390,16 +393,22 @@ class PipelineExecutor:
             else:
                 self.update_stage(pipeline.id, "trivy_scan", StageStatus.SKIPPED, "Disabled by Scan Preferences")
             
-            # Stage 6: DAST Scan (only if Docker image was built)
-            if built_image_name and scanners.get('dast', True) and not fast_scan:
+            # Stage 6: DAST Scan
+            # Priority: explicit scan prefs -> env var -> image-based local scan
+            configured_dast_url = (
+                (scan_prefs.get("dastTargetUrl") if isinstance(scan_prefs, dict) else None)
+                or os.getenv("DAST_TARGET_URL", "")
+            ).strip()
+
+            if scanners.get('dast', True) and not fast_scan and (built_image_name or configured_dast_url):
                 self.update_stage(pipeline.id, "dast_scan", StageStatus.RUNNING)
                 try:
                     dockerfile_path = os.path.join(work_dir, "Dockerfile")
                     dast_report = run_dast_scan(
-                        target_url=None,
+                        target_url=configured_dast_url or None,
                         reports_dir=self.reports_dir,
                         scan_type="baseline",
-                        image_name=built_image_name,
+                        image_name=built_image_name if not configured_dast_url else None,
                         dockerfile_path=dockerfile_path if os.path.exists(dockerfile_path) else None,
                     )
                     dast_alerts = dast_report.get('total_alerts', 0)
@@ -411,8 +420,8 @@ class PipelineExecutor:
                     dast_report = {}
             else:
                 reason = "Disabled by Scan Preferences" if not scanners.get('dast', True) else "Fast Scan Mode enabled"
-                if not built_image_name:
-                    reason = "No Docker image — DAST scan requires a running application"
+                if not built_image_name and not configured_dast_url:
+                    reason = "No Docker image and no DAST target URL (set DAST_TARGET_URL or scan_prefs.dastTargetUrl)"
                 self.update_stage(pipeline.id, "dast_scan", StageStatus.SKIPPED, reason)
                 dast_report = {}
             
