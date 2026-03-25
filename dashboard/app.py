@@ -47,7 +47,12 @@ load_dotenv(
 # ---------------------------------------------------------------------------
 # Pipeline module
 # ---------------------------------------------------------------------------
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+_THIS_DIR = os.path.dirname(os.path.abspath(__file__))
+_PROJECT_ROOT = os.path.dirname(_THIS_DIR)
+for _path in (_THIS_DIR, _PROJECT_ROOT):
+    if _path not in sys.path:
+        sys.path.insert(0, _path)
+
 from pipeline.pipeline_executor import (
     PipelineExecutor,
     run_pipeline_async,
