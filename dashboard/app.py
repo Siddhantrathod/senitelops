@@ -53,6 +53,10 @@ for _path in (_THIS_DIR, _PROJECT_ROOT):
     if _path not in sys.path:
         sys.path.insert(0, _path)
 
+_TOOLS_BIN = os.path.join(_THIS_DIR, ".tools", "bin")
+if os.path.isdir(_TOOLS_BIN):
+    os.environ["PATH"] = f"{_TOOLS_BIN}:{os.environ.get('PATH', '')}"
+
 from pipeline.pipeline_executor import (
     PipelineExecutor,
     run_pipeline_async,

@@ -66,6 +66,22 @@ python3 dashboard-backend.py
 # Backend runs on http://localhost:5000
 ```
 
+### Hosted deploy scanner setup (Render/Railway)
+
+For managed platforms where `trivy` and `gitleaks` are not preinstalled, install them during build:
+
+```bash
+bash dashboard/scripts/install_scanners.sh && pip install -r requirements.txt
+```
+
+And make sure start command keeps the tool path available:
+
+```bash
+export PATH="$PWD/dashboard/.tools/bin:$PATH" && gunicorn dashboard.app:app --bind 0.0.0.0:$PORT
+```
+
+> DAST full scan needs Docker + ZAP. On platforms without Docker support, SentinelOps automatically falls back to lightweight header checks.
+
 ### 5. Start the frontend
 
 ```bash
