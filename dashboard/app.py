@@ -1401,7 +1401,7 @@ def summary():
 
 
 @app.route("/api/health")
-def health():
+def api_health():
     return jsonify({
         "status": "healthy",
         "timestamp": utcnow().isoformat(),
