@@ -3357,3 +3357,33 @@ def admin_reply_feedback(feedback_id):
 
 if __name__ == "__main__":
     app.run(debug=False, host="0.0.0.0", port=5000)
+
+# ====================================================================
+# TEMPORARY ADMIN SETUP ROUTE
+# ====================================================================
+@app.route("/api/setup-admin", methods=["GET"])
+def setup_admin():
+    """Temporary route to create an admin user on a hosted DB."""
+    admin = User.query.filter_by(username="admin").first()
+    if admin:
+        return jsonify({"message": "Admin user already exists."}), 200
+
+    new_admin = User(
+        username="admin",
+        email="admin@sentinelops.io",
+        password_hash=pybcrypt.hashpw("admin123".encode("utf-8"), pybcrypt.gensalt()).decode("utf-8"),
+        role="admin",
+        full_name="System Administrator",
+        organization="SentinelOps",
+        role_title="Platform Admin",
+        phone="",
+        auth_provider="local",
+        is_active=True,
+    )
+    db.session.add(new_admin)
+    db.session.commit()
+    return jsonify({
+        "message": "Admin user created successfully!",
+        "username": "admin",
+        "password": "admin123"
+    }), 201
