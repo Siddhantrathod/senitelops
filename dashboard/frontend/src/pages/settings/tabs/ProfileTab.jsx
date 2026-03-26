@@ -116,6 +116,18 @@ export default function ProfileTab({ showToast }) {
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+          <FormField label="Username" required>
+            <div className="relative">
+              <User className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-steel-500" />
+              <TextInput
+                value={data.username}
+                onChange={(e) => update('username', e.target.value)}
+                placeholder="Enter username"
+                className="pl-10"
+              />
+            </div>
+          </FormField>
+
           <FormField label="Full Name" required>
             <TextInput
               value={data.fullName}

@@ -5,6 +5,7 @@ import {
 } from 'lucide-react'
 import { cn } from '../../utils/helpers'
 import { KpiCard, StatusBadge, Modal, DataTable } from '../../components/admin'
+import { ToggleSwitch } from '../settings/components'
 import { fetchPolicy, updatePolicy, fetchConfig, updateConfig } from '../../services/api'
 
 const DEFAULT_POLICY = {
@@ -194,11 +195,9 @@ export default function AdminSettings() {
                     <span className="text-sm text-steel-200 block">Block Critical Vulnerabilities</span>
                     <span className="text-[10px] text-steel-500">Auto-block deploys with critical findings</span>
                   </div>
-                  <input
-                    type="checkbox"
+                  <ToggleSwitch
                     checked={policy.blockCritical}
-                    onChange={e => setPolicy(p => ({ ...p, blockCritical: e.target.checked }))}
-                    className="w-5 h-5 rounded accent-emerald-500"
+                    onChange={val => setPolicy(p => ({ ...p, blockCritical: val }))}
                   />
                 </label>
                 <label className="flex items-center justify-between p-3 rounded-xl bg-white/[0.02] border border-white/[0.06] cursor-pointer">
@@ -206,11 +205,9 @@ export default function AdminSettings() {
                     <span className="text-sm text-steel-200 block">Auto Block Below Threshold</span>
                     <span className="text-[10px] text-steel-500">Automatically block if score {'<'} min</span>
                   </div>
-                  <input
-                    type="checkbox"
+                  <ToggleSwitch
                     checked={policy.autoBlock}
-                    onChange={e => setPolicy(p => ({ ...p, autoBlock: e.target.checked }))}
-                    className="w-5 h-5 rounded accent-emerald-500"
+                    onChange={val => setPolicy(p => ({ ...p, autoBlock: val }))}
                   />
                 </label>
               </div>
@@ -258,17 +255,15 @@ export default function AdminSettings() {
               ].map(scanner => (
                 <label key={scanner.id} className="flex items-start gap-4 p-4 rounded-xl bg-white/[0.02] border border-white/[0.06] cursor-pointer hover:bg-white/[0.04] transition-colors">
                   <div className="pt-0.5">
-                    <input
-                      type="checkbox"
+                    <ToggleSwitch
                       checked={policy.requiredScanners?.[scanner.id] ?? false}
-                      onChange={e => setPolicy(p => ({
+                      onChange={val => setPolicy(p => ({
                         ...p,
                         requiredScanners: {
                           ...(p.requiredScanners || DEFAULT_POLICY.requiredScanners),
-                          [scanner.id]: e.target.checked
+                          [scanner.id]: val
                         }
                       }))}
-                      className="w-5 h-5 rounded accent-indigo-500"
                     />
                   </div>
                   <div>
@@ -412,11 +407,9 @@ export default function AdminSettings() {
                   <span className="text-sm text-steel-200 block">Auto Scan on Push</span>
                   <span className="text-[10px] text-steel-500">Trigger scans automatically on webhook events</span>
                 </div>
-                <input
-                  type="checkbox"
+                <ToggleSwitch
                   checked={config.auto_scan || false}
-                  onChange={e => setConfig(c => ({ ...c, auto_scan: e.target.checked }))}
-                  className="w-5 h-5 rounded accent-emerald-500"
+                  onChange={val => setConfig(c => ({ ...c, auto_scan: val }))}
                 />
               </label>
             </div>

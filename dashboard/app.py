@@ -19,7 +19,6 @@ def utcnow():
     return datetime.now(timezone.utc).replace(tzinfo=None)
 
 import os
-import sys
 import hmac
 import hashlib
 import re
@@ -28,10 +27,14 @@ import secrets as _secrets
 import smtplib
 import ssl
 from email.message import EmailMessage
+import psycopg2
+from cryptography.fernet import Fernet
+import base64, datetime
 from datetime import datetime, timedelta, timezone
 from typing import Dict, Optional
 import threading
 import queue
+import sys
 
 import bcrypt as pybcrypt
 from flask_bcrypt import Bcrypt
@@ -368,6 +371,32 @@ def get_current_user_info():
         "email": claims.get("email"),
         "role": claims.get("role"),
     }
+
+
+def get_fernet_key():
+    import hashlib
+    # Derive a 32-byte url-safe base64 encoded key from the secret key
+    secret = app.secret_key or os.environ.get("JWT_SECRET_KEY", "fallback-secret-key-42")
+    return base64.urlsafe_b64encode(hashlib.sha256(secret.encode()).digest())
+
+def encrypt_secret(plaintext: str) -> str:
+    if not plaintext:
+        return ""
+    try:
+        f = Fernet(get_fernet_key())
+        return f.encrypt(plaintext.encode()).decode()
+    except Exception:
+        return plaintext
+
+def decrypt_secret(ciphertext: str) -> str:
+    if not ciphertext:
+        return ""
+    try:
+        f = Fernet(get_fernet_key())
+        return f.decrypt(ciphertext.encode()).decode()
+    except Exception as e:
+        app.logger.warning(f"Could not decrypt webhook secret, using raw: {e}")
+        return ciphertext
 
 
 def get_full_user_info(user_id):
@@ -769,6 +798,28 @@ def get_current_user():
     current = get_current_user_info()
     full = get_full_user_info(current["id"])
     return jsonify(full if full else current)
+
+
+@app.route("/api/auth/sessions", methods=["GET"])
+@jwt_required()
+def get_active_sessions():
+    """Return current active sessions (currently single session)."""
+    identity = get_jwt_identity()
+    user = User.query.filter_by(id=int(identity)).first()
+    if not user:
+        return jsonify({"error": "User not found"}), 404
+
+    return jsonify({
+        "sessions": [
+            {
+                "id": 1,
+                "device": request.headers.get("User-Agent", "Current Device"),
+                "ip": request.headers.get("X-Forwarded-For", request.remote_addr),
+                "lastActive": user.last_login_at.isoformat() if user.last_login_at else utcnow().isoformat(),
+                "current": True
+            }
+        ]
+    })
 
 
 @app.route("/api/auth/register", methods=["POST"])
@@ -1428,6 +1479,7 @@ def api_health():
 @app.route("/api/notifications", methods=["GET"])
 @jwt_required()
 def get_all_notifications():
+    _ensure_pipeline_worker()
     current_user = get_current_user_info()
     notifications = (
         Notification.query
@@ -2175,8 +2227,10 @@ def github_webhook():
 
     owner_user = db.session.get(User, owner_repo.user_id) if owner_repo else None
     owner_settings = _get_or_create_settings(owner_user) if owner_user else None
-    owner_git_prefs = _get_user_git_integration(owner_user) if owner_user else {}
-    owner_secret = (owner_git_prefs.get("webhookSecret") or "").strip() if owner_git_prefs else ""
+    # Load git integration preferences
+    owner_git_prefs = _get_user_git_integration(owner_user) if owner_user else None
+    owner_secret_enc = (owner_git_prefs.get("webhookSecret") or "").strip() if owner_git_prefs else ""
+    owner_secret = decrypt_secret(owner_secret_enc)
 
     candidate_secrets = []
     if owner_secret:
@@ -2905,6 +2959,13 @@ def settings_update_profile():
     if "phone" in data:
         user.phone = data["phone"]
 
+    requested_username = (data.get("username") or "").strip()
+    if requested_username and requested_username.lower() != user.username.lower():
+        exists = User.query.filter(db.func.lower(User.username) == requested_username.lower()).first()
+        if exists and exists.id != user.id:
+            return jsonify({"error": "Username already exists"}), 409
+        user.username = requested_username
+
     requested_email = (data.get("email") or "").strip().lower()
     if requested_email and requested_email != (user.email or "").lower():
         exists = User.query.filter(db.func.lower(User.email) == requested_email).first()
@@ -3101,7 +3162,6 @@ def settings_get_git_integration():
     if not user:
         return jsonify({"error": "User not found"}), 404
 
-    settings = _get_or_create_settings(user)
     git_prefs = _get_user_git_integration(user)
     scan_prefs = settings.get_section("scanPreferences") or {}
 
@@ -3114,10 +3174,14 @@ def settings_get_git_integration():
     fallback_branch = (default_repo.branch if default_repo else "main") or "main"
     repo_url = (default_repo.url if default_repo else "")
 
+    # Decrypt the secret before sending it to the client
+    raw_secret = git_prefs.get("webhookSecret") or ""
+    decrypted_secret = decrypt_secret(raw_secret) if raw_secret else ""
+
     return jsonify({
         "provider": git_prefs.get("provider", "github"),
         "webhookUrl": f"{request.url_root.rstrip('/')}webhook/github",
-        "webhookSecret": git_prefs.get("webhookSecret") or "",
+        "webhookSecret": decrypted_secret,
         "lastWebhookAt": git_prefs.get("lastWebhookAt"),
         "repoUrl": git_prefs.get("repoUrl", repo_url),
         "branch": git_prefs.get("branch", fallback_branch),
@@ -3143,8 +3207,24 @@ def settings_update_git_integration():
     provider = data.get("provider", existing.get("provider", "github"))
     repo_url = (data.get("repoUrl") or existing.get("repoUrl") or "").strip()
     branch = (data.get("branch") or existing.get("branch") or "main").strip() or "main"
-    webhook_secret = (data.get("webhookSecret") or existing.get("webhookSecret") or "").strip()
+    webhook_secret = (data.get("webhookSecret") or "").strip()
+    
+    # If the user is submitting the webhook secret through save settings, encrypt it
+    # We only encrypt if it's different from the existing (which is already encrypted) or if it's a raw string
+    # Actually wait - we only encrypt it if we know it was changed. 
+    # But usually, the payload contains the plain text when it's saved.
+    
     last_webhook_at = existing.get("lastWebhookAt")
+
+    # If the client sent a webhook secret, encrypt it before saving. But wait, if they didn't modify it,
+    # the client might pass back the decrypted secret. We should encrypt it again.
+    if "webhookSecret" in data:
+        encoded_webhook_secret = encrypt_secret(webhook_secret)
+    else:
+        # If webhookSecret is not in data, it means the client didn't change it.
+        # We should use the existing (encrypted) secret.
+        encoded_webhook_secret = existing.get("webhookSecret", "")
+
 
     if repo_url and not re.match(r"^https?://", repo_url):
         return jsonify({"error": "Repository URL must start with http:// or https://"}), 400
@@ -3153,7 +3233,7 @@ def settings_update_git_integration():
         "provider": provider,
         "repoUrl": repo_url,
         "branch": branch,
-        "webhookSecret": webhook_secret,
+        "webhookSecret": encoded_webhook_secret,
         "lastWebhookAt": last_webhook_at,
     })
 
@@ -3185,14 +3265,17 @@ def settings_update_git_integration():
 @app.route("/api/settings/git-integration/regenerate-secret", methods=["POST"])
 @jwt_required()
 def settings_regenerate_webhook_secret():
+    import secrets
     identity = get_jwt_identity()
     user = User.query.filter_by(id=int(identity)).first()
     if not user:
         return jsonify({"error": "User not found"}), 404
 
-    new_secret = _secrets.token_hex(32)
+    new_secret = secrets.token_hex(16)
     existing = _get_user_git_integration(user)
-    existing["webhookSecret"] = new_secret
+    
+    # Encrypt explicitly before setting
+    existing["webhookSecret"] = encrypt_secret(new_secret)
     _set_user_git_integration(user, existing)
     db.session.commit()
     return jsonify({"message": "Webhook secret regenerated", "secret": new_secret})

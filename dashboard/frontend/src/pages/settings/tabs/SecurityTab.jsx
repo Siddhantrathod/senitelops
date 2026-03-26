@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react'
+import { useState, useCallback, useEffect } from 'react'
 import {
   Lock, Eye, EyeOff, Shield, ShieldCheck, Smartphone, Monitor,
   LogOut, Chrome, KeyRound, RefreshCw, MapPin, Clock, AlertTriangle,
@@ -9,6 +9,7 @@ import { TextInput } from '../components/FormInputs'
 import { validatePassword, getPasswordStrength } from '../hooks/useSettings'
 import { changePassword } from '../services/settingsApi'
 import { cn } from '../../../utils/helpers'
+import api from '../../../services/api'
 
 export default function SecurityTab({ showToast }) {
   const { user } = useAuth()
@@ -22,14 +23,27 @@ export default function SecurityTab({ showToast }) {
   // MFA state
   const [mfaEnabled, setMfaEnabled] = useState(false)
 
-  // Session mock data
-  const [sessions] = useState([
-    { id: 1, device: 'Chrome on Linux', ip: '192.168.1.42', lastActive: '2026-02-28T09:14:32Z', current: true },
-    { id: 2, device: 'Firefox on macOS', ip: '10.0.0.15', lastActive: '2026-02-27T18:30:00Z', current: false },
-    { id: 3, device: 'Mobile Safari', ip: '172.16.0.99', lastActive: '2026-02-26T12:00:00Z', current: false },
-  ])
-
+  const [sessions, setSessions] = useState([])
+  const [loadingSessions, setLoadingSessions] = useState(true)
   const [revokeModal, setRevokeModal] = useState({ open: false, sessionId: null })
+
+  useEffect(() => {
+    let mounted = true
+    const fetchSessions = async () => {
+      try {
+        const res = await api.get('/auth/sessions')
+        if (mounted && res.data?.sessions) {
+          setSessions(res.data.sessions)
+        }
+      } catch (err) {
+        console.error('Failed to fetch sessions', err)
+      } finally {
+        if (mounted) setLoadingSessions(false)
+      }
+    }
+    fetchSessions()
+    return () => { mounted = false }
+  }, [])
 
   const strength = getPasswordStrength(pwForm.new)
   const isGoogleUser = user?.authProvider === 'google'
@@ -130,50 +144,7 @@ export default function SecurityTab({ showToast }) {
         )}
       </SettingsCard>
 
-      {/* Multi-Factor Authentication */}
-      <SettingsCard title="Two-Factor Authentication" icon={Smartphone} description="Add an extra layer of security">
-        <div className="flex items-center justify-between p-4 rounded-xl bg-theme-base border border-theme-subtle">
-          <div className="flex items-center gap-3">
-            <div className={cn('p-2 rounded-lg', mfaEnabled ? 'bg-lime-500/10' : 'bg-steel-600/10 dark:bg-white/[0.06]')}>
-              <ShieldCheck className={cn('w-5 h-5', mfaEnabled ? 'text-lime-400' : 'text-steel-500')} />
-            </div>
-            <div>
-              <p className="text-sm font-medium text-steel-100">
-                {mfaEnabled ? '2FA is enabled' : '2FA is not enabled'}
-              </p>
-              <p className="text-xs text-steel-500">
-                {mfaEnabled ? 'Your account is protected with an authenticator app' : 'Enable 2FA for enhanced security'}
-              </p>
-            </div>
-          </div>
-          <ToggleSwitch checked={mfaEnabled} onChange={setMfaEnabled} />
-        </div>
-
-        {mfaEnabled && (
-          <div className="mt-4 space-y-4">
-            <div className="p-4 rounded-xl border border-dashed border-theme bg-theme-base">
-              <div className="flex items-center justify-center h-48">
-                <div className="text-center space-y-2">
-                  <div className="w-32 h-32 mx-auto bg-white rounded-lg flex items-center justify-center">
-                    <p className="text-steel-700 text-xs font-mono">QR Code Placeholder</p>
-                  </div>
-                  <p className="text-xs text-steel-500">Scan with your authenticator app</p>
-                </div>
-              </div>
-            </div>
-            <div className="p-4 rounded-xl bg-theme-base border border-theme-subtle">
-              <SectionHeader title="Backup Codes" description="Save these codes in a safe place" />
-              <div className="grid grid-cols-2 gap-2 mt-3">
-                {['A1B2-C3D4', 'E5F6-G7H8', 'J9K0-L1M2', 'N3P4-Q5R6', 'S7T8-U9V0', 'W1X2-Y3Z4'].map(code => (
-                  <code key={code} className="text-sm font-mono text-steel-300 bg-theme-code px-3 py-1.5 rounded-lg text-center">
-                    {code}
-                  </code>
-                ))}
-              </div>
-            </div>
-          </div>
-        )}
-      </SettingsCard>
+      {/* Removed Multi-Factor Authentication */}
 
       {/* Active Sessions */}
       <SettingsCard

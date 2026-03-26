@@ -23,7 +23,7 @@ import { useAuth } from '../context/AuthContext'
 import { useTheme } from '../context/ThemeContext'
 import { useLanguage } from '../context/LanguageContext'
 import NotificationDropdown from './NotificationDropdown'
-import { triggerPipeline } from '../services/api'
+
 import { fetchAppearancePrefs, fetchProfile } from '../pages/settings/services/settingsApi'
 import { applyAppearancePrefs } from '../utils/appearance'
 import { Notyf } from 'notyf'
@@ -46,7 +46,7 @@ export default function Layout() {
   const { t } = useLanguage()
   const [profileData, setProfileData] = useState(null)
 
-  const [isScanning, setIsScanning] = useState(false)
+
 
   useEffect(() => {
     const token = localStorage.getItem('token')
@@ -69,32 +69,6 @@ export default function Layout() {
     window.addEventListener('sentinelops:profile-updated', profileHandler)
     return () => window.removeEventListener('sentinelops:profile-updated', profileHandler)
   }, [])
-
-  const handleRunScan = async () => {
-    try {
-      setIsScanning(true)
-      const notyf = new Notyf({ duration: 4000, position: { x: 'right', y: 'bottom' } })
-      
-      const profile = await fetchProfile()
-      if (!profile || !profile.defaultRepoUrl) {
-        notyf.error('No Default Repository URL set. Please configure it in Settings.')
-        setIsScanning(false)
-        return
-      }
-
-      await triggerPipeline({
-        repo_url: profile.defaultRepoUrl,
-        branch: (profile.defaultBranch || 'main').trim() || 'main',
-      })
-      notyf.success('Pipeline triggered successfully!')
-    } catch (error) {
-      console.error(error)
-      const notyf = new Notyf()
-      notyf.error(error.response?.data?.error || 'Failed to trigger pipeline.')
-    } finally {
-      setIsScanning(false)
-    }
-  }
 
   const getBreadcrumb = () => {
     const path = location.pathname
@@ -182,25 +156,6 @@ export default function Layout() {
           )}
         </nav>
 
-        {/* System Status Card */}
-        <div className="absolute bottom-6 left-4 right-4">
-          <div className="glass-card p-4 card-glow">
-            <div className="flex items-center gap-3 mb-3">
-              <div className="w-2 h-2 rounded-full bg-lime-400 animate-pulse shadow-glow-lime" />
-              <span className="text-sm font-medium text-steel-200">System Online</span>
-            </div>
-            <p className="text-xs text-steel-400 mb-3 font-mono">
-              Last scan: Today at 10:30 AM
-            </p>
-            <button 
-              className="btn-primary w-full text-sm"
-              onClick={handleRunScan}
-              disabled={isScanning}
-            >
-              {isScanning ? 'Scanning...' : 'Run Full Scan'}
-            </button>
-          </div>
-        </div>
       </aside>
 
       {/* Main Content */}
