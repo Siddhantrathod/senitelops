@@ -1947,8 +1947,8 @@ def trigger_pipeline():
         # Security: must belong to the requesting user
         if user_repo and user_repo.user_id != current_user["id"]:
             user_repo = None
-    else:
-        # Fallback: user's default repository if no explicit repo is passed
+    elif not data.get("repo_url") and not data.get("target_dir"):
+        # Fallback: user's default repository ONLY if no explicit repo or target is passed
         user_repo = (
             UserRepository.query
             .filter_by(user_id=current_user["id"], is_default=True)

@@ -45,6 +45,9 @@ import { PageLoader } from '../components/LoadingSpinner'
 import Alert from '../components/Alert'
 import { useAuth } from '../context/AuthContext'
 import { fetchProfile, updateProfile } from './settings/services/settingsApi'
+import { Notyf } from 'notyf'
+
+const notyf = new Notyf({ duration: 4500, position: { x: 'right', y: 'bottom' } })
 
 /* =========================================================================
    CONFIG / CONSTANTS
@@ -487,17 +490,17 @@ function PipelineCard({ pipeline, isSelected, onClick }) {
               <GitBranch className="w-3.5 h-3.5 text-emerald-400" />{pipeline.branch}
             </span>
             <StatusBadge status={pipeline.status} size="sm" />
-            <span className="text-[10px] text-steel-500 font-mono inline-flex items-center gap-1">
+            <span className="text-xs text-steel-400 font-mono inline-flex items-center gap-1">
               <Hash className="w-3 h-3" />{pipeline.commit_sha?.substring(0, 7)}
             </span>
-            <span className="text-[10px] text-steel-500 inline-flex items-center gap-1">
+            <span className="text-xs text-steel-400 inline-flex items-center gap-1">
               <User className="w-3 h-3" />{pipeline.author}
             </span>
-            <span className="text-[10px] text-steel-600 font-mono inline-flex items-center gap-1">
+            <span className="text-xs text-steel-500 font-mono inline-flex items-center gap-1">
               <Clock className="w-3 h-3" />{timeAgo(pipeline.triggered_at)}
             </span>
           </div>
-          <p className="text-xs text-steel-400 truncate mb-2">{pipeline.commit_message}</p>
+          <p className="text-sm text-steel-300 truncate mb-2">{pipeline.commit_message}</p>
 
           <div className="flex items-center gap-2 overflow-x-auto custom-scrollbar pb-1">
             {STAGE_ORDER.map((key) => {
@@ -995,6 +998,17 @@ export default function Pipeline() {
     }
   }
 
+  // Toaster logic when an active pipeline completes
+  useEffect(() => {
+    if (activePipeline) {
+      if (activePipeline.status === 'success') {
+        notyf.success('Scan Complete. Check Dashboard for Score and Reports.')
+      } else if (activePipeline.status === 'failed') {
+        notyf.error('Scan completed with failure. Check execution logs.')
+      }
+    }
+  }, [activePipeline?.status])
+
   const handleSaveRepoConfig = async () => {
     const trimmedRepo = repoUrl.trim()
     const trimmedBranch = (repoBranch || 'main').trim() || 'main'
@@ -1042,6 +1056,7 @@ export default function Pipeline() {
         const profile = await fetchProfile().catch(() => null)
         const fallbackRepoUrl = profile?.defaultRepoUrl?.trim()
         if (!fallbackRepoUrl) {
+          notyf.error('Please provide a valid repository URL to scan.')
           setError('No repository configured. Add your repository URL and branch at the top of this page.')
           setTriggering(false)
           return
@@ -1066,6 +1081,11 @@ export default function Pipeline() {
       }
     } catch (err) {
       const msg = err.response?.data?.error || 'Failed to trigger pipeline'
+      if (err.response?.status === 400 || msg.toLowerCase().includes('exist')) {
+        notyf.error('Repo does not exist or access denied')
+      } else {
+        notyf.error(msg)
+      }
       setError(msg)
       console.error(err)
     } finally {

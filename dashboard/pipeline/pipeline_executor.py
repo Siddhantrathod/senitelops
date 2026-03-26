@@ -425,6 +425,20 @@ class PipelineExecutor:
                 self.update_stage(pipeline.id, "dast_scan", StageStatus.SKIPPED, reason)
                 dast_report = {}
             
+            # Strip local temp path from all scanning reports to show relative paths
+            try:
+                for report_file in ["sast-report.json", "bandit-report.json", "gitleaks-report.json", "trivy-report.json", "dast-report.json"]:
+                    rp = os.path.join(self.reports_dir, report_file)
+                    if os.path.exists(rp):
+                        with open(rp, 'r') as f:
+                            content = f.read()
+                        wd = work_dir + "/" if not work_dir.endswith("/") else work_dir
+                        content = content.replace(wd, "")
+                        with open(rp, 'w') as f:
+                            f.write(content)
+            except Exception as e:
+                logger.warning(f"Failed to strip temp paths from reports: {e}")
+
             # Stage 7: Policy Evaluation
             self.update_stage(pipeline.id, "policy_check", StageStatus.RUNNING)
             try:

@@ -18,9 +18,8 @@ export default function SecurityTab({ showToast }) {
   const [pwForm, setPwForm] = useState({ current: '', new: '', confirm: '' })
   const [showPw, setShowPw] = useState({ current: false, new: false, confirm: false })
   const [pwLoading, setPwLoading] = useState(false)
+  const [pwModalOpen, setPwModalOpen] = useState(false)
   const [pwErrors, setPwErrors] = useState([])
-
-  // MFA state
   const [mfaEnabled, setMfaEnabled] = useState(false)
 
   const [sessions, setSessions] = useState([])
@@ -65,6 +64,7 @@ export default function SecurityTab({ showToast }) {
       await changePassword(pwForm.current, pwForm.new)
       showToast('Password changed successfully')
       setPwForm({ current: '', new: '', confirm: '' })
+      setPwModalOpen(false)
     } catch (err) {
       showToast(err?.response?.data?.error || 'Failed to change password', 'error')
     } finally {
@@ -106,43 +106,76 @@ export default function SecurityTab({ showToast }) {
             </div>
           </div>
         ) : (
-          <form onSubmit={handlePasswordChange} className="space-y-4">
-            <PasswordField id="current" label="Current Password" value={pwForm.current}
-              onChange={(e) => setPwForm(p => ({ ...p, current: e.target.value }))} />
-
-            <PasswordField id="new" label="New Password" value={pwForm.new}
-              onChange={(e) => setPwForm(p => ({ ...p, new: e.target.value }))} />
-
-            {/* Strength bar */}
-            {pwForm.new && (
-              <div className="space-y-2">
-                <div className="flex gap-1">
-                  {[0, 1, 2, 3, 4].map(i => (
-                    <div key={i} className={cn('h-1.5 flex-1 rounded-full transition-colors', i <= strength.score ? strength.color : 'bg-steel-600/30 dark:bg-white/[0.08]')} />
-                  ))}
-                </div>
-                <p className="text-xs text-steel-400">{strength.label}</p>
-                {pwErrors.length > 0 && (
-                  <ul className="text-xs text-red-400 space-y-0.5">
-                    {pwErrors.map((e, i) => <li key={i}>• {e}</li>)}
-                  </ul>
-                )}
-              </div>
-            )}
-
-            <PasswordField id="confirm" label="Confirm Password" value={pwForm.confirm}
-              onChange={(e) => setPwForm(p => ({ ...p, confirm: e.target.value }))} />
-
-            <div className="pt-2">
-              <button type="submit" disabled={pwLoading || !pwForm.current || !pwForm.new || !pwForm.confirm}
-                className="btn-primary inline-flex items-center gap-2 text-sm disabled:opacity-50">
-                {pwLoading ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Lock className="w-4 h-4" />}
-                Change Password
-              </button>
+          <div className="p-4 rounded-xl bg-theme-base border border-theme-subtle flex items-center justify-between">
+            <div>
+              <h4 className="text-sm font-medium text-steel-100">Account Password</h4>
+              <p className="text-xs text-steel-500 mt-0.5">Change your password to secure your account</p>
             </div>
-          </form>
+            <button
+              onClick={() => setPwModalOpen(true)}
+              className="btn-primary flex items-center gap-2 text-sm px-4 py-2"
+            >
+              <Lock className="w-4 h-4" /> Change Password
+            </button>
+          </div>
         )}
       </SettingsCard>
+
+      {/* Password Floating Modal */}
+      {pwModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-obsidian-950/80 backdrop-blur-md">
+          <div className="bg-surface-code border border-white/[0.08] rounded-2xl w-full max-w-sm shadow-[0_0_40px_rgba(0,0,0,0.5)] overflow-hidden animate-fade-in">
+            <div className="p-5 border-b border-white/[0.06] flex items-center justify-between bg-white/[0.02]">
+              <div className="flex items-center gap-3">
+                <div className="w-8 h-8 rounded-lg bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center">
+                  <Lock className="w-4 h-4 text-emerald-400" />
+                </div>
+                <h3 className="text-base font-bold text-steel-50">Change Password</h3>
+              </div>
+              <button onClick={() => setPwModalOpen(false)} className="text-steel-500 hover:text-steel-300 transition-colors">
+                <AlertTriangle className="w-4 h-4 opacity-0" />
+              </button>
+            </div>
+            <form onSubmit={handlePasswordChange} className="p-5 space-y-4">
+              <PasswordField id="current" label="Current" value={pwForm.current}
+                onChange={(e) => setPwForm(p => ({ ...p, current: e.target.value }))} />
+
+              <PasswordField id="new" label="New Password" value={pwForm.new}
+                onChange={(e) => setPwForm(p => ({ ...p, new: e.target.value }))} />
+
+              {pwForm.new && (
+                <div className="space-y-2">
+                  <div className="flex gap-1">
+                    {[0, 1, 2, 3, 4].map(i => (
+                      <div key={i} className={cn('h-1 flex-1 rounded-full transition-colors', i <= strength.score ? strength.color : 'bg-steel-600/30')} />
+                    ))}
+                  </div>
+                  <p className="text-[10px] font-mono text-steel-400">{strength.label}</p>
+                  {pwErrors.length > 0 && (
+                    <ul className="text-[10px] font-mono text-red-400 space-y-0.5">
+                      {pwErrors.map((e, i) => <li key={i}>• {e}</li>)}
+                    </ul>
+                  )}
+                </div>
+              )}
+
+              <PasswordField id="confirm" label="Confirm" value={pwForm.confirm}
+                onChange={(e) => setPwForm(p => ({ ...p, confirm: e.target.value }))} />
+
+              <div className="pt-4 flex gap-3">
+                <button type="button" onClick={() => setPwModalOpen(false)} className="btn-secondary flex-1">
+                  Cancel
+                </button>
+                <button type="submit" disabled={pwLoading || !pwForm.current || !pwForm.new || !pwForm.confirm}
+                  className="btn-primary flex-1 inline-flex items-center justify-center gap-2 text-sm disabled:opacity-50">
+                  {pwLoading ? <RefreshCw className="w-4 h-4 animate-spin" /> : <ShieldCheck className="w-4 h-4" />}
+                  Save
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
 
       {/* Removed Multi-Factor Authentication */}
 
@@ -151,14 +184,6 @@ export default function SecurityTab({ showToast }) {
         title="Active Sessions"
         icon={Monitor}
         description="Manage devices logged into your account"
-        actions={
-          <button
-            onClick={() => showToast('All other sessions revoked')}
-            className="text-xs text-red-400 hover:text-red-300 font-medium transition-colors"
-          >
-            Revoke All Others
-          </button>
-        }
       >
         <div className="space-y-3">
           {sessions.map(session => (
@@ -199,31 +224,7 @@ export default function SecurityTab({ showToast }) {
         </div>
       </SettingsCard>
 
-      {/* OAuth Status */}
-      <SettingsCard title="Connected Accounts" icon={KeyRound} description="Manage third-party connections">
-        <div className="flex items-center justify-between p-4 rounded-xl bg-theme-base border border-theme-subtle">
-          <div className="flex items-center gap-3">
-            <div className="p-2 rounded-lg bg-emerald-500/10">
-              <Chrome className="w-5 h-5 text-emerald-400" />
-            </div>
-            <div>
-              <p className="text-sm font-medium text-steel-100">Google</p>
-              <p className="text-xs text-steel-500">
-                {isGoogleUser ? `Connected as ${user?.email}` : 'Not connected'}
-              </p>
-            </div>
-          </div>
-          {isGoogleUser ? (
-            <button className="text-xs text-red-400 hover:text-red-300 font-medium transition-colors">
-              Disconnect
-            </button>
-          ) : (
-            <button className="text-xs text-emerald-400 hover:text-emerald-300 font-medium transition-colors">
-              Connect
-            </button>
-          )}
-        </div>
-      </SettingsCard>
+
 
       {/* Session revoke confirmation */}
       <ConfirmationModal
