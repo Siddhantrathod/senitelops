@@ -148,6 +148,51 @@ function buildStageLogText(stage) {
 }
 
 /* =========================================================================
+   MODAL COMPONENT
+   ========================================================================= */
+
+function Modal({ isOpen, onClose, title, children }) {
+  if (!isOpen) return null
+
+  return (
+    <div className="fixed inset-0 z-[100] flex items-center justify-center overflow-y-auto p-4 md:p-8">
+      <div 
+        className="fixed inset-0 bg-black/70 backdrop-blur-md transition-opacity duration-300"
+        onClick={onClose}
+      />
+      
+      <div className="relative w-full max-w-4xl bg-[#0B0F17]/95 border border-white/10 rounded-[2rem] shadow-[0_0_80px_rgba(0,0,0,0.8)] backdrop-blur-3xl overflow-hidden animate-in fade-in zoom-in duration-500 flex flex-col max-h-[90vh]">
+        {/* Header */}
+        <div className="flex items-center justify-between px-8 py-5 border-b border-white/5 bg-white/[0.02]">
+          <div className="flex items-center gap-3">
+            <div className="w-2 h-8 bg-emerald-500 rounded-full shadow-glow-sm" />
+            <h3 className="text-xl font-bold text-white tracking-tight">{title}</h3>
+          </div>
+          <button 
+            onClick={onClose}
+            className="p-2.5 rounded-2xl hover:bg-white/10 text-steel-400 hover:text-white transition-all hover:rotate-90 duration-300"
+          >
+            <XCircle className="w-7 h-7" />
+          </button>
+        </div>
+        
+        {/* Body */}
+        <div className="overflow-y-auto custom-scrollbar flex-1 p-8">
+          {children}
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function parseRepoOwner(url) {
+  if (!url) return 'N/A'
+  // Match github.com/OWNER/REPO or git@github.com:OWNER/REPO
+  const match = url.match(/(?:https?:\/\/github\.com\/|git@github\.com:)([^\/]+)\//i)
+  return match ? match[1] : 'External'
+}
+
+/* =========================================================================
    STATUS BADGE
    ========================================================================= */
 
@@ -640,28 +685,50 @@ function PipelineDetails({ pipeline, onBack }) {
         <div className="p-5 border-b border-white/[0.06] bg-gradient-to-r from-white/[0.01] to-transparent">
           <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-4">
             <div className="min-w-0 flex-1">
-              <div className="flex items-center gap-3 mb-2">
-                <h3 className="text-xl font-bold text-steel-50 truncate">
+              <div className="flex items-center gap-3 mb-3">
+                <h3 className="text-2xl font-black text-white tracking-tight">
                   {pipeline.repo_name || 'Pipeline Run'}
                 </h3>
                 <StatusBadge status={pipeline.status} />
               </div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-4">
+                <div className="bg-white/[0.03] p-3 rounded-2xl border border-white/[0.06] hover:bg-white/[0.05] transition-all">
+                  <p className="text-[10px] font-bold text-steel-500 uppercase tracking-widest mb-1">Repo Owner</p>
+                  <p className="text-sm font-semibold text-emerald-400 flex items-center gap-1.5">
+                    <Globe className="w-3.5 h-3.5" /> {parseRepoOwner(pipeline.repo_url)}
+                  </p>
+                </div>
+                <div className="bg-white/[0.03] p-3 rounded-2xl border border-white/[0.06] hover:bg-white/[0.05] transition-all">
+                  <p className="text-[10px] font-bold text-steel-500 uppercase tracking-widest mb-1">Triggered By</p>
+                  <p className="text-sm font-semibold text-white flex items-center gap-1.5">
+                    <User className="w-3.5 h-3.5 text-steel-400" /> {pipeline.author || 'system'}
+                  </p>
+                </div>
+                <div className="bg-white/[0.03] p-3 rounded-2xl border border-white/[0.06] hover:bg-white/[0.05] transition-all">
+                  <p className="text-[10px] font-bold text-steel-500 uppercase tracking-widest mb-1">Source Branch</p>
+                  <p className="text-sm font-semibold text-white flex items-center gap-1.5 font-mono">
+                    <GitBranch className="w-3.5 h-3.5 text-emerald-400" /> {pipeline.branch}
+                  </p>
+                </div>
+                <div className="bg-white/[0.03] p-3 rounded-2xl border border-white/[0.06] hover:bg-white/[0.05] transition-all">
+                  <p className="text-[10px] font-bold text-steel-500 uppercase tracking-widest mb-1">Commit</p>
+                  <p className="text-sm font-semibold text-steel-300 flex items-center gap-1.5 font-mono">
+                    <GitCommit className="w-3.5 h-3.5 text-steel-500" /> {pipeline.commit_sha?.substring(0, 7) || 'manual'}
+                  </p>
+                </div>
+              </div>
               <div className="flex items-center gap-4 text-xs text-steel-400 font-mono flex-wrap">
-                <span className="flex items-center gap-1.5 bg-white/[0.03] px-2 py-1 rounded-lg border border-white/[0.06]">
-                  <GitBranch className="w-3.5 h-3.5 text-emerald-400" />{pipeline.branch}
-                </span>
-                <span className="flex items-center gap-1.5 bg-white/[0.03] px-2 py-1 rounded-lg border border-white/[0.06]">
-                  <GitCommit className="w-3.5 h-3.5 text-steel-500" />{pipeline.commit_sha?.substring(0, 7)}
-                </span>
-                <span className="flex items-center gap-1"><User className="w-3 h-3" />{pipeline.author}</span>
-                <span className="flex items-center gap-1"><Calendar className="w-3 h-3" />{formatDate(pipeline.triggered_at)}</span>
-                <span className="flex items-center gap-1"><Timer className="w-3 h-3" />{formatDuration(pipeline.duration_seconds)}</span>
+                <span className="flex items-center gap-1.5"><Calendar className="w-3.5 h-3.5" /> {formatDate(pipeline.triggered_at)}</span>
+                <span className="flex items-center gap-1.5"><Timer className="w-3.5 h-3.5" /> {formatDuration(pipeline.duration_seconds)}</span>
+                <span className="flex items-center gap-1.5"><Hash className="w-3.5 h-3.5" /> ID: {pipeline.id}</span>
               </div>
               {pipeline.commit_message && (
-                <p className="text-xs text-steel-400 italic mt-2.5 flex items-start gap-1.5">
-                  <GitCommit className="w-3 h-3 text-steel-600 mt-0.5 flex-shrink-0" />
-                  &ldquo;{pipeline.commit_message}&rdquo;
-                </p>
+                <div className="mt-4 p-3 bg-black/20 rounded-xl border border-white/[0.04]">
+                  <p className="text-xs text-steel-400 italic flex items-start gap-2">
+                    <GitCommit className="w-3.5 h-3.5 text-steel-600 flex-shrink-0" />
+                    &ldquo;{pipeline.commit_message}&rdquo;
+                  </p>
+                </div>
               )}
             </div>
           </div>
@@ -929,6 +996,7 @@ export default function Pipeline() {
   const navigate = useNavigate()
   const [pipelines, setPipelines] = useState([])
   const [selectedPipeline, setSelectedPipeline] = useState(null)
+  const [modalPipeline, setModalPipeline] = useState(null)
   const [loading, setLoading] = useState(true)
   const [triggering, setTriggering] = useState(false)
   const [error, setError] = useState(null)
@@ -997,17 +1065,6 @@ export default function Pipeline() {
       setLoading(false)
     }
   }
-
-  // Toaster logic when an active pipeline completes
-  useEffect(() => {
-    if (activePipeline) {
-      if (activePipeline.status === 'success') {
-        notyf.success('Scan Complete. Check Dashboard for Score and Reports.')
-      } else if (activePipeline.status === 'failed') {
-        notyf.error('Scan completed with failure. Check execution logs.')
-      }
-    }
-  }, [activePipeline?.status])
 
   const handleSaveRepoConfig = async () => {
     const trimmedRepo = repoUrl.trim()
@@ -1094,8 +1151,7 @@ export default function Pipeline() {
   }
 
   const handleSelectPipeline = (p) => {
-    setSelectedPipeline(p)
-    setShowDetail(true)
+    setModalPipeline(p)
   }
 
   // Filtered pipelines
@@ -1132,6 +1188,28 @@ export default function Pipeline() {
       filteredPipelines[0]
     )
   }, [filteredPipelines])
+
+  // Toaster logic when an active pipeline completes
+  const previousStatusRef = useRef(activePipeline?.status)
+  const previousIdRef = useRef(activePipeline?.id)
+
+  useEffect(() => {
+    if (activePipeline) {
+      const isSamePipeline = previousIdRef.current === activePipeline.id
+      const wasRunning = previousStatusRef.current === 'running' || previousStatusRef.current === 'queued'
+      
+      if (isSamePipeline && wasRunning) {
+        if (activePipeline.status === 'success') {
+          notyf.success('Scan Complete. Check Dashboard for Score and Reports.')
+        } else if (activePipeline.status === 'failed') {
+          notyf.error('Scan completed with failure. Check execution logs.')
+        }
+      }
+      
+      previousStatusRef.current = activePipeline.status
+      previousIdRef.current = activePipeline.id
+    }
+  }, [activePipeline])
 
   const historyPipelines = useMemo(() => {
     if (!activePipeline) return filteredPipelines
@@ -1319,12 +1397,25 @@ export default function Pipeline() {
                 key={p.id}
                 pipeline={p}
                 isSelected={selectedPipeline?.id === p.id}
-                onClick={() => setSelectedPipeline(p)}
+                onClick={() => handleSelectPipeline(p)}
               />
             ))}
           </div>
         )}
       </div>
+      {/* ── Pipeline History Modal ─────────────────────────── */}
+      <Modal 
+        isOpen={!!modalPipeline} 
+        onClose={() => setModalPipeline(null)}
+        title={modalPipeline ? `Pipeline Detail: ${modalPipeline.repo_name} #${modalPipeline.id}` : ''}
+      >
+        {modalPipeline && (
+          <PipelineDetails 
+            pipeline={modalPipeline} 
+            onBack={() => setModalPipeline(null)} 
+          />
+        )}
+      </Modal>
     </div>
   )
 }

@@ -1,0 +1,10 @@
+{
+  "SchemaVersion": 2,
+  "Trivy": {
+    "Version": "0.69.1"
+  },
+  "ReportID": "019d30cb-ba9b-717e-92e6-4aba3511e45c",
+  "CreatedAt": "2026-03-28T01:05:51.19509976+05:30",
+  "ArtifactName": "pipeline",
+  "ArtifactType": "filesystem"
+}

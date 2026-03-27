@@ -46,7 +46,7 @@ const typeConfig = {
 
 function formatTimeAgo(isoString) {
     if (!isoString) return ''
-    const date = new Date(isoString)
+    const date = new Date(isoString.endsWith('Z') ? isoString : isoString + 'Z')
     const now = new Date()
     const seconds = Math.floor((now - date) / 1000)
 

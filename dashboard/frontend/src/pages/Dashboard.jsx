@@ -393,7 +393,7 @@ export default function Dashboard() {
           <div className="flex items-center gap-2 px-4 py-2 bg-white/[0.03] rounded-xl border border-white/[0.06]">
             <Clock className="w-4 h-4 text-steel-500" />
             <span className="text-sm text-steel-400 font-mono">
-              Last scan: {formatDate(data?.sast?.generated_at || data?.bandit?.generated_at)}
+              Last scan: {formatDate(pipeline?.completed_at || pipeline?.created_at || data?.sast?.timestamp)}
             </span>
           </div>
           <button
@@ -421,28 +421,35 @@ export default function Dashboard() {
 
       {/* Pipeline Status Banner */}
       {pipeline && pipeline.status === 'success' && pipeline.is_deployable !== null && (
-        <div className={`rounded-xl p-4 border ${pipeline.is_deployable
-          ? 'bg-lime-500/10 border-lime-500/20'
-          : 'bg-red-500/10 border-red-500/20'
+        <div className={`relative overflow-hidden rounded-2xl p-5 border ${pipeline.is_deployable
+          ? 'bg-gradient-to-r from-lime-500/10 to-transparent border-lime-500/20 shadow-[0_0_30px_rgba(132,204,22,0.1)]'
+          : 'bg-gradient-to-r from-red-500/10 to-transparent border-red-500/20 shadow-[0_0_30px_rgba(239,68,68,0.1)]'
           }`}>
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-3">
-              {pipeline.is_deployable ? (
-                <Rocket className="w-6 h-6 text-lime-400" />
-              ) : (
-                <AlertTriangle className="w-6 h-6 text-red-400" />
-              )}
+          <div className="absolute top-0 right-0 p-12 bg-gradient-to-bl from-white/5 to-transparent rounded-bl-full opacity-50 blur-3xl pointer-events-none" />
+          <div className="flex items-center justify-between relative z-10">
+            <div className="flex items-center gap-4">
+              <div className={`p-3 rounded-xl flex items-center justify-center ${pipeline.is_deployable ? 'bg-lime-500/20 text-lime-400' : 'bg-red-500/20 text-red-400'}`}>
+                {pipeline.is_deployable ? (
+                  <Rocket className="w-6 h-6" />
+                ) : (
+                  <AlertTriangle className="w-6 h-6" />
+                )}
+              </div>
               <div>
-                <p className={`font-semibold ${pipeline.is_deployable ? 'text-lime-400' : 'text-red-400'}`}>
-                  {pipeline.is_deployable ? '✅ Ready for Deployment' : '❌ Deployment Blocked'}
+                <p className={`text-lg font-bold tracking-wide ${pipeline.is_deployable ? 'text-lime-400' : 'text-red-400'}`}>
+                  {pipeline.is_deployable ? 'Deployment Approved 🚀' : 'Deployment Blocked ❌'}
                 </p>
-                <p className="text-sm text-steel-500 font-mono">
-                  Pipeline #{pipeline.id} • Branch: {pipeline.branch} • Commit: {pipeline.commit_sha}
-                </p>
+                <div className={`mt-1 flex items-center gap-2 text-sm font-mono ${pipeline.is_deployable ? 'text-lime-200/70' : 'text-red-200/70'}`}>
+                  <span className="px-2 py-0.5 rounded-md bg-black/20 text-white/90 shadow-inner">Pipeline #{pipeline.id}</span>
+                  <span>•</span>
+                  <span>Branch: <span className="text-white/80">{pipeline.branch}</span></span>
+                  <span>•</span>
+                  <span>Commit: <span className="text-white/80">{pipeline.commit_sha}</span></span>
+                </div>
               </div>
             </div>
-            <Link to="/dashboard/pipeline" className="btn-secondary text-sm">
-              View Pipeline
+            <Link to="/dashboard/pipeline" className={`px-4 py-2 font-medium rounded-xl transition-all shadow-lg ${pipeline.is_deployable ? 'bg-lime-500/20 text-lime-400 hover:bg-lime-500/30 border border-lime-500/30 focus:ring-4 focus:ring-lime-500/20' : 'bg-red-500/20 text-red-400 hover:bg-red-500/30 border border-red-500/30 focus:ring-4 focus:ring-red-500/20'}`}>
+              View Details →
             </Link>
           </div>
         </div>

@@ -730,6 +730,15 @@ def _build_report(
             "count": info["count"],
             "info": info["info"],
         }
+        
+    # Robustly strip repo_path from issue files
+    prefix = repo_path if repo_path.endswith('/') else repo_path + '/'
+    for issue in issues:
+        f = issue.get("file", "")
+        if f.startswith(prefix):
+            issue["file"] = f[len(prefix):]
+        elif f.startswith(repo_path):
+            issue["file"] = f[len(repo_path):]
 
     return {
         "schema_version": 1,

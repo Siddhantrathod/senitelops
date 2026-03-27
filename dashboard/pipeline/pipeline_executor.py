@@ -376,6 +376,33 @@ class PipelineExecutor:
                     )
                     if result.returncode != 0 and "No such image" not in result.stderr:
                         raise Exception(result.stderr)
+                        
+                    # Inject metadata for fs scan so the frontend displays it correctly
+                    if not built_image_name and os.path.exists(trivy_report_path):
+                        try:
+                            with open(trivy_report_path, "r") as f:
+                                trivy_data = json.load(f)
+                            
+                            trivy_data["ArtifactName"] = pipeline.repo_name
+                            
+                            total_size = 0
+                            for dirpath, _, filenames in os.walk(work_dir):
+                                for f in filenames:
+                                    fp = os.path.join(dirpath, f)
+                                    if not os.path.islink(fp):
+                                        total_size += os.path.getsize(fp)
+                            
+                            if "Metadata" not in trivy_data:
+                                trivy_data["Metadata"] = {}
+                            trivy_data["Metadata"]["Size"] = total_size
+                            if "OS" not in trivy_data["Metadata"]:
+                                trivy_data["Metadata"]["OS"] = {"Family": "Source", "Name": "Repository"}
+                                
+                            with open(trivy_report_path, "w") as f:
+                                json.dump(trivy_data, f, indent=2)
+                        except Exception as e:
+                            logger.warning(f"Failed to inject Trivy fs metadata: {e}")
+
                     self.update_stage(pipeline.id, "trivy_scan", StageStatus.SUCCESS,
                                     f"Trivy {scan_mode_msg} completed")
                 except subprocess.TimeoutExpired:
