@@ -452,7 +452,7 @@ def run_shellcheck(repo_path: str, output_path: str) -> Tuple[bool, str, List[di
 
         result = subprocess.run(
             ["shellcheck", "--format=json", "--severity=info"] + shell_files,
-            capture_output=True, text=True, timeout=120,
+            capture_output=True, text=True, timeout=600,
         )
 
         raw_output = result.stdout

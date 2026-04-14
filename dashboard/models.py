@@ -55,6 +55,23 @@ class User(db.Model):
     last_login_at = db.Column(db.DateTime, nullable=True)
     created_at = db.Column(db.DateTime, nullable=False, default=utcnow)
     updated_at = db.Column(db.DateTime, nullable=True, onupdate=utcnow)
+    
+    # RBAC + GitHub Extensions
+    permissions_override = db.Column(db.Text, nullable=True)  # JSON string
+    github_username = db.Column(db.String(100), nullable=True)
+
+    @property
+    def permissions_override_data(self):
+        if self.permissions_override:
+            try:
+                return json.loads(self.permissions_override)
+            except Exception:
+                return {}
+        return {}
+        
+    @permissions_override_data.setter
+    def permissions_override_data(self, value):
+        self.permissions_override = json.dumps(value) if value else None
 
     # Relationships
     settings = db.relationship(
@@ -275,6 +292,21 @@ class Notification(db.Model):
 # ---------------------------------------------------------------------------
 
 class Pipeline(db.Model):
+    ai_prediction = db.Column(db.Text, default=None)
+
+    @property
+    def ai_prediction_data(self):
+        if self.ai_prediction:
+            try:
+                return json.loads(self.ai_prediction)
+            except Exception:
+                return None
+        return None
+
+    @ai_prediction_data.setter
+    def ai_prediction_data(self, value):
+        self.ai_prediction = json.dumps(value) if value is not None else None
+
     __tablename__ = "pipelines"
 
     id = db.Column(db.String(8), primary_key=True)
@@ -282,6 +314,9 @@ class Pipeline(db.Model):
     user_id = db.Column(db.Integer, db.ForeignKey("users.id"), nullable=True, index=True)
     # Optionally linked to a specific UserRepository
     user_repo_id = db.Column(db.Integer, db.ForeignKey("user_repositories.id"), nullable=True)
+    # GitHub Integration: Repo context for the pipeline (format: owner/repo)
+    github_repo = db.Column(db.String(255), nullable=True, index=True)
+    
     # Report output directory for this specific run (scoped per user + pipeline)
     report_dir = db.Column(db.String(500), nullable=True)
     repo_url = db.Column(db.String(500), default="")
@@ -364,6 +399,7 @@ class Pipeline(db.Model):
             "started_at": self.started_at.isoformat() if self.started_at else None,
             "completed_at": self.completed_at.isoformat() if self.completed_at else None,
             "created_at": self.created_at.isoformat() if self.created_at else None,
+            "ai_prediction": self.ai_prediction_data,
         }
 
     def __repr__(self):

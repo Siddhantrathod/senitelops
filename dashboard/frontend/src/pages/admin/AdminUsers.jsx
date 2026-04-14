@@ -2,7 +2,7 @@ import { useState, useCallback } from 'react'
 import {
   Users, UserPlus, Edit3, Trash2, KeyRound, ShieldAlert,
   ShieldCheck, Filter, RefreshCw, AlertTriangle, CheckCircle,
-  Mail, Calendar, Globe, Lock,
+  Mail, Calendar, Globe, Lock, Activity, GitBranch,
 } from 'lucide-react'
 import { cn } from '../../utils/helpers'
 import { DataTable, StatusBadge, Modal, KpiCard, SkeletonTable } from '../../components/admin'
@@ -433,105 +433,136 @@ export default function AdminUsers() {
               <div className="w-8 h-8 rounded-full border-2 border-emerald-500 border-t-transparent animate-spin" />
             </div>
           ) : detailsModal.data ? (
-            <div className="space-y-6">
-              <div className="grid grid-cols-2 lg:grid-cols-3 gap-4">
-                <div className="glass-card p-4 border-emerald-500/20">
-                  <div className="flex items-center gap-2 text-emerald-400 mb-2">
-                    <Globe className="w-4 h-4" />
-                    <span className="text-xs font-bold uppercase tracking-wider">Repositories</span>
+            <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
+              {/* Profile Header */}
+              <div className="relative pt-4 pb-8 flex flex-col items-center border-b border-white/[0.06] bg-gradient-to-b from-white/[0.04] to-transparent rounded-t-[2rem] -mx-8 -mt-8">
+                <div className={cn(
+                  "w-28 h-28 rounded-[2rem] flex items-center justify-center text-4xl font-black shadow-2xl transition-all hover:scale-105 duration-500 relative group",
+                  detailsModal.data.user.role === 'admin' ? 'bg-gradient-to-br from-red-500 via-orange-500 to-yellow-500 shadow-red-500/40 ring-4 ring-red-500/20' :
+                  detailsModal.data.user.role === 'user' ? 'bg-gradient-to-br from-emerald-500 via-teal-500 to-cyan-500 shadow-emerald-500/40 ring-4 ring-emerald-500/20' :
+                  'bg-gradient-to-br from-steel-500 to-steel-600 shadow-steel-500/40 ring-4 ring-white/10'
+                )}>
+                  {detailsModal.data.user.username?.charAt(0).toUpperCase()}
+                  <div className="absolute -bottom-1 -right-1 w-8 h-8 rounded-xl bg-[#0B0F17] border border-white/10 flex items-center justify-center">
+                    {detailsModal.data.user.auth_type === 'google' ? (
+                      <Globe className="w-4 h-4 text-emerald-400" />
+                    ) : (
+                      <Lock className="w-4 h-4 text-steel-400" />
+                    )}
                   </div>
-                  <p className="text-2xl font-bold text-steel-50">{detailsModal.data.stats.repositories}</p>
                 </div>
-                <div className="glass-card p-4 border-blue-500/20">
-                  <div className="flex items-center gap-2 text-blue-400 mb-2">
-                    <Users className="w-4 h-4" />
-                    <span className="text-xs font-bold uppercase tracking-wider">Pipeline Runs</span>
-                  </div>
-                  <p className="text-2xl font-bold text-steel-50">{detailsModal.data.stats.pipeline_runs}</p>
-                </div>
-                <div className="glass-card p-4 border-red-500/20 col-span-2 lg:col-span-1">
-                  <div className="flex items-center gap-2 text-red-400 mb-2">
-                    <ShieldAlert className="w-4 h-4" />
-                    <span className="text-xs font-bold uppercase tracking-wider">Total Vulns</span>
-                  </div>
-                  <p className="text-2xl font-bold text-steel-50">{detailsModal.data.stats.vulnerabilities_found}</p>
+                <h4 className="mt-4 text-2xl font-black text-white tracking-tight">{detailsModal.data.user.username}</h4>
+                <div className="flex items-center gap-2 mt-1">
+                  <StatusBadge status={detailsModal.data.user.role} />
+                  <div className="w-1 h-1 rounded-full bg-steel-700" />
+                  <span className="text-xs text-steel-500 font-mono italic">#{detailsModal.data.user.id}</span>
                 </div>
               </div>
 
-              <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-                <div className="p-5 bg-white/[0.02] rounded-xl border border-white/[0.06]">
-                  <h4 className="flex items-center gap-2 text-xs font-bold text-steel-300 uppercase tracking-wider mb-4 border-b border-white/[0.06] pb-2">
-                    <Users className="w-4 h-4 text-emerald-400" /> Identity Details
-                  </h4>
-                  <div className="space-y-4 text-sm">
-                    <div className="flex flex-col gap-1">
-                      <span className="text-steel-500 text-xs uppercase tracking-wider">Full Name</span>
-                      <span className="text-steel-100 font-medium">{detailsModal.data.user.fullName || '—'}</span>
+              {/* Stats Grid */}
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                <div className="relative group overflow-hidden p-5 rounded-2xl bg-white/[0.02] border border-white/[0.06] hover:bg-white/[0.04] transition-all">
+                  <div className="flex items-center gap-3 text-emerald-400 mb-3">
+                    <div className="p-2 rounded-lg bg-emerald-500/10 border border-emerald-500/20">
+                      <Globe className="w-4 h-4" />
                     </div>
-                    <div className="flex flex-col gap-1">
-                      <span className="text-steel-500 text-xs uppercase tracking-wider">Email Address</span>
-                      <span className="text-steel-100 font-mono text-xs break-all">{detailsModal.data.user.email || '—'}</span>
+                    <span className="text-[10px] font-black uppercase tracking-widest text-steel-400">Repositories</span>
+                  </div>
+                  <p className="text-3xl font-black text-white font-mono">{detailsModal.data.stats.repositories}</p>
+                  <div className="absolute top-0 right-0 w-16 h-16 bg-emerald-500/5 blur-2xl rounded-full translate-x-1/2 -translate-y-1/2 opacity-0 group-hover:opacity-100 transition-opacity" />
+                </div>
+                <div className="relative group overflow-hidden p-5 rounded-2xl bg-white/[0.02] border border-white/[0.06] hover:bg-white/[0.04] transition-all">
+                  <div className="flex items-center gap-3 text-blue-400 mb-3">
+                    <div className="p-2 rounded-lg bg-blue-500/10 border border-blue-500/20">
+                      <Activity className="w-4 h-4" />
                     </div>
-                    <div className="flex flex-col gap-1">
-                      <span className="text-steel-500 text-xs uppercase tracking-wider">Phone Number</span>
-                      <span className="text-steel-100 font-mono text-xs">{detailsModal.data.user.phone || '—'}</span>
+                    <span className="text-[10px] font-black uppercase tracking-widest text-steel-400">Pipelines</span>
+                  </div>
+                  <p className="text-3xl font-black text-white font-mono">{detailsModal.data.stats.pipeline_runs}</p>
+                  <div className="absolute top-0 right-0 w-16 h-16 bg-blue-500/5 blur-2xl rounded-full translate-x-1/2 -translate-y-1/2 opacity-0 group-hover:opacity-100 transition-opacity" />
+                </div>
+                <div className="relative group overflow-hidden p-5 rounded-2xl bg-white/[0.02] border border-white/[0.06] hover:bg-white/[0.04] transition-all">
+                  <div className="flex items-center gap-3 text-red-400 mb-3">
+                    <div className="p-2 rounded-lg bg-red-500/10 border border-red-500/20">
+                      <ShieldAlert className="w-4 h-4" />
+                    </div>
+                    <span className="text-[10px] font-black uppercase tracking-widest text-steel-400">Total Vulns</span>
+                  </div>
+                  <p className="text-3xl font-black text-white font-mono">{detailsModal.data.stats.vulnerabilities_found}</p>
+                  <div className="absolute top-0 right-0 w-16 h-16 bg-red-500/5 blur-2xl rounded-full translate-x-1/2 -translate-y-1/2 opacity-0 group-hover:opacity-100 transition-opacity" />
+                </div>
+              </div>
+
+              {/* Detail Sections */}
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+                {/* Identity */}
+                <div className="space-y-5">
+                  <h5 className="text-[11px] font-black text-steel-500 uppercase tracking-[0.2em] border-l-2 border-emerald-500 pl-3">Identity Details</h5>
+                  <div className="space-y-4">
+                    <div className="bg-white/[0.02] p-4 rounded-xl border border-white/[0.04] hover:bg-white/[0.03] transition-colors">
+                      <p className="text-[10px] uppercase font-bold text-steel-500 mb-1 flex items-center gap-2"><Users className="w-3 h-3" /> Full Name</p>
+                      <p className="text-sm font-semibold text-white">{detailsModal.data.user.fullName || '—'}</p>
+                    </div>
+                    <div className="bg-white/[0.02] p-4 rounded-xl border border-white/[0.04] hover:bg-white/[0.03] transition-colors">
+                      <p className="text-[10px] uppercase font-bold text-steel-500 mb-1 flex items-center gap-2"><Mail className="w-3 h-3" /> Email Address</p>
+                      <p className="text-sm font-semibold text-white font-mono break-all">{detailsModal.data.user.email || '—'}</p>
+                    </div>
+                    <div className="bg-white/[0.02] p-4 rounded-xl border border-white/[0.04] hover:bg-white/[0.03] transition-colors">
+                      <p className="text-[10px] uppercase font-bold text-steel-500 mb-1 flex items-center gap-2"><Calendar className="w-3 h-3" /> Joined Platform</p>
+                      <p className="text-sm font-semibold text-white font-mono">{detailsModal.data.user.created_at ? new Date(detailsModal.data.user.created_at).toLocaleDateString(undefined, { year: 'numeric', month: 'long', day: 'numeric' }) : 'Joined Recently'}</p>
                     </div>
                   </div>
                 </div>
 
-                <div className="p-5 bg-white/[0.02] rounded-xl border border-white/[0.06]">
-                  <h4 className="flex items-center gap-2 text-xs font-bold text-steel-300 uppercase tracking-wider mb-4 border-b border-white/[0.06] pb-2">
-                    <ShieldAlert className="w-4 h-4 text-emerald-400" /> Platform Access
-                  </h4>
-                  <div className="space-y-4 text-sm">
-                    <div className="flex flex-col gap-1">
-                      <span className="text-steel-500 text-xs uppercase tracking-wider">Organization</span>
-                      <span className="text-steel-100">{detailsModal.data.user.organization || '—'}</span>
+                {/* System Access */}
+                <div className="space-y-5">
+                  <h5 className="text-[11px] font-black text-steel-500 uppercase tracking-[0.2em] border-l-2 border-blue-500 pl-3">System Access</h5>
+                  <div className="space-y-4">
+                    <div className="bg-white/[0.02] p-4 rounded-xl border border-white/[0.04] hover:bg-white/[0.03] transition-colors">
+                      <p className="text-[10px] uppercase font-bold text-steel-500 mb-1 flex items-center gap-2"><ShieldCheck className="w-3 h-3" /> Organization</p>
+                      <p className="text-sm font-semibold text-white">{detailsModal.data.user.organization || 'Corporate'}</p>
                     </div>
-                    <div className="flex flex-col gap-1">
-                      <span className="text-steel-500 text-xs uppercase tracking-wider">Role Title</span>
-                      <span className="text-steel-100">{detailsModal.data.user.roleTitle || '—'}</span>
+                    <div className="bg-white/[0.02] p-4 rounded-xl border border-white/[0.04] hover:bg-white/[0.03] transition-colors">
+                      <p className="text-[10px] uppercase font-bold text-steel-500 mb-1 flex items-center gap-2"><Globe className="w-3 h-3" /> Auth Context</p>
+                      <p className="text-sm font-semibold text-emerald-400 font-mono uppercase tracking-widest text-xs">{detailsModal.data.user.auth_type || 'local'}</p>
                     </div>
-                    <div className="flex flex-col gap-1">
-                      <span className="text-steel-500 text-xs uppercase tracking-wider">Platform Role</span>
-                      <div className="flex items-center gap-2 pt-1">
-                        <StatusBadge status={detailsModal.data.user.role} />
-                      </div>
-                    </div>
-                    <div className="flex flex-col gap-1">
-                      <span className="text-steel-500 text-xs uppercase tracking-wider">Auth Method</span>
-                      <span className="text-steel-100 font-mono uppercase text-xs">
-                        {detailsModal.data.user.auth_type || 'local'}
-                      </span>
+                    <div className="bg-white/[0.02] p-4 rounded-xl border border-white/[0.04] hover:bg-white/[0.03] transition-colors">
+                      <p className="text-[10px] uppercase font-bold text-steel-500 mb-1 flex items-center gap-2"><RefreshCw className="w-3 h-3" /> Last Activity</p>
+                      <p className="text-sm font-semibold text-white font-mono">{detailsModal.data.user.last_login_at ? new Date(detailsModal.data.user.last_login_at).toLocaleTimeString() : '—'}</p>
                     </div>
                   </div>
                 </div>
               </div>
 
               {/* Repositories List */}
-              <div className="p-5 bg-white/[0.02] rounded-xl border border-white/[0.06]">
-                <h4 className="flex items-center gap-2 text-xs font-bold text-steel-300 uppercase tracking-wider mb-4 border-b border-white/[0.06] pb-2">
-                  <Globe className="w-4 h-4 text-blue-400" /> Connected Repositories
-                </h4>
+              <div className="space-y-5">
+                <h5 className="text-[11px] font-black text-steel-500 uppercase tracking-[0.2em] border-l-2 border-indigo-500 pl-3">Connected Repositories</h5>
                 {detailsModal.data.repositories_list?.length > 0 ? (
-                  <div className="space-y-2 max-h-[160px] overflow-y-auto pr-2 custom-scrollbar">
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3 max-h-[250px] overflow-y-auto pr-2 custom-scrollbar">
                     {detailsModal.data.repositories_list.map((repo, i) => (
-                      <div key={i} className="flex flex-col sm:flex-row sm:items-center justify-between p-3 rounded-lg bg-black/20 border border-white/[0.04] hover:border-emerald-500/30 transition-colors gap-2">
-                        <div className="truncate">
-                          <p className="text-sm font-semibold text-steel-100 truncate">{repo.name || 'Unnamed Repo'}</p>
-                          <a href={repo.url} target="_blank" rel="noopener noreferrer" className="text-[10px] text-blue-400 hover:text-blue-300 truncate block">
-                            {repo.url}
-                          </a>
+                      <div key={i} className="group flex flex-col p-4 rounded-2xl bg-[#0B0F17] border border-white/[0.06] hover:bg-white/[0.04] hover:border-emerald-500/30 transition-all duration-300">
+                        <div className="flex items-center gap-3 mb-2">
+                          <div className="w-8 h-8 rounded-lg bg-white/[0.05] border border-white/[0.05] flex items-center justify-center text-steel-400 group-hover:text-emerald-400 transition-colors">
+                            <GitBranch className="w-4 h-4" />
+                          </div>
+                          <p className="text-sm font-bold text-white truncate">{repo.name || 'Unnamed'}</p>
                         </div>
-                        <span className="px-2 py-1 rounded bg-white/[0.05] text-[10px] font-mono text-steel-400 whitespace-nowrap">
-                          {repo.branch || 'main'}
-                        </span>
+                        <a href={repo.url} target="_blank" rel="noopener noreferrer" className="text-[10px] text-blue-500 hover:text-blue-300 truncate block font-mono bg-blue-500/5 px-2 py-1 rounded-md border border-blue-500/10 mb-2">
+                          {repo.url}
+                        </a>
+                        <div className="mt-auto flex items-center justify-between">
+                          <span className="px-2 py-0.5 rounded-full bg-emerald-500/10 text-[9px] font-black text-emerald-400 border border-emerald-500/20 uppercase tracking-widest">
+                            {repo.branch || 'main'}
+                          </span>
+                          <span className="text-[9px] text-steel-600 font-bold uppercase">Active</span>
+                        </div>
                       </div>
                     ))}
                   </div>
                 ) : (
-                  <div className="py-6 text-center border border-dashed border-white/[0.1] rounded-lg">
-                    <p className="text-sm text-steel-500">No repositories connected</p>
+                  <div className="py-12 text-center rounded-3xl border border-dashed border-white/[0.1] bg-white/[0.01]">
+                    <Globe className="w-10 h-10 text-steel-700 mx-auto mb-3" />
+                    <p className="text-sm text-steel-500">No active repositories linked.</p>
                   </div>
                 )}
               </div>

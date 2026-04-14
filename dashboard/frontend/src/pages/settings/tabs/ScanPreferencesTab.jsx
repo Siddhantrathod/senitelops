@@ -1,9 +1,9 @@
 import {
   Search, Shield, Bug, Container, Globe2, KeyRound, Zap,
-  AlertTriangle, FileX, Save, RotateCcw,
+  Save, RotateCcw,
 } from 'lucide-react'
 import { SettingsCard, FormField, SectionHeader, ToggleSwitch, SettingsSkeleton } from '../components'
-import { TextInput, TextArea, Select } from '../components/FormInputs'
+import { TextInput, Select } from '../components/FormInputs'
 import { useSettings } from '../hooks/useSettings'
 import { fetchScanPrefs, updateScanPrefs } from '../services/settingsApi'
 import { cn } from '../../../utils/helpers'
@@ -126,28 +126,6 @@ export default function ScanPreferencesTab({ showToast }) {
             </div>
             <ToggleSwitch checked={data.autoScanOnPush} onChange={(val) => update('autoScanOnPush', val)} />
           </div>
-        </div>
-      </SettingsCard>
-
-      {/* Exclusions */}
-      <SettingsCard title="Exclusions" icon={FileX} description="Paths and patterns to ignore during scans">
-        <div className="space-y-5">
-          <FormField label="Custom Ignore Patterns" hint="One pattern per line (e.g., *.test.js, __mocks__/*)">
-            <TextArea
-              value={data.customIgnorePatterns}
-              onChange={(e) => update('customIgnorePatterns', e.target.value)}
-              placeholder={"*.test.js\n__mocks__/*\n*.spec.ts"}
-              rows={4}
-            />
-          </FormField>
-
-          <FormField label="Excluded File Paths" hint="Comma-separated paths to skip">
-            <TextInput
-              value={data.excludedPaths}
-              onChange={(e) => update('excludedPaths', e.target.value)}
-              placeholder="node_modules, dist, .cache, vendor"
-            />
-          </FormField>
         </div>
       </SettingsCard>
 

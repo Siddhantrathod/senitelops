@@ -13,8 +13,13 @@ import {
   Languages,
   Wrench,
   BarChart3,
+  Sparkles,
+  Loader2,
+  ChevronDown,
+  ChevronUp,
 } from 'lucide-react'
-import { fetchSASTReport, fetchSASTLanguages, fetchSetupStatus } from '../services/api'
+import { fetchSASTReport, fetchSASTLanguages, fetchSetupStatus, generateAiFix } from '../services/api'
+import { useRepo } from '../context/RepoContext'
 import { formatDate, cn, getSeverityBadgeClass } from '../utils/helpers'
 import StatCard from '../components/StatCard'
 import VulnerabilityTable from '../components/VulnerabilityTable'
@@ -23,6 +28,7 @@ import SeverityPieChart from '../components/charts/SeverityPieChart'
 import VulnerabilityBarChart from '../components/charts/VulnerabilityBarChart'
 import { PageLoader } from '../components/LoadingSpinner'
 import Alert from '../components/Alert'
+import PermissionGate from '../components/PermissionGate'
 import { useAuth } from '../context/AuthContext'
 
 // Language color mapping for dark theme badges
@@ -59,6 +65,7 @@ function getLangDisplayName(lang) {
 }
 
 export default function SASTReport() {
+  const { selectedRepo } = useRepo()
   const navigate = useNavigate()
   const [data, setData] = useState(null)
   const [langInfo, setLangInfo] = useState(null)
@@ -66,6 +73,10 @@ export default function SASTReport() {
   const [error, setError] = useState(null)
   const [redirecting, setRedirecting] = useState(false)
   const [selectedVuln, setSelectedVuln] = useState(null)
+  const [aiFixes, setAiFixes] = useState({})   // index -> fix data
+  const [loadingFix, setLoadingFix] = useState(null) // index of the fix being generated
+  const [expandedFix, setExpandedFix] = useState(null) // index of expanded fix panel
+  const [pipelineId, setPipelineId] = useState(null)
   const [filters, setFilters] = useState({
     severity: 'all',
     language: 'all',
@@ -124,10 +135,15 @@ export default function SASTReport() {
         return
       }
 
-      const [reportResult, langResult] = await Promise.allSettled([
-        fetchSASTReport(),
+      const [reportResult, langResult, pipelineResult] = await Promise.allSettled([
+        fetchSASTReport(selectedRepo?.full_name),
         fetchSASTLanguages(),
+        import('../services/api').then(m => m.fetchLatestPipeline()).catch(() => null)
       ])
+
+      if (pipelineResult.status === 'fulfilled' && pipelineResult.value?.id) {
+        setPipelineId(pipelineResult.value.id)
+      }
 
       if (reportResult.status === 'fulfilled') {
         setData(reportResult.value)
@@ -236,6 +252,20 @@ export default function SASTReport() {
     a.download = 'sast-report.json'
     a.click()
     URL.revokeObjectURL(url)
+  }
+
+  const handleGenerateFix = async (vuln, index) => {
+    if (aiFixes[index] || loadingFix === index) return
+    setLoadingFix(index)
+    try {
+      const fix = await generateAiFix(pipelineId, index)
+      setAiFixes(prev => ({ ...prev, [index]: fix }))
+      setExpandedFix(index)
+    } catch (e) {
+      setAiFixes(prev => ({ ...prev, [index]: { error: e.message || 'Failed' } }))
+    } finally {
+      setLoadingFix(null)
+    }
   }
 
   return (
@@ -449,19 +479,93 @@ export default function SASTReport() {
       </div>
 
       {/* Vulnerabilities Table */}
-      <VulnerabilityTable
-        vulnerabilities={filteredResults}
-        type="sast"
-        onRowClick={setSelectedVuln}
-      />
-
-      {/* Vulnerability Modal */}
-      <VulnerabilityModal
-        vulnerability={selectedVuln}
-        type="sast"
-        isOpen={!!selectedVuln}
-        onClose={() => setSelectedVuln(null)}
-      />
+      <div className="glass-card p-6">
+        <div className="flex items-center justify-between mb-4">
+          <h3 className="text-lg font-semibold text-steel-50">Findings</h3>
+        </div>
+        <div className="space-y-2">
+          {filteredResults.length === 0 && (
+            <div className="text-center py-8 text-steel-500">No matching issues found. Great work!</div>
+          )}
+          {filteredResults.map((issue, i) => {
+            const globalIndex = results.indexOf(issue)
+            const fix = aiFixes[globalIndex]
+            const isExpanded = expandedFix === globalIndex
+            const severity = (issue.severity || 'low').toLowerCase()
+            return (
+              <div key={i} className="rounded-xl border border-white/[0.06] bg-white/[0.02] overflow-hidden">
+                {/* Issue Row */}
+                <div className="flex items-start gap-4 p-4">
+                  <span className={`badge badge-${severity} self-start mt-0.5 shrink-0`}>{issue.severity || 'LOW'}</span>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-steel-50 font-medium">{issue.message}</p>
+                    <p className="text-steel-500 text-xs font-mono mt-0.5">
+                      {issue.file}:{issue.line}
+                      {issue.tool && <span className="ml-3 px-1.5 py-0.5 rounded bg-white/[0.06] text-steel-400">{issue.tool}</span>}
+                      {issue.language && <span className="ml-1.5 px-1.5 py-0.5 rounded bg-white/[0.06] text-steel-400">{issue.language}</span>}
+                    </p>
+                  </div>
+                  <div className="flex items-center gap-2 shrink-0">
+                    {fix && (
+                      <button
+                        onClick={() => setExpandedFix(isExpanded ? null : globalIndex)}
+                        className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 hover:bg-emerald-500/20 transition-all"
+                      >
+                        {isExpanded ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
+                        View Fix
+                      </button>
+                    )}
+                    <PermissionGate permission="ai_fix.generate">
+                      {!fix && pipelineId && (
+                        <button
+                          onClick={() => handleGenerateFix(issue, globalIndex)}
+                          disabled={loadingFix === globalIndex}
+                          className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium bg-violet-500/10 text-violet-400 border border-violet-500/20 hover:bg-violet-500/20 transition-all disabled:opacity-50"
+                        >
+                          {loadingFix === globalIndex ? (
+                            <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                          ) : (
+                            <Sparkles className="w-3.5 h-3.5" />
+                          )}
+                          {loadingFix === globalIndex ? 'Generating...' : 'AI Fix'}
+                        </button>
+                      )}
+                    </PermissionGate>
+                  </div>
+                </div>
+                {/* AI Fix Panel */}
+                {fix && isExpanded && (
+                  <div className="border-t border-white/[0.06] p-4 bg-violet-500/[0.03]">
+                    {fix.error ? (
+                      <p className="text-red-400 text-sm">{fix.error}</p>
+                    ) : (
+                      <div className="space-y-3">
+                        <div className="flex items-center gap-2">
+                          <Sparkles className="w-4 h-4 text-violet-400" />
+                          <span className="text-sm font-semibold text-violet-300">AI-Generated Fix</span>
+                          <span className="text-xs text-steel-500">— powered by Gemini</span>
+                        </div>
+                        <p className="text-steel-300 text-sm">{fix.fix_description}</p>
+                        {fix.fixed_code && (
+                          <div className="rounded-lg overflow-hidden border border-white/[0.08]">
+                            <div className="px-3 py-1.5 bg-white/[0.04] text-xs text-steel-500 font-mono flex items-center gap-2">
+                              <span className="text-emerald-400">+ Fixed Code</span>
+                            </div>
+                            <pre className="p-3 text-xs text-emerald-300 bg-black/20 overflow-x-auto font-mono whitespace-pre-wrap">{fix.fixed_code}</pre>
+                          </div>
+                        )}
+                        {fix.explanation && (
+                          <p className="text-steel-400 text-xs border-l-2 border-violet-500/30 pl-3">{fix.explanation}</p>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            )
+          })}
+        </div>
+      </div>
     </div>
   )
 }

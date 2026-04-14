@@ -17,11 +17,14 @@ import {
   Crown,
   Sun,
   Moon,
+  TrendingUp,
 } from 'lucide-react'
 import { cn } from '../utils/helpers'
 import { useAuth } from '../context/AuthContext'
 import { useTheme } from '../context/ThemeContext'
 import { useLanguage } from '../context/LanguageContext'
+import PermissionGate from './PermissionGate'
+import RepoSelector from './RepoSelector'
 import NotificationDropdown from './NotificationDropdown'
 
 import { fetchAppearancePrefs, fetchProfile } from '../pages/settings/services/settingsApi'
@@ -31,6 +34,7 @@ import 'notyf/notyf.min.css'
 const navigation = [
   { name: 'Dashboard', href: '/dashboard', icon: LayoutDashboard },
   { name: 'Pipeline', href: '/dashboard/pipeline', icon: GitBranch },
+  { name: 'Trends', href: '/dashboard/trends', icon: TrendingUp },
   { name: 'Code Analysis', href: '/dashboard/sast', icon: Code2 },
   { name: 'Trivy Scan', href: '/dashboard/trivy', icon: Container },
   { name: 'DAST Scan', href: '/dashboard/dast', icon: Globe },
@@ -74,6 +78,7 @@ export default function Layout() {
     const path = location.pathname
     if (path === '/dashboard') return 'Dashboard'
     if (path.includes('/pipeline')) return 'Pipeline'
+    if (path.includes('/trends')) return 'Security Trends'
     if (path.includes('/sast')) return 'Code Analysis'
     if (path.includes('/bandit')) return 'Code Analysis'
     if (path.includes('/trivy')) return 'Trivy Scan'
@@ -136,24 +141,22 @@ export default function Layout() {
           ))}
 
           {/* Admin Section */}
-          {isAdmin() && (
-            <>
-              <p className="px-4 pt-4 pb-2 text-[10px] font-semibold text-steel-500 uppercase tracking-[0.2em] font-mono">
-                Administration
-              </p>
-              <a
-                href="/admin"
-                className="nav-link"
-                onClick={(e) => {
-                  setSidebarOpen(false)
-                }}
-              >
-                <Crown className="w-5 h-5" />
-                Admin Console
-                <span className="ml-auto text-[10px] text-steel-500 font-mono">↗</span>
-              </a>
-            </>
-          )}
+          <PermissionGate permission="users.manage">
+            <p className="px-4 pt-4 pb-2 text-[10px] font-semibold text-steel-500 uppercase tracking-[0.2em] font-mono">
+              Administration
+            </p>
+            <a
+              href="/admin"
+              className="nav-link"
+              onClick={(e) => {
+                setSidebarOpen(false)
+              }}
+            >
+              <Crown className="w-5 h-5" />
+              Admin Console
+              <span className="ml-auto text-[10px] text-steel-500 font-mono">↗</span>
+            </a>
+          </PermissionGate>
         </nav>
 
       </aside>
@@ -180,6 +183,9 @@ export default function Layout() {
             </div>
 
             <div className="flex items-center gap-4">
+              {/* GitHub Repo Selector */}
+              <RepoSelector />
+
               {/* Theme Toggle */}
               <button
                 onClick={toggleTheme}

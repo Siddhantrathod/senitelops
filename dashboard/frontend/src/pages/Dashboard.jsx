@@ -31,7 +31,9 @@ import TrendChart from '../components/charts/TrendChart'
 import SecurityRadarChart from '../components/charts/SecurityRadarChart'
 import { PageLoader } from '../components/LoadingSpinner'
 import Alert from '../components/Alert'
+import PermissionGate from '../components/PermissionGate'
 import { useAuth } from '../context/AuthContext'
+import { useRepo } from '../context/RepoContext'
 import FeedbackModal from '../components/FeedbackModal'
 
 function formatTrendLabel(dateStr) {
@@ -70,6 +72,14 @@ export default function Dashboard() {
   const [isFeedbackOpen, setIsFeedbackOpen] = useState(false)
   const [refreshSeconds, setRefreshSeconds] = useState(getAutoRefreshInterval(30))
   const { isAuthenticated, loading: authLoading } = useAuth()
+  const { selectedRepo } = useRepo()
+
+  // Reload data when the selected repository changes
+  useEffect(() => {
+    if (isAuthenticated && !authLoading) {
+      loadData();
+    }
+  }, [selectedRepo, isAuthenticated, authLoading])
 
   useEffect(() => {
     if (!authLoading && isAuthenticated) {
@@ -129,12 +139,14 @@ export default function Dashboard() {
 
   const loadData = async () => {
     try {
+      setLoading(true)
+      const repoParam = selectedRepo ? selectedRepo.full_name : undefined
       const [result, latestPipeline, gitleaksResult, dastResult, pipelinesResult] = await Promise.all([
-        fetchSecuritySummary(),
-        fetchLatestPipeline().catch(() => null),
-        fetchGitleaksReport().catch(() => null),
-        fetchDastReport().catch(() => null),
-        fetchPipelines(14).catch(() => null),
+        fetchSecuritySummary(repoParam),
+        fetchLatestPipeline(repoParam).catch(() => null),
+        fetchGitleaksReport(repoParam).catch(() => null),
+        fetchDastReport(repoParam).catch(() => null),
+        fetchPipelines(14, repoParam).catch(() => null),
       ])
       setData({ ...result, gitleaks: gitleaksResult, dast: dastResult })
       setPipeline(latestPipeline)
@@ -142,31 +154,24 @@ export default function Dashboard() {
     } catch (err) {
       setError('Failed to load security data. Please ensure the backend is running.')
       console.error(err)
+    } finally {
+      setLoading(false)
     }
   }
 
   const handleTriggerScan = async () => {
     setTriggering(true)
     try {
-      const reposRes = await fetchRepositories()
-      const repos = reposRes.repositories || []
-
-      if (repos.length === 0) {
-        const profile = await fetchProfile().catch(() => null)
-        const defaultRepoUrl = profile?.defaultRepoUrl?.trim()
-        const defaultBranch = profile?.defaultBranch?.trim() || 'main'
-        if (!defaultRepoUrl) {
-          notyf.error('No repositories configured. Please set them up in Settings first.')
-          setTriggering(false)
-          return
-        }
-        await triggerPipeline({ repo_url: defaultRepoUrl, branch: defaultBranch })
-      } else {
-        await triggerPipeline()
+      if (!selectedRepo) {
+        notyf.error('Please select a GitHub repository from the top menu first.')
+        setTriggering(false)
+        return
       }
 
+      await triggerPipeline({ repo_url: selectedRepo.html_url, branch: selectedRepo.default_branch || 'main' })
+
       notyf.success('Security scan started successfully.')
-      const latestPipeline = await fetchLatestPipeline()
+      const latestPipeline = await fetchLatestPipeline(selectedRepo.full_name)
       setPipeline(latestPipeline)
     } catch (err) {
       console.error('Error triggering scan:', err)
@@ -396,18 +401,20 @@ export default function Dashboard() {
               Last scan: {formatDate(pipeline?.completed_at || pipeline?.created_at || data?.sast?.timestamp)}
             </span>
           </div>
-          <button
-            onClick={handleTriggerScan}
-            disabled={triggering}
-            className="btn-primary flex items-center gap-2"
-          >
-            {triggering ? (
-              <Loader2 className="w-4 h-4 animate-spin" />
-            ) : (
-              <Play className="w-4 h-4" />
-            )}
-            {triggering ? 'Starting...' : 'Run Scan'}
-          </button>
+          <PermissionGate permission="pipelines.run">
+            <button
+              onClick={handleTriggerScan}
+              disabled={triggering}
+              className="btn-primary flex items-center gap-2"
+            >
+              {triggering ? (
+                <Loader2 className="w-4 h-4 animate-spin" />
+              ) : (
+                <Play className="w-4 h-4" />
+              )}
+              {triggering ? 'Starting...' : 'Run Scan'}
+            </button>
+          </PermissionGate>
           
           <button
             onClick={() => setIsFeedbackOpen(true)}
@@ -613,6 +620,9 @@ export default function Dashboard() {
           <p className="text-steel-400 text-sm mb-4">
             Vulnerability scanner for containers and dependencies
           </p>
+          <p className="text-steel-400 text-xs mt-1">
+            Last scanned: {formatDate(data?.trivy?.CreatedAt) || 'N/A'}
+          </p>
           <div className="flex items-center gap-4">
             <div className="flex items-center gap-2">
               <span className="text-2xl font-bold text-steel-50 font-mono">{trivyResults.length}</span>
@@ -641,6 +651,9 @@ export default function Dashboard() {
           <h3 className="text-xl font-semibold text-steel-50 mb-2">DAST Security Scan</h3>
           <p className="text-steel-400 text-sm mb-4">
             Dynamic runtime vulnerability testing {dastData?.tool ? `(${dastData.tool.toUpperCase()})` : '(OWASP ZAP)'}
+          </p>
+          <p className="text-steel-400 text-xs mt-1">
+            Last scanned: {formatDate(dastData?.timestamp) || 'N/A'}
           </p>
           <div className="flex items-center gap-4">
             <div className="flex items-center gap-2">

@@ -6,6 +6,7 @@ import AdminProtectedRoute from './components/AdminProtectedRoute'
 import Layout from './components/Layout'
 import AdminLayout from './components/AdminLayout'
 import { LanguageProvider } from './context/LanguageContext'
+import { RepoProvider } from './context/RepoContext'
 import Dashboard from './pages/Dashboard'
 import SASTReport from './pages/SASTReport'
 import BanditReport from './pages/BanditReport'
@@ -14,6 +15,7 @@ import DastReport from './pages/DastReport'
 import VulnerabilityDetails from './pages/VulnerabilityDetails'
 import Settings from './pages/Settings'
 import Pipeline from './pages/Pipeline'
+import TrendsDashboard from './pages/TrendsDashboard'
 import Login from './pages/Login'
 import Signup from './pages/Signup'
 import Setup from './pages/Setup'
@@ -29,6 +31,7 @@ function App() {
   return (
     <ThemeProvider>
       <AuthProvider>
+        <RepoProvider>
         <LanguageProvider>
           <Routes>
         <Route path="/" element={<LandingPage />} />
@@ -51,6 +54,7 @@ function App() {
           <Route path="trivy" element={<TrivyReport />} />
           <Route path="dast" element={<DastReport />} />
           <Route path="pipeline" element={<Pipeline />} />
+          <Route path="trends" element={<TrendsDashboard />} />
           <Route path="vulnerability/:id" element={<VulnerabilityDetails />} />
           <Route path="settings" element={<Settings />} />
         </Route>
@@ -69,6 +73,7 @@ function App() {
         </Route>
           </Routes>
         </LanguageProvider>
+        </RepoProvider>
       </AuthProvider>
     </ThemeProvider>
   )

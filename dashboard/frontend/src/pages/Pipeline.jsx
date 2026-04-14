@@ -44,6 +44,7 @@ import { getAutoRefreshInterval } from '../utils/appearance'
 import { PageLoader } from '../components/LoadingSpinner'
 import Alert from '../components/Alert'
 import { useAuth } from '../context/AuthContext'
+import { useRepo } from '../context/RepoContext'
 import { fetchProfile, updateProfile } from './settings/services/settingsApi'
 import { Notyf } from 'notyf'
 
@@ -152,31 +153,40 @@ function buildStageLogText(stage) {
    ========================================================================= */
 
 function Modal({ isOpen, onClose, title, children }) {
-  if (!isOpen) return null
+  // ESC key closes modal
+  useEffect(() => {
+    const handler = (e) => {
+      if (e.key === 'Escape') onClose()
+    }
+    window.addEventListener('keydown', handler)
+    return () => window.removeEventListener('keydown', handler)
+  }, [onClose])
 
   return (
-    <div className="fixed inset-0 z-[100] flex items-center justify-center overflow-y-auto p-4 md:p-8">
+    <div
+      className="fixed inset-0 z-[100] flex items-center justify-center overflow-y-auto p-4 md:p-8"
+      style={{ display: isOpen ? 'flex' : 'none' }}
+    >
+      {/* Overlay: click to close */}
       <div 
-        className="fixed inset-0 bg-black/70 backdrop-blur-md transition-opacity duration-300"
+        className="fixed inset-0 bg-black/80 backdrop-blur-[6px] transition-opacity duration-300" 
+        style={{ pointerEvents: 'auto', zIndex: 101 }}
         onClick={onClose}
+        data-testid="modal-overlay"
       />
-      
-      <div className="relative w-full max-w-4xl bg-[#0B0F17]/95 border border-white/10 rounded-[2rem] shadow-[0_0_80px_rgba(0,0,0,0.8)] backdrop-blur-3xl overflow-hidden animate-in fade-in zoom-in duration-500 flex flex-col max-h-[90vh]">
-        {/* Header */}
-        <div className="flex items-center justify-between px-8 py-5 border-b border-white/5 bg-white/[0.02]">
+      <div className="relative w-full max-w-4xl bg-slate-900 border border-white/20 rounded-[2rem] shadow-2xl overflow-hidden animate-in fade-in scale-in duration-500 flex flex-col max-h-[90vh] ring-1 ring-white/10">
+        <div className="flex items-center justify-between px-8 py-5 border-b border-white/10 bg-white/[0.04]">
           <div className="flex items-center gap-3">
-            <div className="w-2 h-8 bg-emerald-500 rounded-full shadow-glow-sm" />
-            <h3 className="text-xl font-bold text-white tracking-tight">{title}</h3>
+            <div className="w-2 h-8 bg-emerald-400 rounded-full shadow-glow-sm" />
+            <h3 className="text-xl font-bold text-white tracking-tight drop-shadow-lg">{title}</h3>
           </div>
           <button 
             onClick={onClose}
-            className="p-2.5 rounded-2xl hover:bg-white/10 text-steel-400 hover:text-white transition-all hover:rotate-90 duration-300"
+            className="p-2.5 rounded-2xl hover:bg-emerald-500/10 text-steel-400 hover:text-white transition-all hover:rotate-90 duration-300 shadow"
           >
             <XCircle className="w-7 h-7" />
           </button>
         </div>
-        
-        {/* Body */}
         <div className="overflow-y-auto custom-scrollbar flex-1 p-8">
           {children}
         </div>
@@ -532,17 +542,25 @@ function PipelineCard({ pipeline, isSelected, onClick }) {
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2 flex-wrap mb-1.5">
             <span className="inline-flex items-center gap-1.5 text-sm font-bold text-steel-50">
+              <Globe className="w-3.5 h-3.5 text-blue-400" />
+              {pipeline.repo_name || pipeline.repo_url?.split('/').pop()?.replace('.git', '') || 'unknown-repo'}
+            </span>
+            <span className="text-steel-600 px-1">—</span>
+            <span className="inline-flex items-center gap-1.5 text-sm font-bold text-steel-50">
               <GitBranch className="w-3.5 h-3.5 text-emerald-400" />{pipeline.branch}
             </span>
             <StatusBadge status={pipeline.status} size="sm" />
             <span className="text-xs text-steel-400 font-mono inline-flex items-center gap-1">
-              <Hash className="w-3 h-3" />{pipeline.commit_sha?.substring(0, 7)}
+              <Hash className="w-3 h-3" />ID:{pipeline.id} <span className="opacity-50">/</span> {pipeline.commit_sha?.substring(0, 7)}
             </span>
             <span className="text-xs text-steel-400 inline-flex items-center gap-1">
               <User className="w-3 h-3" />{pipeline.author}
             </span>
             <span className="text-xs text-steel-500 font-mono inline-flex items-center gap-1">
               <Clock className="w-3 h-3" />{timeAgo(pipeline.triggered_at)}
+            </span>
+            <span className="text-xs text-steel-400 font-mono inline-flex items-center gap-1">
+              <Calendar className="w-3 h-3" />{formatTimestamp(pipeline.triggered_at || pipeline.completed_at || pipeline.created_at)}
             </span>
           </div>
           <p className="text-sm text-steel-300 truncate mb-2">{pipeline.commit_message}</p>
@@ -595,6 +613,78 @@ function PipelineCard({ pipeline, isSelected, onClick }) {
 /* =========================================================================
    PIPELINE DETAIL PANEL
    ========================================================================= */
+
+function AIAnalysisSection({ aiPrediction }) {
+  if (!aiPrediction) return null;
+  
+  const riskColor = aiPrediction.risk_score >= 0.7 ? 'text-red-400' : aiPrediction.risk_score >= 0.4 ? 'text-amber-400' : 'text-emerald-400';
+  const riskBorder = aiPrediction.risk_score >= 0.7 ? 'border-red-500/20' : aiPrediction.risk_score >= 0.4 ? 'border-amber-500/20' : 'border-emerald-500/20';
+  const riskBg = aiPrediction.risk_score >= 0.7 ? 'bg-red-500/10' : aiPrediction.risk_score >= 0.4 ? 'bg-amber-500/10' : 'bg-emerald-500/10';
+
+  return (
+    <div className="glass-card overflow-hidden border-indigo-500/20 mt-4 animate-fade-in">
+      <div className="p-5 border-b border-white/[0.06] bg-gradient-to-r from-indigo-500/10 to-transparent">
+        <div className="flex items-center gap-3">
+          <div className="w-8 h-8 rounded-lg bg-indigo-500/20 border border-indigo-500/30 flex items-center justify-center">
+            <Zap className="w-4 h-4 text-indigo-400" />
+          </div>
+          <div>
+            <h3 className="text-sm font-bold text-indigo-50 whitespace-nowrap">Gemini AI Analysis</h3>
+            <p className="text-[10px] text-indigo-200/60 font-mono mt-0.5">Automated Risk & Remediation Insights</p>
+          </div>
+          <div className="ml-auto flex items-center gap-3">
+            <div className={cn("px-3 py-1.5 rounded-lg border flex flex-col items-center", riskBorder, riskBg)}>
+              <span className={cn("text-lg font-black font-mono leading-none", riskColor)}>
+                {(aiPrediction.risk_score * 10).toFixed(1)}
+              </span>
+              <span className={cn("text-[9px] font-bold uppercase tracking-widest mt-0.5 opacity-80", riskColor)}>
+                Risk level
+              </span>
+            </div>
+          </div>
+        </div>
+      </div>
+      
+      <div className="p-5 grid grid-cols-1 md:grid-cols-2 gap-6 bg-white/[0.01]">
+        <div>
+          <h4 className="flex items-center gap-2 text-xs font-semibold text-steel-200 mb-3">
+            <Eye className="w-3.5 h-3.5 text-steel-400" /> Hotspots
+          </h4>
+          {aiPrediction.likely_vulnerable_areas?.length > 0 ? (
+            <ul className="space-y-2">
+              {aiPrediction.likely_vulnerable_areas.map((area, idx) => (
+                <li key={idx} className="flex items-start gap-2 text-xs font-mono text-steel-300 bg-white/[0.02] border border-white/[0.04] rounded-lg px-3 py-2">
+                  <span className="text-orange-400 flex-shrink-0 mt-0.5">▸</span>
+                  <span className="break-all">{area}</span>
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <p className="text-xs text-steel-500 italic">No specific hotspots identified.</p>
+          )}
+        </div>
+        
+        <div>
+          <h4 className="flex items-center gap-2 text-xs font-semibold text-steel-200 mb-3">
+            <CheckCircle className="w-3.5 h-3.5 text-emerald-400" /> Actionable Suggestions
+          </h4>
+          {aiPrediction.suggestions?.length > 0 ? (
+            <ul className="space-y-2">
+              {aiPrediction.suggestions.map((suggestion, idx) => (
+                <li key={idx} className="flex items-start gap-2 text-xs text-steel-300 bg-white/[0.02] border border-white/[0.04] rounded-lg px-3 py-2 leading-relaxed">
+                  <span className="text-emerald-400 flex-shrink-0 mt-0.5">•</span>
+                  <span>{suggestion}</span>
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <p className="text-xs text-steel-500 italic">No suggestions provided.</p>
+          )}
+        </div>
+      </div>
+    </div>
+  )
+}
 
 function PipelineDetails({ pipeline, onBack }) {
   const [openStages, setOpenStages] = useState({})
@@ -819,6 +909,9 @@ function PipelineDetails({ pipeline, onBack }) {
         </div>
       )}
 
+      {/* AI Analysis Section */}
+      {pipeline.status === 'success' && <AIAnalysisSection aiPrediction={pipeline.ai_prediction} />}
+
       {/* Policy snapshot */}
       {policySnapshot && pipeline.status === 'success' && (
         <div className="glass-card p-4">
@@ -1003,8 +1096,29 @@ export default function Pipeline() {
   const [redirecting, setRedirecting] = useState(false)
   const [refreshSeconds, setRefreshSeconds] = useState(getAutoRefreshInterval(30))
   const { isAuthenticated, loading: authLoading } = useAuth()
+  const { selectedRepo, loadingRepos, repos } = useRepo()
   const [repoUrl, setRepoUrl] = useState('')
   const [repoBranch, setRepoBranch] = useState('main')
+  const [profileDefaultRepo, setProfileDefaultRepo] = useState('')
+  const [manualRepoUrl, setManualRepoUrl] = useState(false)
+
+  // If not manually overridden, always show selectedRepo.html_url or profile default
+  useEffect(() => {
+    if (!manualRepoUrl) {
+      if (selectedRepo && selectedRepo.html_url) {
+        setRepoUrl(selectedRepo.html_url)
+      } else if (profileDefaultRepo) {
+        setRepoUrl(profileDefaultRepo)
+      } else {
+        setRepoUrl('')
+      }
+    }
+  }, [selectedRepo, profileDefaultRepo, manualRepoUrl])
+
+  // Reset manual override if repo changes
+  useEffect(() => {
+    setManualRepoUrl(false)
+  }, [selectedRepo])
   const [savingRepo, setSavingRepo] = useState(false)
 
   // Search & filter state
@@ -1014,10 +1128,17 @@ export default function Pipeline() {
   // Mobile: show detail panel when pipeline selected
   const [showDetail, setShowDetail] = useState(false)
 
+  // Defensive: always close modal if pipeline is missing
+  useEffect(() => {
+    if (modalPipeline && !pipelines.find(p => p.id === modalPipeline.id)) {
+      setModalPipeline(null)
+    }
+  }, [modalPipeline, pipelines])
+
   const loadRepoConfig = useCallback(async () => {
     try {
       const profile = await fetchProfile()
-      setRepoUrl(profile?.defaultRepoUrl || '')
+      setProfileDefaultRepo(profile?.defaultRepoUrl || '')
       setRepoBranch(profile?.defaultBranch || 'main')
     } catch (err) {
       console.error('Failed to load repository configuration', err)
@@ -1025,8 +1146,10 @@ export default function Pipeline() {
   }, [])
 
   const loadPipelines = useCallback(async () => {
+    if (loadingRepos || !selectedRepo) return;
     try {
-      const result = await fetchPipelines()
+      const repoName = selectedRepo?.full_name || ''
+      const result = await fetchPipelines(20, repoName)
       const list = result.pipelines || []
       setPipelines(list)
 
@@ -1042,11 +1165,11 @@ export default function Pipeline() {
       setError('Failed to load pipelines')
       console.error(err)
     }
-  }, [selectedPipeline])
+  }, [selectedPipeline, selectedRepo, loadingRepos])
 
   useEffect(() => {
-    if (!authLoading && isAuthenticated) checkSetupAndLoad()
-  }, [isAuthenticated, authLoading])
+    if (!authLoading && isAuthenticated && !loadingRepos) checkSetupAndLoad()
+  }, [isAuthenticated, authLoading, loadingRepos])
 
   const checkSetupAndLoad = async () => {
     try {
@@ -1103,52 +1226,42 @@ export default function Pipeline() {
   }, [pipelines, loadPipelines, refreshSeconds])
 
   const handleTrigger = async () => {
+    const activeUrl = selectedRepo?.html_url || repoUrl
+    const activeBranch = selectedRepo?.default_branch || repoBranch || 'main'
+
+    if (!activeUrl) {
+      notyf.error('Please configure a Repository URL or select one from the top menu first.')
+      return
+    }
     setTriggering(true)
     setError(null)
     try {
-      const payloadRepoUrl = repoUrl.trim()
-      const payloadBranch = (repoBranch || 'main').trim() || 'main'
-
-      if (!payloadRepoUrl) {
-        const profile = await fetchProfile().catch(() => null)
-        const fallbackRepoUrl = profile?.defaultRepoUrl?.trim()
-        if (!fallbackRepoUrl) {
-          notyf.error('Please provide a valid repository URL to scan.')
-          setError('No repository configured. Add your repository URL and branch at the top of this page.')
-          setTriggering(false)
-          return
-        }
-        setRepoUrl(fallbackRepoUrl)
-        setRepoBranch(profile?.defaultBranch?.trim() || 'main')
-      }
-
       const res = await triggerPipeline({
-        repo_url: payloadRepoUrl || repoUrl.trim(),
-        branch: payloadBranch,
+        repo_url: activeUrl,
+        branch: activeBranch,
       })
 
       await loadPipelines()
       if (res.pipeline_id) {
-        const list = (await fetchPipelines()).pipelines || []
+        const list = (await fetchPipelines(20, selectedRepo?.full_name || '')).pipelines || []
         const created = list.find(p => p.id === res.pipeline_id)
         if (created) {
           setSelectedPipeline(created)
           setShowDetail(true)
         }
       }
+      notyf.success('Pipeline triggered successfully')
     } catch (err) {
       const msg = err.response?.data?.error || 'Failed to trigger pipeline'
-      if (err.response?.status === 400 || msg.toLowerCase().includes('exist')) {
-        notyf.error('Repo does not exist or access denied')
-      } else {
-        notyf.error(msg)
-      }
+      notyf.error(msg)
       setError(msg)
       console.error(err)
     } finally {
       setTriggering(false)
     }
   }
+
+
 
   const handleSelectPipeline = (p) => {
     setModalPipeline(p)
@@ -1166,7 +1279,9 @@ export default function Pipeline() {
           p.branch?.toLowerCase().includes(q) ||
           p.author?.toLowerCase().includes(q) ||
           p.commit_sha?.toLowerCase().includes(q) ||
-          p.commit_message?.toLowerCase().includes(q)
+          p.commit_message?.toLowerCase().includes(q) ||
+          p.repo_name?.toLowerCase().includes(q) ||
+          p.repo_url?.toLowerCase().includes(q)
         )
       }
       return true
@@ -1216,7 +1331,7 @@ export default function Pipeline() {
     return filteredPipelines.filter(p => p.id !== activePipeline.id)
   }, [filteredPipelines, activePipeline])
 
-  if (authLoading || loading || redirecting) return <PageLoader />
+  if (authLoading || loading || redirecting || loadingRepos || !selectedRepo) return <PageLoader />
 
   return (
     <div className="space-y-6 animate-fade-in">
@@ -1233,7 +1348,14 @@ export default function Pipeline() {
             </div>
           </div>
         </div>
-        <div className="flex items-center gap-2">
+                <div className="flex items-center gap-2">
+          <button
+            onClick={handleTrigger}
+            disabled={triggering}
+            className="btn-primary flex items-center justify-center gap-1.5 text-sm disabled:opacity-50"
+          >
+            {triggering ? <><Loader2 className="w-3.5 h-3.5 animate-spin" /> Starting...</> : <><Zap className="w-3.5 h-3.5" /> Run Scan</>}
+          </button>
           <button onClick={loadPipelines} className="btn-secondary flex items-center gap-1.5 text-sm group">
             <RefreshCw className="w-3.5 h-3.5 group-hover:rotate-180 transition-transform duration-500" /> Refresh
           </button>
@@ -1243,59 +1365,61 @@ export default function Pipeline() {
         </div>
       </div>
 
-      <div className="glass-card border border-emerald-500/30 shadow-[0_0_25px_rgba(250,129,18,0.14)]">
-        <div className="p-5 border-b border-emerald-500/20 bg-gradient-to-r from-emerald-500/10 to-transparent">
-          <p className="text-[10px] font-bold text-emerald-400 uppercase tracking-[0.15em] font-mono">Primary Scan Target</p>
-          <h2 className="text-lg font-bold text-steel-50 mt-1">Repository Configuration</h2>
-          <p className="text-sm text-steel-400 mt-1">Set the repository and branch used when starting a scan from this page.</p>
-        </div>
-        <div className="p-5 grid grid-cols-1 lg:grid-cols-12 gap-4 items-end">
-          <div className="lg:col-span-7">
-            <label className="text-xs font-semibold text-steel-400 uppercase tracking-wide mb-2 block">Repository URL</label>
-            <input
-              type="text"
-              value={repoUrl}
-              onChange={(e) => setRepoUrl(e.target.value)}
-              placeholder="https://github.com/your-org/your-repository"
-              className="w-full px-4 py-2.5 bg-theme-input text-steel-50 border border-theme rounded-xl text-sm font-mono outline-none focus:ring-2 focus:ring-emerald-500/30 focus:border-emerald-500/30"
-            />
-          </div>
-          <div className="lg:col-span-2">
-            <label className="text-xs font-semibold text-steel-400 uppercase tracking-wide mb-2 block">Branch</label>
-            <input
-              type="text"
-              value={repoBranch}
-              onChange={(e) => setRepoBranch(e.target.value)}
-              placeholder="main"
-              className="w-full px-4 py-2.5 bg-theme-input text-steel-50 border border-theme rounded-xl text-sm font-mono outline-none focus:ring-2 focus:ring-emerald-500/30 focus:border-emerald-500/30"
-            />
-          </div>
-          <div className="lg:col-span-3 flex flex-col sm:flex-row lg:flex-col xl:flex-row gap-2">
-            <button
-              onClick={handleSaveRepoConfig}
-              disabled={savingRepo}
-              className="btn-secondary w-full flex items-center justify-center gap-1.5 text-sm disabled:opacity-50"
-            >
-              {savingRepo ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Save className="w-3.5 h-3.5" />}
-              {savingRepo ? 'Saving...' : 'Save Repo'}
-            </button>
-            <button
-              onClick={handleTrigger}
-              disabled={triggering}
-              className="btn-primary w-full flex items-center justify-center gap-1.5 text-sm disabled:opacity-50"
-            >
-              {triggering
-                ? <><Loader2 className="w-3.5 h-3.5 animate-spin" /> Starting...</>
-                : <><Zap className="w-3.5 h-3.5" /> Run Scan</>
-              }
-            </button>
-          </div>
-        </div>
-      </div>
+      
 
       {error && (
         <Alert variant="error" title="Error">{error}</Alert>
       )}
+
+      {/* ── Configuration Board ──────────────────────────────────── */}
+      <div className="glass-card p-5">
+        <h2 className="text-sm font-bold text-steel-50 mb-4 flex items-center gap-2">
+          <Settings className="w-4 h-4 text-primary-400" />
+          Repository Configuration
+        </h2>
+        <div className="flex flex-col md:flex-row gap-4 items-start md:items-end">
+          <div className="flex-1 w-full relative">
+            <label className="block text-[11px] font-semibold text-steel-400 uppercase tracking-wider mb-1.5">Repository URL</label>
+            <div className="relative">
+              <Globe className="w-4 h-4 text-steel-500 absolute left-3 top-1/2 -translate-y-1/2" />
+              <input
+                type="text"
+                placeholder="https://github.com/owner/repo"
+                value={repoUrl}
+                onChange={(e) => {
+                  setRepoUrl(e.target.value);
+                  setManualRepoUrl(true);
+                }}
+                className="w-full bg-white/[0.03] border border-white/[0.08] rounded-xl pl-10 pr-4 py-2.5 text-sm text-steel-50 placeholder-steel-600 focus:outline-none focus:border-primary-500/40 focus:ring-1 focus:ring-primary-500/20 transition-all font-mono"
+              />
+            </div>
+          </div>
+          <div className="w-full md:w-48 relative">
+            <label className="block text-[11px] font-semibold text-steel-400 uppercase tracking-wider mb-1.5">Default Branch</label>
+            <div className="relative">
+              <GitBranch className="w-4 h-4 text-steel-500 absolute left-3 top-1/2 -translate-y-1/2" />
+              <input
+                type="text"
+                placeholder="main"
+                value={repoBranch}
+                onChange={(e) => setRepoBranch(e.target.value)}
+                className="w-full bg-white/[0.03] border border-white/[0.08] rounded-xl pl-10 pr-4 py-2.5 text-sm text-steel-50 placeholder-steel-600 focus:outline-none focus:border-primary-500/40 focus:ring-1 focus:ring-primary-500/20 transition-all font-mono"
+              />
+            </div>
+          </div>
+          <button
+            onClick={handleSaveRepoConfig}
+            disabled={savingRepo}
+            className="btn-secondary py-2.5 px-6 flex items-center gap-2 text-sm whitespace-nowrap min-w-[120px] justify-center"
+          >
+            {savingRepo ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
+            {savingRepo ? 'Saving...' : 'Save Default'}
+          </button>
+        </div>
+        <p className="text-xs text-steel-500 mt-3 flex items-center gap-1.5">
+          <Info className="w-3.5 h-3.5" /> This sets the fallback repository for automated triggers. Use the top menu to switch active contexts.
+        </p>
+      </div>
 
       {/* ── Requirements Info ─────────────────────────────────── */}
       <RequirementsBanner />
@@ -1346,7 +1470,9 @@ export default function Pipeline() {
       </div>
 
       {/* ── Current Pipeline (Top) ─────────────────────────── */}
-      <div className="glass-card overflow-visible relative z-10">
+      <div className="glass-card overflow-visible relative z-10 cursor-pointer hover:ring-2 hover:ring-emerald-400/40 transition-all"
+        onClick={() => activePipeline && setModalPipeline(activePipeline)}
+      >
         <div className="p-5 border-b border-white/[0.06] bg-gradient-to-r from-white/[0.01] to-transparent flex items-center justify-between gap-3">
           <div>
             <p className="text-[10px] font-bold text-steel-500 uppercase tracking-[0.15em] font-mono">Current Pipeline</p>
@@ -1405,11 +1531,11 @@ export default function Pipeline() {
       </div>
       {/* ── Pipeline History Modal ─────────────────────────── */}
       <Modal 
-        isOpen={!!modalPipeline} 
+        isOpen={!!modalPipeline && pipelines.find(p => p.id === modalPipeline.id)}
         onClose={() => setModalPipeline(null)}
         title={modalPipeline ? `Pipeline Detail: ${modalPipeline.repo_name} #${modalPipeline.id}` : ''}
       >
-        {modalPipeline && (
+        {modalPipeline && pipelines.find(p => p.id === modalPipeline.id) && (
           <PipelineDetails 
             pipeline={modalPipeline} 
             onBack={() => setModalPipeline(null)} 

@@ -11,6 +11,7 @@ import {
   Clock,
 } from 'lucide-react'
 import { fetchBanditReport, fetchSetupStatus } from '../services/api'
+import { useRepo } from '../context/RepoContext'
 import { formatDate, cn, getSeverityBadgeClass } from '../utils/helpers'
 import StatCard from '../components/StatCard'
 import VulnerabilityTable from '../components/VulnerabilityTable'
@@ -22,6 +23,7 @@ import Alert from '../components/Alert'
 import { useAuth } from '../context/AuthContext'
 
 export default function BanditReport() {
+  const { selectedRepo } = useRepo()
   const navigate = useNavigate()
   const [data, setData] = useState(null)
   const [loading, setLoading] = useState(true)
@@ -77,7 +79,7 @@ export default function BanditReport() {
         return
       }
 
-      const result = await fetchBanditReport()
+      const result = await fetchBanditReport(selectedRepo?.full_name)
       setData(result)
       setLoading(false)
     } catch (err) {

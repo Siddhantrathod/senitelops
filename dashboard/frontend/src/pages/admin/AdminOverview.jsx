@@ -3,7 +3,7 @@ import {
   Users, Shield, GitBranch, CheckCircle, XCircle, Gauge, RefreshCw,
   AlertTriangle, KeyRound, Activity, Clock, Wifi, Server,
   Container, FileCode, Globe, TrendingUp, Zap, Settings,
-  MessageSquare, Send, X, ExternalLink,
+  MessageSquare, Send, X, ExternalLink, Info,
 } from 'lucide-react'
 import { cn } from '../../utils/helpers'
 import { KpiCard, StatusBadge, SkeletonCard } from '../../components/admin'
@@ -194,30 +194,62 @@ export default function AdminOverview() {
               <RefreshCw className={cn("w-4 h-4", refreshingNews && "animate-spin")} />
             </button>
           </div>
-          <div className="space-y-3 flex-1 overflow-y-auto pr-1">
-            {news.map(item => (
-              <div key={item.id} className="p-3 rounded-xl bg-black/20 border border-white/[0.04] hover:border-blue-500/30 transition-colors group">
-                <div className="flex justify-between items-start gap-2 mb-1">
-                  <a
-                    href={item.url}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="text-sm font-semibold text-steel-100 group-hover:text-blue-400 transition-colors line-clamp-1 flex items-center gap-1 hover:underline"
-                  >
-                    {item.title}
-                    <ExternalLink className="w-3 h-3 shrink-0 opacity-0 group-hover:opacity-100 transition-opacity" />
-                  </a>
-                  <StatusBadge 
-                    status={item.type === 'critical' ? 'critical' : item.type === 'high' ? 'high' : 'info'} 
-                    size="sm"
-                  />
+          <div className="space-y-4 flex-1 overflow-y-auto pr-2 custom-scrollbar">
+            {news.map(item => {
+              const NewsIcon = item.type === 'critical' ? Shield : 
+                               item.type === 'high' ? AlertTriangle : 
+                               item.type === 'medium' ? Info : Info;
+              const accentColor = item.type === 'critical' ? 'red' : 
+                                  item.type === 'high' ? 'orange' : 
+                                  item.type === 'medium' ? 'blue' : 'emerald';
+              
+              return (
+                <div key={item.id} className="group relative p-4 rounded-2xl bg-white/[0.02] border border-white/[0.06] hover:bg-white/[0.04] hover:border-blue-500/30 transition-all duration-300">
+                  <div className="flex gap-4">
+                    <div className={cn(
+                      "w-10 h-10 rounded-xl flex items-center justify-center shrink-0 border transition-transform duration-500 group-hover:scale-110",
+                      accentColor === 'red' ? "bg-red-500/10 border-red-500/20 text-red-500" :
+                      accentColor === 'orange' ? "bg-orange-500/10 border-orange-500/20 text-orange-400" :
+                      accentColor === 'blue' ? "bg-blue-500/10 border-blue-500/20 text-blue-400" :
+                      "bg-emerald-500/10 border-emerald-500/20 text-emerald-400"
+                    )}>
+                      <NewsIcon className="w-5 h-5" />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-start justify-between gap-3 mb-1.5">
+                        <a
+                          href={item.url}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="text-sm font-bold text-steel-50 group-hover:text-blue-400 transition-colors line-clamp-2 leading-relaxed"
+                        >
+                          {item.title}
+                        </a>
+                        <StatusBadge 
+                          status={item.type === 'critical' ? 'critical' : item.type === 'high' ? 'high' : 'info'} 
+                          size="sm"
+                        />
+                      </div>
+                      <div className="flex items-center gap-3 text-[10px] font-bold uppercase tracking-wider text-steel-500">
+                        <span className="px-1.5 py-0.5 rounded bg-white/[0.05] border border-white/[0.05]">{item.source}</span>
+                        <div className="w-1 h-1 rounded-full bg-steel-700" />
+                        <span className="flex items-center gap-1">
+                          <Clock className="w-3 h-3" /> {item.time}
+                        </span>
+                        {item.type === 'critical' && (
+                          <span className="relative flex h-2 w-2 ml-auto">
+                            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75"></span>
+                            <span className="relative inline-flex rounded-full h-2 w-2 bg-red-500"></span>
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                  {/* Subtle hover effect light */}
+                  <div className="absolute inset-0 bg-blue-500/5 opacity-0 group-hover:opacity-100 transition-opacity rounded-2xl pointer-events-none" />
                 </div>
-                <div className="flex items-center justify-between text-xs text-steel-500 font-mono">
-                  <span>{item.source}</span>
-                  <span>{item.time}</span>
-                </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         </div>
 

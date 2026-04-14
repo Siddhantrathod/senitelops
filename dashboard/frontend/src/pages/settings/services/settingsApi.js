@@ -94,6 +94,11 @@ export const updateGitIntegration = async (config) => {
   return data
 }
 
+export const verifyGithubUsername = async (username) => {
+  const { data } = await api.get('/github/verify-username', { params: { username } })
+  return data
+}
+
 // ── Appearance ───────────────────────────────────
 export const fetchAppearancePrefs = async () => {
   const { data } = await api.get('/settings/appearance')

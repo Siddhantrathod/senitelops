@@ -123,7 +123,7 @@ export default function AdminLogin() {
             )}
 
             <div>
-              <label className="block text-steel-300 font-medium mb-2 text-sm">Admin Username</label>
+              <label className="block text-steel-300 font-medium mb-2 text-sm">Admin Username or Email</label>
               <div className="relative">
                 <User className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-steel-600" />
                 <input
@@ -131,7 +131,7 @@ export default function AdminLogin() {
                   value={username}
                   onChange={(e) => setUsername(e.target.value)}
                   className={`${inputClass} pl-12 pr-4`}
-                  placeholder="Enter admin username"
+                  placeholder="Enter admin username or email"
                   required
                 />
               </div>

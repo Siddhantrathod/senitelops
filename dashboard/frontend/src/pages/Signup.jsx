@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { Navigate, useNavigate, Link } from 'react-router-dom'
-import { Shield, User, Lock, Eye, EyeOff, AlertCircle, ArrowRight, Building, Briefcase, Phone, GitBranch, Globe2, Languages, Clock } from 'lucide-react'
+import { Shield, User, Lock, Eye, EyeOff, AlertCircle, ArrowRight, Building, Briefcase, Phone, Github, Languages, Clock } from 'lucide-react'
 import { useAuth } from '../context/AuthContext'
 import { getGoogleAuthUrl } from '../services/api'
 
@@ -21,7 +21,7 @@ export default function Signup() {
   const [formData, setFormData] = useState({
     username: '', email: '', fullName: '', organization: '',
     roleTitle: '', phone: '', password: '', confirmPassword: '',
-    defaultRepoUrl: '', defaultBranch: 'main', preferredLanguage: 'en', timezone: 'UTC',
+    githubUsername: '', preferredLanguage: 'en', timezone: 'UTC',
   })
   const [showPassword, setShowPassword] = useState(false)
   const [error, setError] = useState('')
@@ -56,8 +56,7 @@ export default function Signup() {
       username: formData.username, email: formData.email, password: formData.password,
       fullName: formData.fullName, organization: formData.organization,
       roleTitle: formData.roleTitle, phone: formData.phone,
-      defaultRepoUrl: formData.defaultRepoUrl,
-      defaultBranch: formData.defaultBranch,
+      githubUsername: formData.githubUsername,
       preferredLanguage: formData.preferredLanguage,
       timezone: formData.timezone,
     })
@@ -182,23 +181,13 @@ export default function Signup() {
               </div>
             </div>
 
-            {/* Main Repository Configuration */}
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <label className="block text-steel-300 font-medium mb-1.5 text-sm">Default Repository URL</label>
-                <div className="relative">
-                  <Globe2 className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-steel-600" />
-                  <input type="text" name="defaultRepoUrl" value={formData.defaultRepoUrl} onChange={handleChange}
-                    className={`${inputClass} pl-11 pr-4`} placeholder="https://github.com/org/repo" />
-                </div>
-              </div>
-              <div>
-                <label className="block text-steel-300 font-medium mb-1.5 text-sm">Default Branch</label>
-                <div className="relative">
-                  <GitBranch className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-steel-600" />
-                  <input type="text" name="defaultBranch" value={formData.defaultBranch} onChange={handleChange}
-                    className={`${inputClass} pl-11 pr-4`} placeholder="main" />
-                </div>
+            {/* GitHub Integration */}
+            <div>
+              <label className="block text-steel-300 font-medium mb-1.5 text-sm">GitHub Account URL / Username <span className="text-steel-600 font-normal">(optional)</span></label>
+              <div className="relative">
+                <Github className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-steel-600" />
+                <input type="text" name="githubUsername" value={formData.githubUsername} onChange={handleChange}
+                  className={`${inputClass} pl-12 pr-4`} placeholder="e.g. johndoe or https://github.com/johndoe" />
               </div>
             </div>
 

@@ -102,6 +102,10 @@ export function AuthProvider({ children }) {
     return user?.role === 'admin'
   }
 
+  const hasPermission = (permission) => {
+    return user?.permissions?.includes(permission) || isAdmin()
+  }
+
   return (
     <AuthContext.Provider value={{
       user,
@@ -109,6 +113,7 @@ export function AuthProvider({ children }) {
       loading,
       isAuthenticated: !!token && !!user,
       isAdmin,
+      hasPermission,
       login,
       signup,
       loginWithToken,

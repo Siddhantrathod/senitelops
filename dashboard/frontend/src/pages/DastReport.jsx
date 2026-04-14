@@ -19,6 +19,7 @@ import {
   Link as LinkIcon,
 } from 'lucide-react'
 import { fetchDastReport, fetchSetupStatus } from '../services/api'
+import { useRepo } from '../context/RepoContext'
 import { formatDate, cn } from '../utils/helpers'
 import StatCard from '../components/StatCard'
 import SeverityPieChart from '../components/charts/SeverityPieChart'
@@ -47,6 +48,7 @@ function RiskBadge({ risk }) {
 }
 
 export default function DastReport() {
+  const { selectedRepo } = useRepo()
   const navigate = useNavigate()
   const [data, setData] = useState(null)
   const [loading, setLoading] = useState(true)
@@ -103,7 +105,7 @@ export default function DastReport() {
         return
       }
 
-      const result = await fetchDastReport()
+      const result = await fetchDastReport(selectedRepo?.full_name)
       if (result) {
         setData(result)
       } else {

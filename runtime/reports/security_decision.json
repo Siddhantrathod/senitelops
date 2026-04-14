@@ -1,23 +1,23 @@
 {
-  "pipeline_id": "d2fb5857",
-  "timestamp": "2026-03-27T19:54:43.995576",
+  "pipeline_id": "01ff460a",
+  "timestamp": "2026-04-04T05:44:25.199613",
   "repository": "sentinelops-vulnerable-app",
   "branch": "main",
   "commit": "manual",
-  "security_score": 37,
+  "security_score": 45,
   "is_deployable": false,
   "vulnerability_summary": {
     "critical": 0,
     "high": 5,
-    "medium": 15,
-    "low": 13,
-    "total": 33,
+    "medium": 8,
+    "low": 3,
+    "total": 16,
     "sast_issues": 6,
     "bandit_issues": 6,
     "trivy_vulns": 0,
     "secrets_found": 0,
-    "dast_alerts": 21,
-    "security_score": 37,
+    "dast_alerts": 0,
+    "security_score": 45,
     "sast_high": 2,
     "sast_medium": 2,
     "sast_low": 2,
@@ -32,8 +32,8 @@
     "secrets_high": 0,
     "secrets_medium": 0,
     "dast_high": 0,
-    "dast_medium": 7,
-    "dast_low": 10,
+    "dast_medium": 0,
+    "dast_low": 0,
     "languages_detected": [
       "python"
     ],
@@ -44,6 +44,6 @@
   },
   "decision": "BLOCKED",
   "reasons": [
-    "Security score (37) below threshold (70)"
+    "Security score (45) below threshold (70)"
   ]
 }

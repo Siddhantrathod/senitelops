@@ -1,3 +1,19 @@
+// System Logs API (Admin)
+export const fetchSystemLogs = async ({ level = 'all', search = '', limit = 100, offset = 0, sort = 'desc' } = {}) => {
+  try {
+    const params = new URLSearchParams()
+    if (level && level !== 'all') params.append('level', level)
+    if (search) params.append('search', search)
+    params.append('limit', limit)
+    params.append('offset', offset)
+    params.append('sort', sort)
+    const response = await api.get(`/admin/logs?${params.toString()}`)
+    return response.data
+  } catch (error) {
+    console.error('Error fetching system logs:', error)
+    throw error
+  }
+}
 import axios from 'axios'
 
 // In production (Vercel), set VITE_API_URL to your Railway backend URL
@@ -46,9 +62,10 @@ api.interceptors.response.use(
   }
 )
 
-export const fetchBanditReport = async () => {
+export const fetchBanditReport = async (repoUrl) => {
   try {
-    const response = await api.get('/bandit')
+    const url = repoUrl ? `/bandit?repo=${encodeURIComponent(repoUrl)}` : '/bandit'
+    const response = await api.get(url)
     return response.data
   } catch (error) {
     console.error('Error fetching Bandit report:', error)
@@ -56,9 +73,10 @@ export const fetchBanditReport = async () => {
   }
 }
 
-export const fetchSASTReport = async () => {
+export const fetchSASTReport = async (repoUrl) => {
   try {
-    const response = await api.get('/sast')
+    const url = repoUrl ? `/sast?repo=${encodeURIComponent(repoUrl)}` : '/sast'
+    const response = await api.get(url)
     return response.data
   } catch (error) {
     console.error('Error fetching SAST report:', error)
@@ -76,9 +94,10 @@ export const fetchSASTLanguages = async () => {
   }
 }
 
-export const fetchTrivyReport = async () => {
+export const fetchTrivyReport = async (repoUrl) => {
   try {
-    const response = await api.get('/trivy')
+    const url = repoUrl ? `/trivy?repo=${encodeURIComponent(repoUrl)}` : '/trivy'
+    const response = await api.get(url)
     return response.data
   } catch (error) {
     console.error('Error fetching Trivy report:', error)
@@ -86,13 +105,13 @@ export const fetchTrivyReport = async () => {
   }
 }
 
-export const fetchSecuritySummary = async () => {
+export const fetchSecuritySummary = async (repoUrl) => {
   try {
     // Fetch SAST, bandit (fallback), and trivy reports
     const [sastResult, banditResult, trivyResult] = await Promise.allSettled([
-      fetchSASTReport(),
-      fetchBanditReport(),
-      fetchTrivyReport(),
+      fetchSASTReport(repoUrl),
+      fetchBanditReport(repoUrl),
+      fetchTrivyReport(repoUrl),
     ])
 
     const sast = sastResult.status === 'fulfilled' ? sastResult.value : null
@@ -138,9 +157,10 @@ export const evaluatePolicy = async () => {
 }
 
 // Pipeline API endpoints
-export const fetchPipelines = async (limit = 20) => {
+export const fetchPipelines = async (limit = 20, repoUrl = null) => {
   try {
-    const response = await api.get(`/pipelines?limit=${limit}`)
+    const url = repoUrl ? `/pipelines?limit=${limit}&repo=${encodeURIComponent(repoUrl)}` : `/pipelines?limit=${limit}`
+    const response = await api.get(url)
     return response.data
   } catch (error) {
     console.error('Error fetching pipelines:', error)
@@ -158,9 +178,10 @@ export const fetchPipelineById = async (pipelineId) => {
   }
 }
 
-export const fetchLatestPipeline = async () => {
+export const fetchLatestPipeline = async (repoUrl) => {
   try {
-    const response = await api.get('/pipelines/latest')
+    const url = repoUrl ? `/pipelines/latest?repo=${encodeURIComponent(repoUrl)}` : '/pipelines/latest'
+    const response = await api.get(url)
     return response.data
   } catch (error) {
     // Return null if no pipelines exist
@@ -193,9 +214,10 @@ export const triggerLocalScan = async (options) => {
 }
 
 // Gitleaks API endpoints
-export const fetchGitleaksReport = async () => {
+export const fetchGitleaksReport = async (repoUrl) => {
   try {
-    const response = await api.get('/gitleaks')
+    const url = repoUrl ? `/gitleaks?repo=${encodeURIComponent(repoUrl)}` : '/gitleaks'
+    const response = await api.get(url)
     return response.data
   } catch (error) {
     if (error.response?.status === 404) return null
@@ -205,9 +227,10 @@ export const fetchGitleaksReport = async () => {
 }
 
 // DAST API endpoints
-export const fetchDastReport = async () => {
+export const fetchDastReport = async (repoUrl) => {
   try {
-    const response = await api.get('/dast')
+    const url = repoUrl ? `/dast?repo=${encodeURIComponent(repoUrl)}` : '/dast'
+    const response = await api.get(url)
     return response.data
   } catch (error) {
     if (error.response?.status === 404) return null
@@ -423,4 +446,23 @@ export const replyAdminFeedback = async (id, reply) => {
   return response.data
 }
 
+
+// --- Trends API ---
+export const fetchTrends = async (limit = 30, repoUrl = null) => {
+  const url = repoUrl ? `/pipelines/trends?limit=${limit}&repo=${encodeURIComponent(repoUrl)}` : `/pipelines/trends?limit=${limit}`
+  const response = await api.get(url)
+  return response.data
+}
+
+// --- Threat Intelligence API ---
+export const fetchCveDetail = async (cveId) => {
+  const response = await api.get(`/cve/${cveId}`)
+  return response.data
+}
+
+// --- AI Fix Generation API ---
+export const generateAiFix = async (pipelineId, vulnIndex) => {
+  const response = await api.post(`/pipelines/${pipelineId}/fix`, { vuln_index: vulnIndex })
+  return response.data
+}
 export default api

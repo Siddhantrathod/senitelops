@@ -64,6 +64,7 @@ def signup():
         organization=(data.get("organization") or "").strip(),
         role_title=(data.get("roleTitle") or "").strip(),
         phone=(data.get("phone") or "").strip(),
+        github_username=(data.get("githubUsername") or "").strip() or None,
         auth_provider="local",
         is_active=True,
     )
@@ -77,18 +78,9 @@ def signup():
     if data.get("timezone"):
         prefs["timezone"] = data["timezone"]
 
-    repo_prefs = {}
-    if data.get("defaultRepoUrl"):
-        repo_prefs["defaultRepoUrl"] = data["defaultRepoUrl"]
-    if data.get("defaultBranch"):
-        repo_prefs["defaultBranch"] = data["defaultBranch"]
-
-    if prefs or repo_prefs:
+    if prefs:
         settings = UserSettings(user_id=new_user.id)
-        profile_data: dict = {}
-        profile_data.update(prefs)
-        profile_data.update(repo_prefs)
-        settings.set_section("profile", profile_data)
+        settings.set_section("profile", prefs)
         db.session.add(settings)
 
     db.session.commit()

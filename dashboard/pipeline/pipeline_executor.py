@@ -48,7 +48,7 @@ DEFAULT_DAST_REPORT = REPORTS_DIR / "dast-report.json"
 DEFAULT_DECISION_REPORT = REPORTS_DIR / "security_decision.json"
 
 # Timeouts (seconds)
-TRIVY_TIMEOUT_SECONDS = int(os.getenv("TRIVY_TIMEOUT_SECONDS", "120"))
+TRIVY_TIMEOUT_SECONDS = int(os.getenv("TRIVY_TIMEOUT_SECONDS", "600"))
 
 # Temp workspace prefix
 WORKSPACE_PREFIX = "sentinelops_scan_"
@@ -59,6 +59,7 @@ from .sast_scanner import run_sast_scan, detect_languages, LANGUAGE_INFO
 # Import Gitleaks and DAST scanners
 from .gitleaks_scanner import run_secrets_scan
 from .dast_scanner import run_dast_scan
+from .ai_predictor import predict_vulnerabilities
 
 class StageStatus(str, Enum):
     PENDING = "pending"
@@ -102,6 +103,7 @@ class PipelineRun:
     max_cvss_score: Optional[float] = None
     is_deployable: Optional[bool] = None
     vulnerability_summary: Optional[Dict] = None
+    ai_prediction: Optional[Dict] = None
 
     def __post_init__(self):
         if self.stages is None:
@@ -124,7 +126,8 @@ class PipelineRun:
             "security_score": self.security_score,
             "max_cvss_score": self.max_cvss_score,
             "is_deployable": self.is_deployable,
-            "vulnerability_summary": self.vulnerability_summary
+            "vulnerability_summary": self.vulnerability_summary,
+            "ai_prediction": self.ai_prediction
         }
 
 
@@ -233,7 +236,7 @@ class PipelineExecutor:
                 try:
                     result = subprocess.run(
                         ["git", "clone", "--depth", "1", "--branch", pipeline.branch, repo_url, work_dir],
-                        capture_output=True, text=True, timeout=120
+                        capture_output=True, text=True, timeout=TRIVY_TIMEOUT_SECONDS
                     )
                     if result.returncode != 0:
                         raise Exception(result.stderr)
@@ -466,7 +469,31 @@ class PipelineExecutor:
             except Exception as e:
                 logger.warning(f"Failed to strip temp paths from reports: {e}")
 
-            # Stage 7: Policy Evaluation
+            # Stage 7: AI Vulnerability Prediction
+            self.update_stage(pipeline.id, "ai_prediction", StageStatus.RUNNING)
+            try:
+                # Example: Gather relevant data for prediction (code, scan summaries, etc.)
+                ai_input = {
+                    "repo_name": pipeline.repo_name,
+                    "branch": pipeline.branch,
+                    "commit_sha": pipeline.commit_sha,
+                    "sast_report_path": os.path.join(self.reports_dir, "sast-report.json"),
+                    "trivy_report_path": os.path.join(self.reports_dir, "trivy-report.json"),
+                    "gitleaks_report_path": os.path.join(self.reports_dir, "gitleaks-report.json"),
+                    "dast_report_path": os.path.join(self.reports_dir, "dast-report.json"),
+                }
+                ai_prediction = predict_vulnerabilities(ai_input)
+                pipeline.ai_prediction = ai_prediction
+                # Save AI prediction to a report file for later use
+                ai_report_path = os.path.join(self.reports_dir, "ai-prediction.json")
+                with open(ai_report_path, "w") as f:
+                    json.dump(ai_prediction, f, indent=2)
+                self.update_stage(pipeline.id, "ai_prediction", StageStatus.SUCCESS, f"AI prediction risk score: {ai_prediction.get('risk_score')}")
+            except Exception as e:
+                self.update_stage(pipeline.id, "ai_prediction", StageStatus.FAILED, error=str(e))
+                logger.warning(f"AI prediction failed: {e}")
+
+            # Stage 8: Policy Evaluation
             self.update_stage(pipeline.id, "policy_check", StageStatus.RUNNING)
             try:
                 gitleaks_report_path = os.path.join(self.reports_dir, "gitleaks-report.json")
@@ -1042,7 +1069,7 @@ def clone_repository(repo_url: str, branch: str, workspace_path: str) -> Tuple[b
             ["git", "clone", "--depth", "1", "--branch", branch, repo_url, workspace_path],
             capture_output=True,
             text=True,
-            timeout=120
+            timeout=TRIVY_TIMEOUT_SECONDS
         )
         
         if result.returncode != 0:
@@ -1060,7 +1087,7 @@ def clone_repository(repo_url: str, branch: str, workspace_path: str) -> Tuple[b
         return True, "Repository cloned successfully"
         
     except subprocess.TimeoutExpired:
-        return False, "Git clone timed out (>120s) - repository may be too large"
+        return False, "Git clone timed out (>600s) - repository may be too large"
     except FileNotFoundError:
         return False, "Git is not installed on the system"
     except Exception as e:

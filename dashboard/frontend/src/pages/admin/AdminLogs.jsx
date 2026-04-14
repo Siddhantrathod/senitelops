@@ -6,7 +6,7 @@ import {
 } from 'lucide-react'
 import { cn } from '../../utils/helpers'
 import { StatusBadge, DataTable, KpiCard, SkeletonTable } from '../../components/admin'
-import { fetchAdminPipelines, fetchAdminUsers, fetchAdminStats } from '../../services/api'
+import { fetchSystemLogs } from '../../services/api'
 
 const LOG_TYPES = {
   pipeline: { label: 'Pipeline', icon: GitBranch, color: 'text-emerald-400' },
@@ -25,102 +25,47 @@ const SEVERITY_STYLES = {
 export default function AdminLogs() {
   const [logs, setLogs] = useState([])
   const [loading, setLoading] = useState(true)
-  const [typeFilter, setTypeFilter] = useState('all')
   const [severityFilter, setSeverityFilter] = useState('all')
+  const [search, setSearch] = useState('')
   const [expandedLog, setExpandedLog] = useState(null)
+  const [total, setTotal] = useState(0)
 
   const loadLogs = useCallback(async () => {
     setLoading(true)
     try {
-      const [pipelines, users, stats] = await Promise.all([
-        fetchAdminPipelines(100).catch(() => []),
-        fetchAdminUsers().catch(() => []),
-        fetchAdminStats().catch(() => ({})),
-      ])
-
-      // Generate logs from pipeline data
-      const pipelineLogs = (pipelines || []).map(p => ({
-        id: `pl-${p.pipeline_id}`,
-        type: 'pipeline',
-        severity: p.status === 'failed' ? 'error' : p.status === 'success' ? 'success' : 'info',
-        message: `Pipeline ${p.pipeline_id?.slice(0, 8)} ${p.status} — Score: ${p.security_score ?? '—'}, Decision: ${p.decision || '—'}`,
-        timestamp: p.timestamp || new Date().toISOString(),
-        details: {
-          pipeline_id: p.pipeline_id,
-          status: p.status,
-          security_score: p.security_score,
-          decision: p.decision,
-          scanners: p.scanners_run?.join(', ') || '—',
-          trigger: p.trigger || 'manual',
-          failure_reason: p.failure_reason || null,
-        },
-      }))
-
-      // Generate auth logs from user creation
-      const authLogs = (users || []).map(u => ({
-        id: `auth-${u.id}`,
-        type: 'auth',
-        severity: 'info',
-        message: `User "${u.username}" registered via ${u.auth_type || 'local'} as ${u.role}`,
-        timestamp: u.created_at || new Date().toISOString(),
-        details: {
-          username: u.username,
-          role: u.role,
-          auth_type: u.auth_type || 'local',
-          email: u.email || '—',
-        },
-      }))
-
-      // System events
-      const systemLogs = [
-        {
-          id: 'sys-1',
-          type: 'system',
-          severity: 'info',
-          message: `Platform stats: ${stats.users?.total || 0} users, ${stats.pipelines?.total || 0} pipelines`,
-          timestamp: new Date().toISOString(),
-          details: {
-            total_users: stats.users?.total,
-            total_pipelines: stats.pipelines?.total,
-            avg_score: stats.pipelines?.avg_security_score,
-          },
-        },
-      ]
-
-      const allLogs = [...pipelineLogs, ...authLogs, ...systemLogs]
-        .sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp))
-
-      setLogs(allLogs)
+      const { logs: fetchedLogs, total: fetchedTotal } = await fetchSystemLogs({
+        level: severityFilter,
+        search,
+        limit: 100,
+        offset: 0,
+        sort: 'desc',
+      })
+      setLogs(fetchedLogs)
+      setTotal(fetchedTotal)
     } catch (err) {
       console.error('Failed to load logs:', err)
     }
     setLoading(false)
-  }, [])
+  }, [severityFilter, search])
 
   useEffect(() => { loadLogs() }, [loadLogs])
 
   // Filtered
-  const filteredLogs = useMemo(() => {
-    return logs.filter(l => {
-      if (typeFilter !== 'all' && l.type !== typeFilter) return false
-      if (severityFilter !== 'all' && l.severity !== severityFilter) return false
-      return true
-    })
-  }, [logs, typeFilter, severityFilter])
+  const filteredLogs = logs
 
   // Stats
-  const errorCount = logs.filter(l => l.severity === 'error').length
-  const warningCount = logs.filter(l => l.severity === 'warning').length
+  const errorCount = logs.filter(l => l.level === 'error').length
+  const warningCount = logs.filter(l => l.level === 'warning').length
   const todayCount = logs.filter(l => {
-    const d = new Date(l.timestamp)
+    const d = new Date(l.created_at)
     const today = new Date()
     return d.toDateString() === today.toDateString()
   }).length
 
   const handleExport = () => {
-    const csv = ['Timestamp,Type,Severity,Message']
+    const csv = ['Timestamp,Level,Source,Message,Metadata']
     filteredLogs.forEach(l => {
-      csv.push(`"${l.timestamp}","${l.type}","${l.severity}","${l.message.replace(/"/g, '""')}"`)
+      csv.push(`"${l.created_at}","${l.level}","${l.source}","${l.message.replace(/"/g, '""')}","${JSON.stringify(l.metadata).replace(/"/g, '""')}"`)
     })
     const blob = new Blob([csv.join('\n')], { type: 'text/csv' })
     const url = URL.createObjectURL(blob)
@@ -150,14 +95,22 @@ export default function AdminLogs() {
       {/* Header */}
       <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
         <div>
-          <h1 className="text-3xl font-bold text-steel-50 mb-1">System Logs</h1>
-          <p className="text-steel-400 text-sm">Pipeline events, auth activity & system notifications</p>
+          <h1 className="text-3xl font-extrabold text-emerald-400 drop-shadow mb-1 animate-pulse">System Logs</h1>
+          <p className="text-steel-400 text-sm">Live platform events, errors, and notifications</p>
         </div>
         <div className="flex items-center gap-3">
+          <input
+            type="text"
+            placeholder="Search logs..."
+            value={search}
+            onChange={e => setSearch(e.target.value)}
+            className="px-3 py-1.5 rounded-lg border border-white/[0.08] bg-black/30 text-steel-200 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-400/40 transition-all shadow-inner"
+            style={{ minWidth: 180 }}
+          />
           <button onClick={handleExport} className="btn-secondary flex items-center gap-2 text-sm">
             <Download className="w-4 h-4" /> Export CSV
           </button>
-          <button onClick={loadLogs} className="btn-secondary flex items-center gap-2 text-sm">
+          <button onClick={loadLogs} className="btn-secondary flex items-center gap-2 text-sm animate-spin-once">
             <RefreshCw className="w-4 h-4" /> Refresh
           </button>
         </div>
@@ -165,7 +118,7 @@ export default function AdminLogs() {
 
       {/* KPI Cards */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-        <KpiCard label="Total Events" value={logs.length} icon={FileText} accent="blue" />
+        <KpiCard label="Total Events" value={total} icon={FileText} accent="blue" />
         <KpiCard label="Today" value={todayCount} icon={Clock} accent="blue" />
         <KpiCard label="Errors" value={errorCount} icon={AlertTriangle} accent="red" />
         <KpiCard label="Warnings" value={warningCount} icon={AlertTriangle} accent="amber" />
@@ -175,26 +128,12 @@ export default function AdminLogs() {
       <div className="flex flex-wrap items-center gap-3">
         <Filter className="w-4 h-4 text-steel-500" />
         <div className="flex items-center gap-1.5">
-          {['all', ...Object.keys(LOG_TYPES)].map(t => (
-            <button key={t} onClick={() => setTypeFilter(t)}
-              className={cn(
-                'px-3 py-1.5 rounded-lg text-xs font-medium transition-colors border',
-                typeFilter === t
-                  ? 'bg-emerald-500/15 border-emerald-500/30 text-emerald-400'
-                  : 'border-white/[0.06] text-steel-400 hover:text-steel-200 hover:bg-white/[0.04]'
-              )}>
-              {t === 'all' ? 'All Types' : LOG_TYPES[t]?.label || t}
-            </button>
-          ))}
-        </div>
-        <div className="w-px h-5 bg-white/[0.08]" />
-        <div className="flex items-center gap-1.5">
-          {['all', 'error', 'warning', 'success', 'info'].map(s => (
+          {['all', 'error', 'warning', 'info', 'success'].map(s => (
             <button key={s} onClick={() => setSeverityFilter(s)}
               className={cn(
                 'px-3 py-1.5 rounded-lg text-xs font-medium transition-colors border',
                 severityFilter === s
-                  ? 'bg-emerald-500/15 border-emerald-500/30 text-emerald-400'
+                  ? 'bg-gradient-to-r from-emerald-500/20 to-cyan-500/20 border-emerald-500/30 text-emerald-400 shadow-lg'
                   : 'border-white/[0.06] text-steel-400 hover:text-steel-200 hover:bg-white/[0.04]'
               )}>
               {s === 'all' ? 'All Levels' : s.charAt(0).toUpperCase() + s.slice(1)}
@@ -206,44 +145,80 @@ export default function AdminLogs() {
       {/* Log Entries */}
       <div className="space-y-2">
         {filteredLogs.length === 0 && (
-          <div className="glass-card p-12 text-center">
-            <FileText className="w-12 h-12 text-steel-600 mx-auto mb-4" />
-            <p className="text-steel-500 text-sm">No log entries match the current filters</p>
+          <div className="glass-card p-12 text-center animate-fade-in">
+            <FileText className="w-12 h-12 text-cyan-600 mx-auto mb-4 animate-bounce" />
+            <p className="text-cyan-400 text-base font-semibold">No log entries match the current filters</p>
           </div>
         )}
         {filteredLogs.slice(0, 50).map(log => {
-          const typeInfo = LOG_TYPES[log.type] || LOG_TYPES.system
-          const Icon = typeInfo.icon
           const isExpanded = expandedLog === log.id
-
           return (
-            <div key={log.id} className="glass-card overflow-hidden">
+            <div key={log.id} className={cn("glass-card overflow-hidden border-l-4 transition-all",
+              log.level === 'error' ? 'border-red-500/80 shadow-lg shadow-red-900/10' :
+              log.level === 'warning' ? 'border-amber-400/80 shadow-lg shadow-amber-900/10' :
+              log.level === 'info' ? 'border-cyan-400/80 shadow-lg shadow-cyan-900/10' :
+              'border-emerald-400/80 shadow-lg shadow-emerald-900/10')}
+            >
               <button
                 onClick={() => setExpandedLog(isExpanded ? null : log.id)}
-                className="w-full flex items-center gap-4 p-4 text-left hover:bg-white/[0.02] transition-colors"
+                className="w-full flex items-center gap-4 p-4 text-left hover:bg-white/[0.02] transition-colors group"
               >
-                <div className={cn('p-2 rounded-lg', SEVERITY_STYLES[log.severity] || SEVERITY_STYLES.info)}>
-                  <Icon className="w-4 h-4" />
+                <div className={cn('p-2 rounded-lg',
+                  log.level === 'error' ? 'bg-red-500/10 text-red-400 border border-red-500/20' :
+                  log.level === 'warning' ? 'bg-amber-500/10 text-amber-400 border border-amber-500/20' :
+                  log.level === 'info' ? 'bg-cyan-500/10 text-cyan-400 border border-cyan-500/20' :
+                  'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20')}
+                >
+                  {log.level === 'error' && <AlertTriangle className="w-4 h-4 animate-pulse" />}
+                  {log.level === 'warning' && <AlertTriangle className="w-4 h-4 animate-bounce" />}
+                  {log.level === 'info' && <Info className="w-4 h-4 animate-spin-slow" />}
+                  {log.level === 'success' && <CheckCircle className="w-4 h-4 animate-pulse" />}
                 </div>
                 <div className="flex-1 min-w-0">
-                  <p className="text-sm text-steel-200 truncate">{log.message}</p>
+                  <p className="text-sm text-steel-200 truncate font-semibold group-hover:text-emerald-300 transition-colors">
+                    {log.message}
+                  </p>
                   <div className="flex items-center gap-3 mt-1">
                     <span className="text-[10px] text-steel-500 font-mono">
-                      {new Date(log.timestamp).toLocaleString()}
+                      {new Date(log.created_at).toLocaleString()}
                     </span>
-                    <span className={cn('text-[10px] font-mono', typeInfo.color)}>{typeInfo.label}</span>
+                    <span className={cn('text-[10px] font-mono',
+                      log.level === 'error' ? 'text-red-400' :
+                      log.level === 'warning' ? 'text-amber-400' :
+                      log.level === 'info' ? 'text-cyan-400' :
+                      'text-emerald-400')}>{log.level.toUpperCase()}</span>
+                    {log.source && <span className="text-[10px] text-steel-500 font-mono">{log.source}</span>}
                   </div>
                 </div>
-                <StatusBadge status={log.severity === 'error' ? 'failed' : log.severity === 'warning' ? 'MEDIUM' : log.severity === 'success' ? 'success' : 'info'} size="sm" />
+                <StatusBadge status={log.level === 'error' ? 'failed' : log.level === 'warning' ? 'MEDIUM' : log.level === 'success' ? 'success' : 'info'} size="sm" />
                 {isExpanded ? <ChevronUp className="w-4 h-4 text-steel-500" /> : <ChevronDown className="w-4 h-4 text-steel-500" />}
               </button>
 
-              {isExpanded && log.details && (
-                <div className="px-4 pb-4 border-t border-white/[0.04]">
-                  <div className="mt-3 p-4 bg-white/[0.02] rounded-xl border border-white/[0.04]">
-                    <pre className="text-xs text-steel-300 font-mono whitespace-pre-wrap overflow-x-auto">
-                      {JSON.stringify(log.details, null, 2)}
-                    </pre>
+              {isExpanded && (
+                <div className="px-4 pb-4 border-t border-white/[0.04] bg-white/[0.01] animate-fade-in">
+                  <div className="mt-4 grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div className="flex flex-col p-3 rounded-xl bg-black/20 border border-white/[0.04] hover:border-white/[0.08] transition-colors group/prop">
+                      <span className="text-[10px] font-black uppercase tracking-widest text-steel-500 mb-1 group-hover/prop:text-steel-400 transition-colors">
+                        Source
+                      </span>
+                      <span className="text-xs font-mono text-steel-200 break-all">{log.source || '—'}</span>
+                    </div>
+                    <div className="flex flex-col p-3 rounded-xl bg-black/20 border border-white/[0.04] hover:border-white/[0.08] transition-colors group/prop">
+                      <span className="text-[10px] font-black uppercase tracking-widest text-steel-500 mb-1 group-hover/prop:text-steel-400 transition-colors">
+                        Metadata
+                      </span>
+                      <span className="text-xs font-mono text-steel-200 break-all">{JSON.stringify(log.metadata, null, 2)}</span>
+                    </div>
+                    <button
+                      onClick={e => {
+                        e.stopPropagation();
+                        navigator.clipboard.writeText(JSON.stringify({ ...log, exported_at: new Date().toISOString() }, null, 2));
+                      }}
+                      className="sm:col-span-2 mt-2 flex items-center justify-center gap-2 p-3 rounded-xl bg-white/[0.02] border border-dashed border-white/10 text-[10px] font-bold uppercase tracking-widest text-steel-500 hover:bg-white/[0.05] hover:text-steel-200 transition-all group/copy"
+                    >
+                      <Terminal className="w-3 h-3 group-hover/copy:text-cyan-400 transition-colors" />
+                      Copy Raw Event Data
+                    </button>
                   </div>
                 </div>
               )}
@@ -251,7 +226,7 @@ export default function AdminLogs() {
           )
         })}
         {filteredLogs.length > 50 && (
-          <p className="text-center text-xs text-steel-500 py-4">
+          <p className="text-center text-xs text-cyan-400 py-4 animate-fade-in">
             Showing 50 of {filteredLogs.length} entries — use filters or export to see all
           </p>
         )}

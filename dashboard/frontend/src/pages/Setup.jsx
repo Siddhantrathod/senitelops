@@ -16,8 +16,11 @@ import {
   BarChart3,
   FileSearch,
   ChevronRight,
+  User,
 } from 'lucide-react'
 import { completeSetup, fetchSetupStatus } from '../services/api'
+import api from '../services/api'
+import { verifyGithubUsername, updateProfile, fetchProfile } from './settings/services/settingsApi'
 import { useAuth } from '../context/AuthContext'
 import { PageLoader } from '../components/LoadingSpinner'
 
@@ -53,6 +56,12 @@ export default function Setup() {
   const [error, setError] = useState(null)
   const [scanProgress, setScanProgress] = useState('')
 
+  const [ghUsername, setGhUsername] = useState('')
+  const [ghVerifyState, setGhVerifyState] = useState(null) // null|checking|valid|invalid
+  const [ghVerifiedInfo, setGhVerifiedInfo] = useState(null)
+  const [githubRepos, setGithubRepos] = useState([])
+  const [loadingRepos, setLoadingRepos] = useState(false)
+
   const [formData, setFormData] = useState({
     repo_url: '',
     branch: 'main',
@@ -80,6 +89,17 @@ export default function Setup() {
       const status = await fetchSetupStatus()
       if (status.setup_completed) {
         navigate('/')
+        return
+      }
+
+      // Pre-fetch profile to pre-fill Github username if exists
+      try {
+        const profile = await fetchProfile()
+        if (profile.githubUsername) {
+          setGhUsername(profile.githubUsername)
+        }
+      } catch (e) {
+        console.error('Failed to fetch profile', e)
       }
     } catch (err) {
       console.error('Error checking setup:', err)
@@ -102,19 +122,51 @@ export default function Setup() {
 
   const validateRepoUrl = () => {
     if (!formData.repo_url.trim()) {
-      setError('Repository URL is required')
+      setError('A repository selection is required')
       return false
     }
     const urlPattern = /^https:\/\/github\.com\/[\w\-\.]+\/[\w\-\.]+(?:\.git)?$/
     if (!urlPattern.test(formData.repo_url)) {
-      setError('Please enter a valid GitHub repository URL (e.g., https://github.com/user/repo)')
+      setError('Please select a valid GitHub repository')
       return false
     }
     return true
   }
 
+  const handleVerifyGithub = async () => {
+    if (!ghUsername.trim()) return
+    setGhVerifyState('checking')
+    setError(null)
+    try {
+      const data = await verifyGithubUsername(ghUsername)
+      if (data.valid) {
+        await updateProfile({ githubUsername: ghUsername })
+        setGhVerifyState('valid')
+        setGhVerifiedInfo(data)
+        
+        setLoadingRepos(true)
+        const repoRes = await api.get('/github/repos')
+        setGithubRepos(repoRes.data.repos || [])
+      } else {
+        setGhVerifyState('invalid')
+        setError(data.error || 'GitHub username not found')
+      }
+    } catch(err) {
+      setGhVerifyState('invalid')
+      setError(err.response?.data?.error || 'Verification failed')
+    } finally {
+      setLoadingRepos(false)
+    }
+  }
+
   const handleNext = () => {
-    if (step === 1 && !validateRepoUrl()) return
+    if (step === 1) {
+      if (ghVerifyState !== 'valid') {
+        setError('Please verify your GitHub username first')
+        return
+      }
+      if (!validateRepoUrl()) return
+    }
     setError(null)
     setStep(prev => prev + 1)
   }
@@ -296,42 +348,114 @@ export default function Setup() {
                   </div>
                   <div>
                     <h2 className="text-2xl font-bold text-slate-900">Connect Repository</h2>
-                    <p className="text-slate-500 text-sm">Enter your GitHub repository details</p>
+                    <p className="text-slate-500 text-sm">Verify your GitHub account to load repositories</p>
                   </div>
                 </div>
 
                 <div className="space-y-6">
+                  {/* GitHub Username Input */}
                   <div>
                     <label className="block text-sm font-semibold text-slate-700 mb-2">
-                      Repository URL *
+                      GitHub Username *
                     </label>
-                    <div className="relative">
-                      <LinkIcon className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400" />
-                      <input
-                        type="url"
-                        value={formData.repo_url}
-                        onChange={(e) => handleInputChange('repo_url', e.target.value)}
-                        placeholder="https://github.com/username/repository"
-                        className="w-full input-field pl-12 py-3"
-                      />
+                    <div className="flex gap-2">
+                      <div className="relative flex-1">
+                        <User className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400" />
+                        <input
+                          type="text"
+                          value={ghUsername}
+                          onChange={(e) => {
+                            setGhUsername(e.target.value)
+                            setGhVerifyState(null)
+                            // clear repo choices if they change the username
+                            setGithubRepos([])
+                            setFormData(prev => ({ ...prev, repo_url: '' }))
+                          }}
+                          placeholder="e.g. torvalds"
+                          className="w-full input-field pl-12 py-3"
+                        />
+                      </div>
+                      <button 
+                        onClick={handleVerifyGithub} 
+                        disabled={!ghUsername.trim() || ghVerifyState === 'checking'} 
+                        className="btn-secondary px-6 shrink-0 flex items-center justify-center min-w-[100px]"
+                      >
+                        {ghVerifyState === 'checking' ? <Loader2 className="w-5 h-5 animate-spin" /> : 'Verify'}
+                      </button>
                     </div>
-                    <p className="text-xs text-slate-500 mt-2">
-                      Enter the full URL of your public GitHub repository
-                    </p>
+
+                    {/* Verified Status display */}
+                    {ghVerifyState === 'valid' && ghVerifiedInfo && (
+                      <div className="mt-3 flex items-center p-3 rounded-xl bg-emerald-50 border border-emerald-100 gap-3">
+                        <img src={ghVerifiedInfo.avatar_url} alt="" className="w-8 h-8 rounded-full border border-emerald-200" />
+                        <div>
+                          <p className="text-sm font-medium text-emerald-900 leading-tight">
+                            {ghVerifiedInfo.name || ghVerifiedInfo.login}
+                            <span className="text-emerald-600 ml-1 text-xs">@{ghVerifiedInfo.login}</span>
+                          </p>
+                          <p className="text-[10px] text-emerald-700 uppercase tracking-widest font-bold mt-0.5">
+                            {ghVerifiedInfo.public_repos} public repos
+                          </p>
+                        </div>
+                        <CheckCircle className="w-5 h-5 text-emerald-500 ml-auto flex-shrink-0" />
+                      </div>
+                    )}
                   </div>
 
-                  <div>
-                    <label className="block text-sm font-semibold text-slate-700 mb-2">
-                      Branch
-                    </label>
-                    <input
-                      type="text"
-                      value={formData.branch}
-                      onChange={(e) => handleInputChange('branch', e.target.value)}
-                      placeholder="main"
-                      className="w-full input-field py-3"
-                    />
-                  </div>
+                  {/* Repository Selection */}
+                  {ghVerifyState === 'valid' && (
+                    <div className="animate-fade-in">
+                      <label className="block text-sm font-semibold text-slate-700 mb-2">
+                        Select Public Repository *
+                      </label>
+                      {loadingRepos ? (
+                        <div className="p-4 border border-slate-200 rounded-xl flex items-center gap-3 text-slate-500 bg-slate-50">
+                          <Loader2 className="w-5 h-5 animate-spin" /> Fetching your repositories...
+                        </div>
+                      ) : githubRepos.length > 0 ? (
+                        <div className="relative">
+                          <select 
+                            className="w-full input-field py-3 pl-4 pr-10 appearance-none bg-white font-medium text-slate-700 focus:ring-2 focus:ring-primary-500"
+                            value={formData.repo_url}
+                            onChange={(e) => {
+                              handleInputChange('repo_url', e.target.value)
+                            }}
+                          >
+                            <option value="">-- Choose a public repository --</option>
+                            {githubRepos.map(repo => (
+                              <option key={repo.full_name} value={`https://github.com/${repo.full_name}`}>
+                                {repo.full_name}
+                              </option>
+                            ))}
+                          </select>
+                          <ChevronRight className="w-5 h-5 absolute z-10 right-4 top-1/2 -translate-y-1/2 text-slate-400 rotate-90 pointer-events-none" />
+                        </div>
+                      ) : (
+                        <div className="p-4 border border-amber-200 bg-amber-50 rounded-xl flex items-start gap-3">
+                          <AlertCircle className="w-5 h-5 text-amber-500 mt-0.5 flex-shrink-0" />
+                          <div>
+                            <p className="text-sm font-semibold text-amber-800">No public repositories found</p>
+                            <p className="text-xs text-amber-700 mt-1">Make sure you have public repositories on this GitHub account.</p>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  {ghVerifyState === 'valid' && (
+                    <div>
+                      <label className="block text-sm font-semibold text-slate-700 mb-2">
+                        Default Branch
+                      </label>
+                      <input
+                        type="text"
+                        value={formData.branch}
+                        onChange={(e) => handleInputChange('branch', e.target.value)}
+                        placeholder="main"
+                        className="w-full input-field py-3"
+                      />
+                    </div>
+                  )}
 
                   {/* Repository Requirements */}
                   <div className="bg-emerald-50 border border-emerald-100 rounded-xl p-5">

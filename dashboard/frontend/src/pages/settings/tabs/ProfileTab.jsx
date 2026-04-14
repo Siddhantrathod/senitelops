@@ -1,10 +1,10 @@
 import { useState, useCallback } from 'react'
-import { User, Mail, Building2, Clock, Languages, Camera, Save, RotateCcw, Briefcase, Phone } from 'lucide-react'
+import { User, Mail, Building2, Clock, Languages, Camera, Save, RotateCcw, Briefcase, Phone, Github, CheckCircle, XCircle, Loader2, ExternalLink } from 'lucide-react'
 import { useAuth } from '../../../context/AuthContext'
 import { SettingsCard, FormField, SettingsSkeleton } from '../components'
 import { TextInput, Select } from '../components/FormInputs'
 import { useSettings } from '../hooks/useSettings'
-import { fetchProfile, updateProfile, uploadAvatar } from '../services/settingsApi'
+import { fetchProfile, updateProfile, uploadAvatar, verifyGithubUsername } from '../services/settingsApi'
 
 const TIMEZONES = [
   { value: 'UTC', label: 'UTC' },
@@ -36,6 +36,7 @@ const DEFAULTS = {
   organization: '',
   roleTitle: '',
   phone: '',
+  githubUsername: '',
   timezone: 'UTC',
   preferredLanguage: 'en',
   avatarUrl: '',
@@ -49,8 +50,11 @@ export default function ProfileTab({ showToast }) {
     fullName: user?.fullName || user?.username || '',
     email: user?.email || '',
     organization: user?.organization || '',
+    githubUsername: user?.githubUsername || '',
   })
   const [avatarPreview, setAvatarPreview] = useState(null)
+  const [ghVerifyState, setGhVerifyState] = useState(null) // null | 'checking' | 'valid' | 'invalid'
+  const [ghVerifyInfo, setGhVerifyInfo] = useState(null)
 
   const handleAvatarChange = useCallback(async (e) => {
     const file = e.target.files?.[0]
@@ -71,6 +75,26 @@ export default function ProfileTab({ showToast }) {
       showToast('Failed to upload avatar', 'error')
     }
   }, [showToast, update])
+
+  const handleVerifyGithub = useCallback(async () => {
+    const username = (data.githubUsername || '').trim()
+    if (!username) return
+    setGhVerifyState('checking')
+    setGhVerifyInfo(null)
+    try {
+      const result = await verifyGithubUsername(username)
+      if (result.valid) {
+        setGhVerifyState('valid')
+        setGhVerifyInfo(result)
+      } else {
+        setGhVerifyState('invalid')
+        setGhVerifyInfo({ error: result.error || 'GitHub user not found' })
+      }
+    } catch (err) {
+      setGhVerifyState('invalid')
+      setGhVerifyInfo({ error: err?.response?.data?.error || 'Could not verify username' })
+    }
+  }, [data.githubUsername])
 
   const handleSave = async () => {
     if (!data.fullName?.trim()) {
@@ -162,6 +186,62 @@ export default function ProfileTab({ showToast }) {
                 className="pl-10"
               />
             </div>
+          </FormField>
+
+          <FormField label="GitHub Username" hint="Enter your GitHub username to link your account">
+            <div className="flex items-center gap-2">
+              <div className="relative flex-1">
+                <Github className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-steel-500" />
+                <TextInput
+                  value={data.githubUsername}
+                  onChange={(e) => { update('githubUsername', e.target.value); setGhVerifyState(null); setGhVerifyInfo(null) }}
+                  placeholder="e.g. johndoe"
+                  className="pl-10 pr-4"
+                />
+              </div>
+              <button
+                type="button"
+                onClick={handleVerifyGithub}
+                disabled={!data.githubUsername?.trim() || ghVerifyState === 'checking'}
+                className="btn-secondary inline-flex items-center gap-2 text-sm whitespace-nowrap disabled:opacity-40"
+              >
+                {ghVerifyState === 'checking'
+                  ? <Loader2 className="w-4 h-4 animate-spin" />
+                  : <CheckCircle className="w-4 h-4" />}
+                {ghVerifyState === 'checking' ? 'Checking...' : 'Verify'}
+              </button>
+            </div>
+
+            {/* Status indicator */}
+            {ghVerifyState === 'valid' && ghVerifyInfo && (
+              <div className="mt-3 flex items-center gap-3 p-3 rounded-xl bg-emerald-500/10 border border-emerald-500/20">
+                <img src={ghVerifyInfo.avatar_url} alt="avatar" className="w-8 h-8 rounded-full flex-shrink-0" />
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-semibold text-emerald-400 flex items-center gap-1.5">
+                    <CheckCircle className="w-4 h-4" />
+                    Verified GitHub Account
+                  </p>
+                  <p className="text-xs text-steel-400 truncate">
+                    {ghVerifyInfo.name} · {ghVerifyInfo.public_repos} public repos
+                  </p>
+                </div>
+                <a
+                  href={ghVerifyInfo.html_url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-steel-500 hover:text-steel-300 transition-colors flex-shrink-0"
+                >
+                  <ExternalLink className="w-4 h-4" />
+                </a>
+              </div>
+            )}
+
+            {ghVerifyState === 'invalid' && ghVerifyInfo && (
+              <div className="mt-3 flex items-center gap-2 p-3 rounded-xl bg-red-500/10 border border-red-500/20">
+                <XCircle className="w-4 h-4 text-red-400 flex-shrink-0" />
+                <p className="text-xs text-red-400">{ghVerifyInfo.error}</p>
+              </div>
+            )}
           </FormField>
 
           <FormField label="Organization">

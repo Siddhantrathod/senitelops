@@ -12,7 +12,8 @@ import {
   Server,
   HardDrive,
 } from 'lucide-react'
-import { fetchTrivyReport, fetchSetupStatus } from '../services/api'
+import { fetchTrivyReport, fetchSetupStatus, fetchCveDetail } from '../services/api'
+import { useRepo } from '../context/RepoContext'
 import { formatDate, cn } from '../utils/helpers'
 import StatCard from '../components/StatCard'
 import VulnerabilityTable from '../components/VulnerabilityTable'
@@ -24,12 +25,15 @@ import Alert from '../components/Alert'
 import { useAuth } from '../context/AuthContext'
 
 export default function TrivyReport() {
+  const { selectedRepo } = useRepo()
   const navigate = useNavigate()
   const [data, setData] = useState(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
   const [redirecting, setRedirecting] = useState(false)
   const [selectedVuln, setSelectedVuln] = useState(null)
+  const [cveDetails, setCveDetails] = useState({})  // cve_id -> enrichment data
+  const [loadingCve, setLoadingCve] = useState(null)
   const [filters, setFilters] = useState({
     severity: 'all',
     hasfix: 'all',
@@ -84,7 +88,7 @@ export default function TrivyReport() {
         return
       }
 
-      const result = await fetchTrivyReport()
+      const result = await fetchTrivyReport(selectedRepo?.full_name)
       setData(result)
       setLoading(false)
     } catch (err) {
@@ -149,6 +153,19 @@ export default function TrivyReport() {
     a.download = 'trivy-report.json'
     a.click()
     URL.revokeObjectURL(url)
+  }
+
+  const handleCveClick = async (cveId) => {
+    if (!cveId || cveDetails[cveId]) return
+    setLoadingCve(cveId)
+    try {
+      const data = await fetchCveDetail(cveId)
+      setCveDetails(prev => ({ ...prev, [cveId]: data }))
+    } catch (e) {
+      setCveDetails(prev => ({ ...prev, [cveId]: { error: true } }))
+    } finally {
+      setLoadingCve(null)
+    }
   }
 
   if (loading) return <PageLoader />
@@ -372,19 +389,104 @@ export default function TrivyReport() {
       </div>
 
       {/* Vulnerabilities Table */}
-      <VulnerabilityTable
-        vulnerabilities={filteredVulnerabilities}
-        type="trivy"
-        onRowClick={setSelectedVuln}
-      />
-
-      {/* Vulnerability Modal */}
-      <VulnerabilityModal
-        vulnerability={selectedVuln}
-        type="trivy"
-        isOpen={!!selectedVuln}
-        onClose={() => setSelectedVuln(null)}
-      />
+      <div className="glass-card p-6">
+        <div className="flex items-center justify-between mb-4">
+          <h3 className="text-lg font-semibold text-steel-50">Vulnerability List</h3>
+          <span className="text-xs text-steel-500 font-mono">Click a CVE ID to enrich with live threat intelligence</span>
+        </div>
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="text-left text-steel-500 text-xs uppercase tracking-wider border-b border-white/[0.06]">
+                <th className="pb-3 pr-4">CVE ID</th>
+                <th className="pb-3 pr-4">Package</th>
+                <th className="pb-3 pr-4">Severity</th>
+                <th className="pb-3 pr-4">Installed</th>
+                <th className="pb-3">Fix Available</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-white/[0.04]">
+              {filteredVulnerabilities.map((vuln, i) => {
+                const cveId = vuln.VulnerabilityID
+                const enrichment = cveDetails[cveId]
+                const isKev = enrichment?.is_actively_exploited
+                return (
+                  <>
+                    <tr key={`${cveId}-${i}`} className="hover:bg-white/[0.02] transition-colors cursor-pointer" onClick={() => handleCveClick(cveId)}>
+                      <td className="py-3 pr-4">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <span className="font-mono text-cyan-400 text-xs hover:underline">{cveId}</span>
+                          {isKev && (
+                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-bold bg-red-500/20 text-red-400 border border-red-500/30 animate-pulse">
+                              🔴 KEV
+                            </span>
+                          )}
+                          {loadingCve === cveId && (
+                            <span className="text-[10px] text-steel-500">loading...</span>
+                          )}
+                        </div>
+                        {vuln.Title && <p className="text-steel-500 text-[11px] mt-0.5 max-w-xs truncate">{vuln.Title}</p>}
+                      </td>
+                      <td className="py-3 pr-4 text-steel-300 font-mono text-xs">{vuln.PkgName}</td>
+                      <td className="py-3 pr-4">
+                        <span className={`badge badge-${(vuln.Severity || 'unknown').toLowerCase()}`}>
+                          {vuln.Severity}
+                        </span>
+                      </td>
+                      <td className="py-3 pr-4 text-steel-400 font-mono text-xs">{vuln.InstalledVersion}</td>
+                      <td className="py-3">
+                        {vuln.FixedVersion ? (
+                          <span className="text-emerald-400 text-xs font-mono">{vuln.FixedVersion}</span>
+                        ) : (
+                          <span className="text-steel-600 text-xs">—</span>
+                        )}
+                      </td>
+                    </tr>
+                    {enrichment && !enrichment.error && (
+                      <tr key={`${cveId}-enriched`}>
+                        <td colSpan={5} className="pb-3 pt-0">
+                          <div className="mx-2 mb-2 p-4 rounded-xl bg-white/[0.03] border border-cyan-500/15">
+                            <div className="flex items-start gap-4 flex-wrap">
+                              {enrichment.cvss_score != null && (
+                                <div className="text-center">
+                                  <p className="text-[10px] text-steel-500 uppercase tracking-wider">CVSS</p>
+                                  <p className={`text-xl font-bold font-mono ${enrichment.cvss_score >= 9 ? 'text-red-400' : enrichment.cvss_score >= 7 ? 'text-orange-400' : 'text-amber-400'}`}>
+                                    {enrichment.cvss_score}
+                                  </p>
+                                </div>
+                              )}
+                              <div className="flex-1 min-w-0">
+                                <p className="text-steel-300 text-sm leading-relaxed">{enrichment.description}</p>
+                                {enrichment.cwes?.length > 0 && (
+                                  <p className="text-steel-600 text-xs mt-1">CWE: {enrichment.cwes.join(', ')}</p>
+                                )}
+                              </div>
+                              <a href={enrichment.nvd_url} target="_blank" rel="noreferrer"
+                                className="text-xs text-cyan-400 hover:underline whitespace-nowrap mt-1"
+                                onClick={e => e.stopPropagation()}>
+                                NVD →
+                              </a>
+                            </div>
+                            {isKev && (
+                              <div className="mt-3 flex items-center gap-2 px-3 py-2 rounded-lg bg-red-500/10 border border-red-500/20">
+                                <span className="text-red-400 text-xs font-semibold">🔴 CISA Known Exploited Vulnerability (KEV)</span>
+                                <span className="text-red-300/70 text-xs">— This CVE is actively being exploited in the wild. Patch immediately.</span>
+                              </div>
+                            )}
+                          </div>
+                        </td>
+                      </tr>
+                    )}
+                  </>
+                )
+              })}
+              {filteredVulnerabilities.length === 0 && (
+                <tr><td colSpan={5} className="text-center py-8 text-steel-500">No matching vulnerabilities found.</td></tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+      </div>
     </div>
   )
 }

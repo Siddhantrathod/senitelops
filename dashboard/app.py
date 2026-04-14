@@ -14,6 +14,7 @@ from flask_jwt_extended import (
     get_jwt_identity,
     get_jwt,
 )
+from functools import wraps
 import json
 def utcnow():
     return datetime.now(timezone.utc).replace(tzinfo=None)
@@ -241,6 +242,8 @@ def _persist_pipeline_state(pipeline):
         db_pipeline.is_deployable = pipeline.is_deployable
         if pipeline.vulnerability_summary is not None:
             db_pipeline.vulnerability_summary = pipeline.vulnerability_summary
+        if getattr(pipeline, "ai_prediction", None) is not None:
+            db_pipeline.ai_prediction_data = pipeline.ai_prediction
         db.session.commit()
 
 
@@ -415,12 +418,122 @@ def get_full_user_info(user_id):
             "roleTitle": user.role_title or "",
             "language": profile.get("preferredLanguage", "en"),
             "timezone": profile.get("timezone", "UTC"),
+            "githubUsername": user.github_username or "",
+            "permissions": compute_permissions(user),
         }
     return None
+
+# ====================================================================
+# RBAC (Role-Based Access Control)
+# ====================================================================
+
+ROLE_PERMISSIONS = {
+    "admin": [
+        "pipelines.run", "pipelines.view", "reports.view", 
+        "ai_fix.generate", "users.manage", "settings.edit", 
+        "notifications.view"
+    ],
+    "user": [
+        "pipelines.run", "pipelines.view", "reports.view", 
+        "ai_fix.generate", "settings.edit", "notifications.view"
+    ],
+    "viewer": [
+        "pipelines.run", "pipelines.view", "reports.view", "notifications.view", "settings.edit"
+    ]
+}
+
+def compute_permissions(user: User) -> list:
+    """Compute effective permissions for a user based on role + overrides."""
+    base_perms = set(ROLE_PERMISSIONS.get(user.role, []))
+    overrides = user.permissions_override_data
+    
+    # Apply explicit grants
+    for p in overrides.get("grant", []):
+        base_perms.add(p)
+    # Apply explicit revokes
+    for p in overrides.get("revoke", []):
+        base_perms.discard(p)
+        
+    return list(base_perms)
+
+def require_permission(permission: str):
+    """Decorator to enforce RBAC permissions on routes."""
+    def decorator(fn):
+        @wraps(fn)
+        def wrapper(*args, **kwargs):
+            current_user = get_current_user_info()
+            if not current_user:
+                return jsonify({"error": "Unauthorized"}), 401
+            
+            user_record = db.session.get(User, current_user["id"])
+            if not user_record:
+                return jsonify({"error": "User not found"}), 404
+                
+            perms = compute_permissions(user_record)
+            print(f"DEBUG DB RBAC: User={user_record.username}, Role={user_record.role}, Required={permission}, Has={perms}")
+            if permission not in perms:
+                return jsonify({
+                    "error": "Forbidden", 
+                    "message": f"Requires permission: {permission}"
+                }), 403
+                
+            return fn(*args, **kwargs)
+        return wrapper
+    return decorator
+
+@app.route("/api/auth/permissions", methods=["GET"])
+@jwt_required()
+def get_my_permissions():
+    """Return the current user's effective permissions."""
+    current_user = get_current_user_info()
+    user_record = db.session.get(User, current_user["id"])
+    if not user_record:
+        return jsonify({"error": "User not found"}), 404
+    return jsonify({"permissions": compute_permissions(user_record)})
+
 
 @app.route("/health")
 def health():
     return {"status": "ok", "service": "sentinelops-backend"}, 200
+
+# ====================================================================
+# GITHUB ROUTES
+# ====================================================================
+from github_service import get_public_repos, verify_github_user
+
+@app.route("/api/github/repos", methods=["GET"])
+@jwt_required()
+def get_user_github_repos():
+    identity = get_jwt_identity()
+    user = User.query.filter_by(id=int(identity)).first()
+    if not user:
+        return jsonify({"error": "User not found"}), 404
+        
+    username = user.github_username
+    if not username:
+        return jsonify({"repos": []}), 200
+        
+    repos = get_public_repos(username)
+    return jsonify({"repos": repos}), 200
+
+
+@app.route("/api/github/verify-username", methods=["GET"])
+@jwt_required()
+def verify_github_username_route():
+    """Verify that a GitHub username exists and return basic profile info."""
+    identity = get_jwt_identity()
+    user = User.query.filter_by(id=int(identity)).first()
+    if not user:
+        return jsonify({"error": "User not found"}), 404
+
+    # Accept username from query param; fall back to user's saved username
+    username = (request.args.get("username") or "").strip() or (user.github_username or "")
+    if not username:
+        return jsonify({"valid": False, "error": "No GitHub username provided"}), 400
+
+    result = verify_github_user(username)
+    return jsonify(result), 200 if result.get("valid") else 400
+
 # ====================================================================
 # HELPER: notifications
 # ====================================================================
@@ -753,15 +866,20 @@ def login():
     if not username or not password:
         return jsonify({"error": "Username and password are required"}), 400
 
-    user = User.query.filter_by(username=username).first()
+    user = User.query.filter(
+        (db.func.lower(User.username) == username.lower()) | 
+        (db.func.lower(User.email) == username.lower())
+    ).first()
 
     if not user:
         return jsonify({"error": "Invalid credentials"}), 401
 
+    # If the user is a google user but has NO password set, they MUST use google.
+    # But if they DO have a password set (even if auth_provider is google), let them try the password.
     if user.auth_provider == "google" and not user.password_hash:
         return jsonify({"error": "This account uses Google Sign-In. Please login with Google."}), 401
 
-    if not password_bcrypt.check_password_hash(user.password_hash, password):
+    if not user.password_hash or not password_bcrypt.check_password_hash(user.password_hash, password):
         return jsonify({"error": "Invalid credentials"}), 401
 
     user.last_login_at = utcnow()
@@ -861,6 +979,7 @@ def register():
         organization=organization,
         role_title=role_title,
         phone=phone,
+        github_username=(data.get("githubUsername") or "").strip() or None,
         auth_provider="local",
     )
     db.session.add(new_user)
@@ -1224,6 +1343,8 @@ def bandit():
 
 @app.route("/api/sast")
 @jwt_required()
+@require_permission("reports.view")
+@require_permission("reports.view")
 def sast():
     current_user = get_current_user_info()
     pipeline_id = _resolve_accessible_pipeline_id(current_user, request.args.get("pipeline_id"))
@@ -1248,17 +1369,21 @@ def sast():
                 "total": sr.total_findings
             }
         },
-        "results": results
+        "results": results,
+        "generated_at": sr.created_at.isoformat()
     })
 
 @app.route("/api/sast/languages")
 @jwt_required()
+@require_permission("reports.view")
 def sast_languages():
     return jsonify({"languages": LANGUAGE_INFO, "tools": TOOL_DISPLAY})
 
 
 @app.route("/api/trivy")
 @jwt_required()
+@require_permission("reports.view")
+@require_permission("reports.view")
 def trivy():
     current_user = get_current_user_info()
     pipeline_id = _resolve_accessible_pipeline_id(current_user, request.args.get("pipeline_id"))
@@ -1289,6 +1414,7 @@ def trivy():
         
     return jsonify({
         "Results": [{"Target": "Container", "Vulnerabilities": packed_vulns}],
+        "CreatedAt": sr.created_at.isoformat(),
         "metrics": {
             "critical": sr.critical_count,
             "high": sr.high_count,
@@ -1316,12 +1442,15 @@ def gitleaks():
     # Pack for legacy frontend format: list of secrets, or dict with "results"
     return jsonify({
         "results": results,
-        "total_secrets": sr.total_findings
+        "total_secrets": sr.total_findings,
+        "timestamp": sr.created_at.isoformat()
     })
 
 
 @app.route("/api/dast")
 @jwt_required()
+@require_permission("reports.view")
+@require_permission("reports.view")
 def dast():
     current_user = get_current_user_info()
     pipeline_id = _resolve_accessible_pipeline_id(current_user, request.args.get("pipeline_id"))
@@ -1349,6 +1478,7 @@ def dast():
     
     return jsonify({
         "results": alerts,
+        "timestamp": sr.created_at.isoformat(),
         "metrics": {
             "high": sr.high_count,
             "medium": sr.medium_count,
@@ -1478,6 +1608,8 @@ def api_health():
 
 @app.route("/api/notifications", methods=["GET"])
 @jwt_required()
+@require_permission("notifications.view")
+@require_permission("notifications.view")
 def get_all_notifications():
     _ensure_pipeline_worker()
     current_user = get_current_user_info()
@@ -1500,6 +1632,7 @@ def get_all_notifications():
 
 @app.route("/api/notifications/<notification_id>/read", methods=["POST"])
 @jwt_required()
+@require_permission("notifications.view")
 def mark_notification_read(notification_id):
     current_user = get_current_user_info()
     notif = db.session.get(Notification, notification_id)
@@ -1511,6 +1644,7 @@ def mark_notification_read(notification_id):
 
 @app.route("/api/notifications/read-all", methods=["POST"])
 @jwt_required()
+@require_permission("notifications.view")
 def mark_all_notifications_read():
     current_user = get_current_user_info()
     Notification.query.filter_by(user_id=current_user["id"]).update({"read": True})
@@ -1520,6 +1654,7 @@ def mark_all_notifications_read():
 
 @app.route("/api/notifications/<notification_id>", methods=["DELETE"])
 @jwt_required()
+@require_permission("notifications.view")
 def delete_notification(notification_id):
     current_user = get_current_user_info()
     notif = db.session.get(Notification, notification_id)
@@ -1531,6 +1666,7 @@ def delete_notification(notification_id):
 
 @app.route("/api/notifications/clear", methods=["DELETE"])
 @jwt_required()
+@require_permission("notifications.view")
 def clear_all_notifications():
     current_user = get_current_user_info()
     Notification.query.filter_by(user_id=current_user["id"]).delete()
@@ -1689,10 +1825,13 @@ def reset_setup():
 
 def _pipeline_worker_loop():
     global _active_pipeline_id
+    print("DEBUG WORKER: Started _pipeline_worker_loop")
     while True:
         job = _pipeline_job_queue.get()
+        print(f"DEBUG WORKER: Received job: {job}")
         pipeline = job.get("pipeline") if isinstance(job, dict) else None
         pipeline_id = getattr(pipeline, "id", None)
+        print(f"DEBUG WORKER: Processing pipeline_id={pipeline_id}")
 
         if job is None or pipeline is None or not pipeline_id:
             _pipeline_job_queue.task_done()
@@ -1731,6 +1870,7 @@ def _pipeline_worker_loop():
                         db_pipeline.vulnerability_summary = result.vulnerability_summary or {}
                         db_pipeline.stages = result.stages or {}
                         db_pipeline.duration_seconds = result.duration_seconds
+                        db_pipeline.ai_prediction_data = getattr(result, "ai_prediction", None)
                         db_pipeline.completed_at = utcnow()
                         db.session.commit()
                         check_and_notify_pipeline_completion(db_pipeline.to_dict())
@@ -1816,14 +1956,53 @@ def get_pipelines():
     # Admins can pass ?all=true to see the global view; everyone else is scoped
     if not (show_all and current_user["role"] == "admin"):
         q = q.filter(Pipeline.user_id == current_user["id"])
+    
+    repo = request.args.get("repo")
+    if repo:
+        q = q.filter(Pipeline.github_repo == repo)
 
     total = q.count()
     pipelines = [p.to_dict() for p in q.limit(limit).all()]
     return jsonify({"pipelines": pipelines, "total": total})
 
 
+@app.route("/api/pipelines/trends", methods=["GET"])
+@jwt_required()
+@require_permission("pipelines.view")
+@require_permission("pipelines.view")
+def get_pipeline_trends():
+    current_user = get_current_user_info()
+    limit = request.args.get("limit", 30, type=int)
+    q = Pipeline.query.filter(Pipeline.user_id == current_user["id"])
+    repo = request.args.get("repo")
+    if repo:
+        q = q.filter(Pipeline.github_repo == repo)
+    pipelines = q.order_by(Pipeline.created_at.asc()).limit(limit).all()
+    trend_data = []
+    for p in pipelines:
+        vsummary = p.vulnerability_summary or {}
+        trend_data.append({
+            "id": p.id,
+            "created_at": p.created_at.isoformat() if p.created_at else None,
+            "completed_at": p.completed_at.isoformat() if p.completed_at else None,
+            "status": p.status,
+            "security_score": p.security_score,
+            "is_deployable": p.is_deployable,
+            "branch": p.branch,
+            "total": vsummary.get("total", 0),
+            "critical": vsummary.get("critical", 0),
+            "high": vsummary.get("high", 0),
+            "medium": vsummary.get("medium", 0),
+            "low": vsummary.get("low", 0),
+            "max_cvss_score": getattr(p, "max_cvss_score", None),
+        })
+    return jsonify({"trends": trend_data, "total": len(trend_data)})
+
+
 @app.route("/api/pipelines/<pipeline_id>", methods=["GET"])
 @jwt_required()
+@require_permission("pipelines.view")
+@require_permission("pipelines.view")
 def get_pipeline(pipeline_id):
     current_user = get_current_user_info()
     pipeline = db.session.get(Pipeline, pipeline_id)
@@ -1833,22 +2012,85 @@ def get_pipeline(pipeline_id):
     if current_user["role"] != "admin" and pipeline.user_id != current_user["id"]:
         return jsonify({"error": "Not found"}), 404
     return jsonify(pipeline.to_dict())
+    
+
+@app.route("/api/pipelines/<pipeline_id>/ai-prediction", methods=["GET"])
+@jwt_required()
+def get_ai_prediction(pipeline_id):
+    current_user = get_current_user_info()
+    pipeline = db.session.get(Pipeline, pipeline_id)
+    if not pipeline:
+        return jsonify({"error": "Pipeline not found"}), 404
+    # Admins can access any pipeline; regular users only their own
+    if current_user["role"] != "admin" and pipeline.user_id != current_user["id"]:
+        return jsonify({"error": "Not found"}), 404
+        
+    # Return the AI prediction stored in the database
+    return jsonify({
+        "pipeline_id": pipeline_id, 
+        "ai_prediction": pipeline.ai_prediction_data
+    })
 
 
 @app.route("/api/pipelines/latest", methods=["GET"])
 @jwt_required()
+@require_permission("pipelines.view")
+@require_permission("pipelines.view")
 def get_latest_pipeline():
     current_user = get_current_user_info()
-    pipeline = (
-        Pipeline.query
-        .filter(Pipeline.user_id == current_user["id"])
-        .order_by(Pipeline.created_at.desc())
-        .first()
-    )
+    q = Pipeline.query.filter(Pipeline.user_id == current_user["id"])
+    repo = request.args.get("repo")
+    if repo:
+        q = q.filter(Pipeline.github_repo == repo)
+    pipeline = q.order_by(Pipeline.created_at.desc()).first()
     if not pipeline:
         return jsonify({"error": "No pipelines found"}), 404
     return jsonify(pipeline.to_dict())
 
+
+
+
+@app.route("/api/cve/<cve_id>", methods=["GET"])
+@jwt_required()
+def get_cve_detail(cve_id):
+    try:
+        from pipeline.threat_intel import enrich_cve
+        data = enrich_cve(cve_id.upper())
+        if data:
+            return jsonify(data)
+        return jsonify({"error": "CVE not found"}), 404
+    except Exception as e:
+        app.logger.warning(f"CVE lookup failed for {cve_id}: {e}")
+        return jsonify({"error": str(e)}), 500
+
+
+
+@app.route("/api/pipelines/<pipeline_id>/fix", methods=["POST"])
+@jwt_required()
+@require_permission("ai_fix.generate")
+def generate_ai_fix(pipeline_id):
+    current_user = get_current_user_info()
+    pipeline = db.session.get(Pipeline, pipeline_id)
+    if not pipeline or (current_user["role"] != "admin" and pipeline.user_id != current_user["id"]):
+        return jsonify({"error": "Not found"}), 404
+    body = request.get_json() or {}
+    vuln_index = body.get("vuln_index", 0)
+    vuln_data = body.get("vulnerability") or {}
+    try:
+        from pipeline.ai_predictor import generate_fix
+        sast_path = os.path.join(pipeline.report_dir, "sast-report.json") if pipeline.report_dir else None
+        source_code = ""
+        if sast_path and os.path.exists(sast_path):
+            with open(sast_path) as f:
+                sast = json.load(f)
+            results = sast.get("results", [])
+            if 0 <= vuln_index < len(results):
+                vuln_data = results[vuln_index]
+                source_code = vuln_data.get("code", "")
+        result = generate_fix(vuln_data, source_code)
+        return jsonify(result)
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
 
 # Track already-notified pipelines
 _notified_pipelines: set = set()
@@ -1933,6 +2175,7 @@ def check_and_notify_pipeline_completion(pipeline):
 
 @app.route("/api/pipelines/trigger", methods=["POST"])
 @jwt_required()
+@require_permission("pipelines.run")
 def trigger_pipeline():
     current_user = get_current_user_info()
     full_user = get_full_user_info(current_user["id"])
@@ -1992,7 +2235,12 @@ def trigger_pipeline():
     os.makedirs(user_report_dir, exist_ok=True)
 
     # --- Create DB pipeline record ---
+    github_repo_val = None
+    if repo_url and "github.com/" in repo_url:
+        github_repo_val = repo_url.split("github.com/")[-1].rstrip("/").replace(".git", "")
+
     pipeline_record = Pipeline(
+        github_repo=github_repo_val,
         id=pipeline_id,
         user_id=current_user["id"],
         user_repo_id=user_repo.id if user_repo else None,
@@ -2295,7 +2543,12 @@ def github_webhook():
     )
     os.makedirs(user_report_dir, exist_ok=True)
 
+    github_repo_val = None
+    if repo_url and "github.com/" in repo_url:
+        github_repo_val = repo_url.split("github.com/")[-1].rstrip("/").replace(".git", "")
+
     pipeline_record = Pipeline(
+        github_repo=github_repo_val,
         id=pipeline_id,
         user_id=owner_user.id,
         user_repo_id=owner_repo.id,
@@ -2532,6 +2785,7 @@ def admin_stats():
 
 @app.route("/api/admin/users", methods=["GET"])
 @jwt_required()
+@require_permission("users.manage")
 def admin_get_users():
     current_user = get_current_user_info()
     if current_user["role"] != "admin":
@@ -2544,6 +2798,7 @@ def admin_get_users():
 
 @app.route("/api/admin/users/<int:user_id>", methods=["PUT"])
 @jwt_required()
+@require_permission("users.manage")
 def admin_update_user(user_id):
     current_user = get_current_user_info()
     if current_user["role"] != "admin":
@@ -2583,6 +2838,8 @@ def admin_update_user(user_id):
 
 @app.route("/api/admin/users/<int:user_id>", methods=["DELETE"])
 @jwt_required()
+@require_permission("users.manage")
+@require_permission("users.manage")
 def admin_delete_user(user_id):
     current_user = get_current_user_info()
     if current_user["role"] != "admin":
@@ -2602,6 +2859,8 @@ def admin_delete_user(user_id):
 
 @app.route("/api/admin/users/<int:user_id>/details", methods=["GET"])
 @jwt_required()
+@require_permission("users.manage")
+@require_permission("users.manage")
 def admin_user_details(user_id):
     current_user = get_current_user_info()
     if current_user["role"] != "admin":
@@ -2647,6 +2906,8 @@ def admin_user_details(user_id):
 
 @app.route("/api/admin/users/<int:user_id>/reset-password", methods=["POST"])
 @jwt_required()
+@require_permission("users.manage")
+@require_permission("users.manage")
 def admin_reset_password(user_id):
     current_user = get_current_user_info()
     if current_user["role"] != "admin":
@@ -2668,6 +2929,8 @@ def admin_reset_password(user_id):
 
 @app.route("/api/admin/pipelines", methods=["GET"])
 @jwt_required()
+@require_permission("pipelines.view")
+@require_permission("pipelines.view")
 def admin_get_pipelines():
     current_user = get_current_user_info()
     if current_user["role"] != "admin":
@@ -2906,22 +3169,6 @@ def settings_get_profile():
 
     settings = _get_or_create_settings(user)
     profile = settings.get_section("profile")
-    default_repo = profile.get("defaultRepoUrl")
-    default_branch = (profile.get("defaultBranch") or "").strip()
-    if not default_repo:
-        repo = (
-            UserRepository.query
-            .filter_by(user_id=user.id, is_default=True)
-            .order_by(UserRepository.created_at.desc())
-            .first()
-        )
-        if repo:
-            default_repo = repo.url
-            if not default_branch:
-                default_branch = (repo.branch or "main").strip()
-
-    if not default_branch:
-        default_branch = "main"
 
     return jsonify({
         "username": user.username,
@@ -2930,16 +3177,18 @@ def settings_get_profile():
         "organization": profile.get("organization", user.organization or ""),
         "roleTitle": profile.get("roleTitle", user.role_title or ""),
         "phone": profile.get("phone", user.phone or ""),
-        "defaultRepoUrl": default_repo or "",
-        "defaultBranch": default_branch,
+        "githubUsername": user.github_username or "",
         "timezone": profile.get("timezone", "UTC"),
         "preferredLanguage": profile.get("preferredLanguage", "en"),
         "avatarUrl": profile.get("avatarUrl", ""),
+        "defaultRepoUrl": profile.get("defaultRepoUrl", ""),
+        "defaultBranch": profile.get("defaultBranch", "main"),
     })
 
 
 @app.route("/api/settings/profile", methods=["PUT"])
 @jwt_required()
+@require_permission("settings.edit")
 def settings_update_profile():
     identity = get_jwt_identity()
     user = User.query.filter_by(id=int(identity)).first()
@@ -2973,44 +3222,28 @@ def settings_update_profile():
             return jsonify({"error": "Email already exists"}), 409
         user.email = requested_email
 
+    if "githubUsername" in data:
+        gh_user = data["githubUsername"].strip()
+        if gh_user and gh_user != user.github_username:
+            from github_service import verify_github_user
+            verif = verify_github_user(gh_user)
+            if not verif.get("valid"):
+                return jsonify({"error": "GitHub username not found."}), 400
+        user.github_username = gh_user
+
     settings = _get_or_create_settings(user)
-    default_repo_url = (data.get("defaultRepoUrl") or "").strip()
-    default_branch = (data.get("defaultBranch") or "main").strip() or "main"
     profile_data = {
         "fullName": data.get("fullName", user.full_name or ""),
         "organization": data.get("organization", user.organization or ""),
         "roleTitle": data.get("roleTitle", user.role_title or ""),
         "phone": data.get("phone", user.phone or ""),
-        "defaultRepoUrl": default_repo_url,
-        "defaultBranch": default_branch,
         "timezone": data.get("timezone", "UTC"),
         "preferredLanguage": data.get("preferredLanguage", "en"),
         "avatarUrl": data.get("avatarUrl", ""),
+        "defaultRepoUrl": data.get("defaultRepoUrl", ""),
+        "defaultBranch": data.get("defaultBranch", "main"),
     }
     settings.set_section("profile", profile_data)
-
-    if default_repo_url:
-        existing_repo = (
-            UserRepository.query
-            .filter_by(user_id=user.id, url=default_repo_url)
-            .first()
-        )
-        UserRepository.query.filter_by(
-            user_id=user.id, is_default=True
-        ).update({"is_default": False})
-        if existing_repo:
-            existing_repo.is_default = True
-            existing_repo.branch = default_branch
-        else:
-            repo_name = default_repo_url.rstrip("/").split("/")[-1]
-            db.session.add(UserRepository(
-                user_id=user.id,
-                name=repo_name,
-                url=default_repo_url,
-                branch=default_branch,
-                description="",
-                is_default=True,
-            ))
     db.session.commit()
 
     return jsonify({
@@ -3023,6 +3256,7 @@ def settings_update_profile():
 
 @app.route("/api/settings/profile/avatar", methods=["POST"])
 @jwt_required()
+@require_permission("settings.edit")
 def settings_upload_avatar():
     identity = get_jwt_identity()
     user = User.query.filter_by(id=int(identity)).first()
@@ -3095,6 +3329,8 @@ def settings_get_notifications():
 
 @app.route("/api/settings/notifications", methods=["PUT"])
 @jwt_required()
+@require_permission("settings.edit")
+@require_permission("settings.edit")
 def settings_update_notifications():
     identity = get_jwt_identity()
     user = User.query.filter_by(id=int(identity)).first()
@@ -3138,6 +3374,8 @@ def settings_get_scan_prefs():
 
 @app.route("/api/settings/scan-preferences", methods=["PUT"])
 @jwt_required()
+@require_permission("settings.edit")
+@require_permission("settings.edit")
 def settings_update_scan_prefs():
     identity = get_jwt_identity()
     user = User.query.filter_by(id=int(identity)).first()
@@ -3191,6 +3429,8 @@ def settings_get_git_integration():
 
 @app.route("/api/settings/git-integration", methods=["PUT"])
 @jwt_required()
+@require_permission("settings.edit")
+@require_permission("settings.edit")
 def settings_update_git_integration():
     identity = get_jwt_identity()
     user = User.query.filter_by(id=int(identity)).first()
@@ -3264,6 +3504,8 @@ def settings_update_git_integration():
 
 @app.route("/api/settings/git-integration/regenerate-secret", methods=["POST"])
 @jwt_required()
+@require_permission("settings.edit")
+@require_permission("settings.edit")
 def settings_regenerate_webhook_secret():
     import secrets
     identity = get_jwt_identity()
@@ -3283,6 +3525,8 @@ def settings_regenerate_webhook_secret():
 
 @app.route("/api/settings/git-integration/test", methods=["POST"])
 @jwt_required()
+@require_permission("settings.edit")
+@require_permission("settings.edit")
 def settings_test_webhook():
     identity = get_jwt_identity()
     user = User.query.filter_by(id=int(identity)).first()
@@ -3318,6 +3562,8 @@ def settings_get_appearance():
 
 @app.route("/api/settings/appearance", methods=["PUT"])
 @jwt_required()
+@require_permission("settings.edit")
+@require_permission("settings.edit")
 def settings_update_appearance():
     identity = get_jwt_identity()
     user = User.query.filter_by(id=int(identity)).first()
@@ -3439,7 +3685,7 @@ def admin_reply_feedback(feedback_id):
 # ====================================================================
 
 if __name__ == "__main__":
-    app.run(debug=False, host="0.0.0.0", port=5000)
+    app.run(debug=True, host="0.0.0.0", port=5000)
 
 # ====================================================================
 # TEMPORARY ADMIN SETUP ROUTE
